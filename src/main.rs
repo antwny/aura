@@ -21,5 +21,5 @@ fn main() -> cosmic::iced::Result {
         )
         .exit_on_close(false);
 
-    cosmic::app::run::<app::AuraApp>(settings, ())
+    cosmic::app::run_single_instance::<app::AuraApp>(settings, app::AuraFlags)
 }

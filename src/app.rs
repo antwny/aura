@@ -79,6 +79,14 @@ fn handle_window_events(
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct AuraFlags;
+
+impl cosmic::app::CosmicFlags for AuraFlags {
+    type SubCommand = String;
+    type Args = Vec<String>;
+}
+
 pub struct AuraApp {
     core: Core,
     nav: nav_bar::Model,
@@ -100,7 +108,7 @@ pub struct AuraApp {
 
 impl cosmic::Application for AuraApp {
     type Executor = cosmic::executor::Default;
-    type Flags = ();
+    type Flags = AuraFlags;
     type Message = Message;
     const APP_ID: &'static str = "io.github.antwny.aura";
 
@@ -191,6 +199,10 @@ impl cosmic::Application for AuraApp {
             self.active_page = page;
         }
         Task::none()
+    }
+
+    fn dbus_activation(&mut self, _msg: cosmic::dbus_activation::Message) -> Task<cosmic::Action<Self::Message>> {
+        Task::done(cosmic::Action::App(Message::ShowMainWindow))
     }
 
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
