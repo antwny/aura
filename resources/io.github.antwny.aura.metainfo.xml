@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.antwny.aura</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Aura</name>
+  <summary>Animated live wallpaper manager for COSMIC Desktop</summary>
+  <description>
+    <p>
+      Aura is an elegant, high-performance animated live wallpaper manager built natively
+      with Rust for the System76 COSMIC Desktop environment.
+    </p>
+    <p>
+      Designed to deliver immersive desktop aesthetics without compromising system efficiency,
+      Aura integrates seamlessly into modern Wayland workflows.
+    </p>
+    <ul>
+      <li>60fps Native Performance: Built from the ground up using libcosmic and wgpu for silky-smooth rendering.</li>
+      <li>Hardware-Accelerated GPU Decoding: High-efficiency video playback keeping CPU overhead and battery drain near zero.</li>
+      <li>COSMIC Auto-Theming: Dynamically adapts UI elements and accent harmonies to system themes and wallpaper palettes.</li>
+      <li>Wayland Layer-Shell Protocol: Stutter-free wallpaper rendering docked precisely below windows across multi-monitor setups.</li>
+      <li>Intelligent Resource Throttling: Automatically pauses or throttles playback when fullscreen windows or games are active.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.antwny.aura.desktop</launchable>
+  <provides>
+    <id>com.system76.CosmicApplication</id>
+    <binary>aura</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>DesktopSettings</category>
+    <category>Settings</category>
+  </categories>
+  <developer id="io.github.antwny">
+    <name>Antwny</name>
+  </developer>
+  <url type="homepage">https://github.com/antwny/aura</url>
+  <url type="bugtracker">https://github.com/antwny/aura/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-09-04">
+      <description>
+        <p>Initial release of Aura live wallpaper manager for COSMIC Desktop.</p>
+      </description>
+    </release>
+  </releases>
+</component>

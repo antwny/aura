@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.5
+Type=Application
+Name=Aura
+GenericName=Live Wallpaper Manager
+Comment=Animated live wallpaper manager for COSMIC Desktop
+Exec=aura
+Icon=io.github.antwny.aura
+Terminal=false
+StartupNotify=true
+Categories=Utility;DesktopSettings;Settings;
+Keywords=wallpaper;live;video;cosmic;popos;animated;background;

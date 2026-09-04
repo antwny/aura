@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Drop shadow for the main container -->
+    <filter id="squircle-shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+
+    <!-- Celestial glow filter -->
+    <filter id="celestial-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Intense core glow -->
+    <filter id="intense-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Background squircle gradient (Deep cosmic space) -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141126"/>
+      <stop offset="50%" stop-color="#0c0c17"/>
+      <stop offset="100%" stop-color="#080710"/>
+    </linearGradient>
+
+    <!-- Glassmorphic border stroke -->
+    <linearGradient id="border-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="40%" stop-color="#a855f7" stop-opacity="0.2"/>
+      <stop offset="70%" stop-color="#00f5ff" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <!-- Cosmic nebula radial glows -->
+    <radialGradient id="nebula-purple" cx="30%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.45"/>
+      <stop offset="50%" stop-color="#6d28d9" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="nebula-cyan" cx="75%" cy="65%" r="50%">
+      <stop offset="0%" stop-color="#00f5ff" stop-opacity="0.4"/>
+      <stop offset="40%" stop-color="#00d284" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#00f5a0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Main Celestial Aura Ring Gradient (Purple -> Blue -> Cyan -> Emerald) -->
+    <linearGradient id="aura-ring-grad" x1="10%" y1="90%" x2="90%" y2="10%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="28%" stop-color="#3b82f6"/>
+      <stop offset="65%" stop-color="#00f5ff"/>
+      <stop offset="100%" stop-color="#00f5a0"/>
+    </linearGradient>
+
+    <!-- Secondary Harmonic Orbit Gradient -->
+    <linearGradient id="orbit-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff"/>
+      <stop offset="45%" stop-color="#38bdf8"/>
+      <stop offset="80%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+
+    <!-- Core Star Flare Gradient -->
+    <linearGradient id="star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#e0e7ff"/>
+      <stop offset="100%" stop-color="#a5f3fc"/>
+    </linearGradient>
+
+    <!-- Core Radial Glow -->
+    <radialGradient id="core-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="25%" stop-color="#38bdf8" stop-opacity="0.7"/>
+      <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Clip path for squircle -->
+    <clipPath id="squircle-clip">
+      <rect x="20" y="20" width="216" height="216" rx="52" ry="52"/>
+    </clipPath>
+  </defs>
+
+  <!-- Base App Squircle with Drop Shadow -->
+  <rect x="20" y="20" width="216" height="216" rx="52" ry="52" fill="url(#bg-grad)" filter="url(#squircle-shadow)"/>
+
+  <!-- Interior Masked Elements -->
+  <g clip-path="url(#squircle-clip)">
+    <!-- Deep Cosmic Ambient Nebulae -->
+    <circle cx="85" cy="90" r="95" fill="url(#nebula-purple)"/>
+    <circle cx="170" cy="165" r="90" fill="url(#nebula-cyan)"/>
+
+    <!-- Subtle Stardust / Celestial Sparks -->
+    <circle cx="65" cy="55" r="1.5" fill="#ffffff" opacity="0.6"/>
+    <circle cx="190" cy="68" r="1.2" fill="#a5f3fc" opacity="0.5"/>
+    <circle cx="50" cy="180" r="1.2" fill="#c084fc" opacity="0.5"/>
+    <circle cx="205" cy="195" r="1.5" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="128" cy="40" r="1" fill="#ffffff" opacity="0.4"/>
+    <circle cx="135" cy="216" r="1" fill="#00f5ff" opacity="0.4"/>
+
+    <!-- Ambient Center Flare -->
+    <circle cx="128" cy="128" r="70" fill="url(#core-glow)" opacity="0.4"/>
+
+    <!-- Outer Radiance Wave (Dynamic Live Pulse Ring) -->
+    <circle cx="128" cy="128" r="82" fill="none" stroke="url(#aura-ring-grad)" stroke-width="1.5" opacity="0.25" stroke-dasharray="8 6"/>
+
+    <!-- Celestial Aura Ring - Glow Layer (Back) -->
+    <g filter="url(#celestial-glow)" opacity="0.85">
+      <!-- Main Aura Ring Blur -->
+      <circle cx="128" cy="128" r="62" fill="none" stroke="url(#aura-ring-grad)" stroke-width="14" stroke-linecap="round"/>
+      <!-- Harmonic Orbital Ring Blur -->
+      <ellipse cx="128" cy="128" rx="74" ry="38" fill="none" stroke="url(#orbit-grad)" stroke-width="6" transform="rotate(-28 128 128)"/>
+    </g>
+
+    <!-- Celestial Aura Ring - Sharp High-Contrast Foreground Layer -->
+    <!-- Primary Torus Ring -->
+    <circle cx="128" cy="128" r="62" fill="none" stroke="url(#aura-ring-grad)" stroke-width="12" stroke-linecap="round"/>
+
+    <!-- Inner Highlight Rim on Primary Ring -->
+    <circle cx="128" cy="128" r="66" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.3"/>
+
+    <!-- Intersecting Dynamic Orbital Wave (Cosmic Orbit) -->
+    <ellipse cx="128" cy="128" rx="74" ry="38" fill="none" stroke="url(#orbit-grad)" stroke-width="5" transform="rotate(-28 128 128)" stroke-linecap="round"/>
+
+    <!-- Inner Celestial Harmonic Wave -->
+    <circle cx="128" cy="128" r="42" fill="none" stroke="url(#aura-ring-grad)" stroke-width="2.5" opacity="0.5"/>
+
+    <!-- Orbital Light Beacon 1 (Emerald/Cyan Node at top right) -->
+    <circle cx="178" cy="98" r="4.5" fill="#ffffff" filter="url(#intense-glow)"/>
+    <circle cx="178" cy="98" r="2.5" fill="#00f5ff"/>
+
+    <!-- Orbital Light Beacon 2 (Purple/Violet Node at bottom left) -->
+    <circle cx="78" cy="158" r="4" fill="#ffffff" filter="url(#intense-glow)"/>
+    <circle cx="78" cy="158" r="2" fill="#c084fc"/>
+
+    <!-- Core Celestial Star / Radiant Diamond (Center of Aura) -->
+    <g filter="url(#intense-glow)">
+      <!-- 4-pointed radiant flare -->
+      <path d="M 128 106 C 128 120 120 128 106 128 C 120 128 128 136 128 150 C 128 136 136 128 150 128 C 136 128 128 120 128 106 Z" fill="url(#star-grad)"/>
+      <!-- Core brilliant white center -->
+      <circle cx="128" cy="128" r="3.5" fill="#ffffff"/>
+    </g>
+
+    <!-- Subtle diagonal light sheen across the squircle glass -->
+    <path d="M 20 20 L 160 20 L 20 160 Z" fill="#ffffff" opacity="0.035"/>
+  </g>
+
+  <!-- Elegant Container Border Stroke -->
+  <rect x="20" y="20" width="216" height="216" rx="52" ry="52" fill="none" stroke="url(#border-grad)" stroke-width="1.5"/>
+</svg>
