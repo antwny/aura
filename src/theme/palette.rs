@@ -149,3 +149,59 @@ pub fn apply_cosmic_theme(thumb_path: &Path, auto_dark: bool) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rgb_to_hsv() {
+        // Red
+        let (h, s, v) = rgb_to_hsv(1.0, 0.0, 0.0);
+        assert!((h - 0.0).abs() < 0.01);
+        assert!((s - 1.0).abs() < 0.01);
+        assert!((v - 1.0).abs() < 0.01);
+
+        // Green
+        let (h, s, v) = rgb_to_hsv(0.0, 1.0, 0.0);
+        assert!((h - 120.0).abs() < 0.01);
+        assert!((s - 1.0).abs() < 0.01);
+        assert!((v - 1.0).abs() < 0.01);
+
+        // Blue
+        let (h, s, v) = rgb_to_hsv(0.0, 0.0, 1.0);
+        assert!((h - 240.0).abs() < 0.01);
+        assert!((s - 1.0).abs() < 0.01);
+        assert!((v - 1.0).abs() < 0.01);
+
+        // Black
+        let (h, s, v) = rgb_to_hsv(0.0, 0.0, 0.0);
+        assert_eq!(h, 0.0);
+        assert_eq!(s, 0.0);
+        assert_eq!(v, 0.0);
+    }
+
+    #[test]
+    fn test_darken_and_lighten() {
+        let col = RgbColor { r: 0.8, g: 0.5, b: 0.2 };
+        let dark = darken(col, 0.5);
+        assert!((dark.r - 0.4).abs() < 0.01);
+        assert!((dark.g - 0.25).abs() < 0.01);
+        assert!((dark.b - 0.1).abs() < 0.01);
+
+        let light = lighten(col, 0.3);
+        assert!((light.r - 1.0).abs() < 0.01); // clamped to 1.0
+        assert!((light.g - 0.8).abs() < 0.01);
+        assert!((light.b - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_fmt_color() {
+        let col = RgbColor { r: 1.0, g: 0.5, b: 0.0 };
+        let formatted = fmt_color(col, 1.0);
+        assert!(formatted.contains("red: 1.0000000"));
+        assert!(formatted.contains("green: 0.5000000"));
+        assert!(formatted.contains("blue: 0.0000000"));
+        assert!(formatted.contains("alpha: 1.0"));
+    }
+}

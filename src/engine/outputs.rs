@@ -111,12 +111,65 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
 
 fn parse_resolution(res: &str) -> (u32, u32) {
     if let Some((w, h)) = res.split_once('x') {
-        let w_clean: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
-        let h_clean: String = h.chars().filter(|c| c.is_ascii_digit()).collect();
-        let width = w_clean.parse::<u32>().unwrap_or(1920);
-        let height = h_clean.parse::<u32>().unwrap_or(1080);
-        (width, height)
+        let w_digits: String = w.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
+        let h_digits: String = h.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
+        let width = w_digits.parse::<u32>().unwrap_or(1920);
+        let height = h_digits.parse::<u32>().unwrap_or(1080);
+        (
+            if width == 0 { 1920 } else { width },
+            if height == 0 { 1080 } else { height },
+        )
     } else {
         (1920, 1080)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_resolution_standard() {
+        assert_eq!(parse_resolution("1920x1080"), (1920, 1080));
+        assert_eq!(parse_resolution("2560x1440"), (2560, 1440));
+        assert_eq!(parse_resolution("3840x2160"), (3840, 2160));
+    }
+
+    #[test]
+    fn test_parse_resolution_with_refresh_rate() {
+        assert_eq!(parse_resolution("1920x1080@60Hz"), (1920, 1080));
+        assert_eq!(parse_resolution("2560x1440@144.00"), (2560, 1440));
+        assert_eq!(parse_resolution(" 1920x1080 (current)"), (1920, 1080));
+    }
+
+    #[test]
+    fn test_parse_resolution_invalid_or_zero() {
+        assert_eq!(parse_resolution("invalid"), (1920, 1080));
+        assert_eq!(parse_resolution("0x0"), (1920, 1080));
+        assert_eq!(parse_resolution(""), (1920, 1080));
+    }
+
+    #[test]
+    fn test_aspect_ratio() {
+        let m = MonitorOutput {
+            name: "DP-1".into(),
+            description: "DisplayPort 1".into(),
+            resolution: "1920x1080".into(),
+            width: 1920,
+            height: 1080,
+            is_primary: true,
+        };
+        let ratio = m.aspect_ratio();
+        assert!((ratio - (16.0 / 9.0)).abs() < 0.01);
+
+        let m_zero = MonitorOutput {
+            name: "DP-1".into(),
+            description: "DisplayPort 1".into(),
+            resolution: "0x0".into(),
+            width: 0,
+            height: 0,
+            is_primary: false,
+        };
+        assert_eq!(m_zero.aspect_ratio(), 16.0 / 9.0);
     }
 }

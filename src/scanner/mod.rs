@@ -87,12 +87,40 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
     items
 }
 
-fn format_file_size(bytes: u64) -> String {
-    if bytes > 1024 * 1024 * 1024 {
+pub fn format_file_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 * 1024 {
         format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-    } else if bytes > 1024 * 1024 {
+    } else if bytes >= 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
-    } else {
+    } else if bytes >= 1024 {
         format!("{:.0} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_file_size() {
+        assert_eq!(format_file_size(0), "0 B");
+        assert_eq!(format_file_size(500), "500 B");
+        assert_eq!(format_file_size(1024), "1 KB");
+        assert_eq!(format_file_size(1536), "2 KB");
+        assert_eq!(format_file_size(10 * 1024 * 1024), "10.0 MB");
+        assert_eq!(format_file_size(2 * 1024 * 1024 * 1024), "2.0 GB");
+    }
+
+    #[test]
+    fn test_video_extensions() {
+        assert!(VIDEO_EXTENSIONS.contains(&"mp4"));
+        assert!(VIDEO_EXTENSIONS.contains(&"webm"));
+        assert!(VIDEO_EXTENSIONS.contains(&"mkv"));
+        assert!(VIDEO_EXTENSIONS.contains(&"avi"));
+        assert!(VIDEO_EXTENSIONS.contains(&"mov"));
+        assert!(!VIDEO_EXTENSIONS.contains(&"png"));
+        assert!(!VIDEO_EXTENSIONS.contains(&"exe"));
     }
 }

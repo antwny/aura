@@ -1253,13 +1253,27 @@ impl AuraApp {
     }
 }
 
+pub fn is_heavy_process_cmdline(cmdline: &str) -> bool {
+    const HEAVY_PROCESSES: &[&str] = &["gamescope", "steam_app", "wine64-preloader", "proton", "heroic", "lutris"];
+    for proc_name in HEAVY_PROCESSES {
+        if cmdline.contains(proc_name) {
+            return true;
+        }
+    }
+    false
+}
+
 fn check_if_fullscreen_game_active() -> bool {
-    let heavy_processes = ["gamescope", "steam_app", "wine64-preloader", "proton", "heroic", "lutris"];
     if let Ok(entries) = std::fs::read_dir("/proc") {
         for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(cmdline) = std::fs::read_to_string(entry.path().join("cmdline")) {
-                for proc_name in heavy_processes {
-                    if cmdline.contains(proc_name) {
+            let is_pid = entry
+                .file_name()
+                .to_str()
+                .map_or(false, |s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
+
+            if is_pid {
+                if let Ok(cmdline) = std::fs::read_to_string(entry.path().join("cmdline")) {
+                    if is_heavy_process_cmdline(&cmdline) {
                         return true;
                     }
                 }
@@ -1267,4 +1281,20 @@ fn check_if_fullscreen_game_active() -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_heavy_process_cmdline() {
+        assert!(is_heavy_process_cmdline("/usr/bin/gamescope -W 1920"));
+        assert!(is_heavy_process_cmdline("proton run game.exe"));
+        assert!(is_heavy_process_cmdline("/opt/heroic/heroic"));
+        assert!(is_heavy_process_cmdline("steam_app_12345"));
+        assert!(!is_heavy_process_cmdline("/usr/bin/bash"));
+        assert!(!is_heavy_process_cmdline("cosmic-panel"));
+        assert!(!is_heavy_process_cmdline(""));
+    }
 }

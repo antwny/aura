@@ -28,9 +28,8 @@
     <binary>aura</binary>
   </provides>
   <categories>
-    <category>Utility</category>
-    <category>DesktopSettings</category>
     <category>Settings</category>
+    <category>DesktopSettings</category>
   </categories>
   <developer id="io.github.antwny">
     <name>Antwny</name>

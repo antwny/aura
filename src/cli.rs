@@ -232,3 +232,32 @@ fn print_help() {
     println!("  aura help             Muestra esta ayuda");
     println!("\nConsejo para COSMIC: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en Ajustes.");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_handle_cli_no_args_opens_gui() {
+        let args = vec!["aura".to_string()];
+        assert_eq!(handle_cli(&args), false);
+    }
+
+    #[test]
+    fn test_handle_cli_gui_flag() {
+        let args = vec!["aura".to_string(), "gui".to_string()];
+        assert_eq!(handle_cli(&args), false);
+    }
+
+    #[test]
+    fn test_handle_cli_help() {
+        let args = vec!["aura".to_string(), "help".to_string()];
+        assert_eq!(handle_cli(&args), true);
+
+        let args = vec!["aura".to_string(), "--help".to_string()];
+        assert_eq!(handle_cli(&args), true);
+
+        let args = vec!["aura".to_string(), "-h".to_string()];
+        assert_eq!(handle_cli(&args), true);
+    }
+}

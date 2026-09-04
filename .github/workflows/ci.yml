@@ -1,0 +1,47 @@
+name: CI & Pre-production Verification
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev \
+            libwayland-dev \
+            desktop-file-utils \
+            appstream
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate Desktop Entry & AppStream Metadata
+        run: |
+          desktop-file-validate resources/io.github.antwny.aura.desktop
+          appstreamcli validate --pedantic resources/io.github.antwny.aura.metainfo.xml
+
+      - name: Cargo Check
+        run: cargo check --verbose
+
+      - name: Run Unit & Integration Tests
+        run: cargo test --verbose
+
+      - name: Build Release Binary
+        run: cargo build --release --verbose

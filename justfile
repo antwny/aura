@@ -19,6 +19,15 @@ build-debug:
 check:
     cargo check
 
+# Run automated tests
+test:
+    cargo test
+
+# Validate desktop entry and AppStream metainfo
+validate:
+    @command -v desktop-file-validate >/dev/null 2>&1 && desktop-file-validate resources/io.github.antwny.aura.desktop || echo "desktop-file-validate not found"
+    @command -v appstreamcli >/dev/null 2>&1 && appstreamcli validate --pedantic resources/io.github.antwny.aura.metainfo.xml || echo "appstreamcli not found"
+
 # Format source code (if installed)
 fmt:
     @command -v rustfmt >/dev/null 2>&1 && cargo fmt || echo "rustfmt not installed; skipping format"

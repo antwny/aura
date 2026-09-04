@@ -8,5 +8,5 @@ Exec=aura
 Icon=io.github.antwny.aura
 Terminal=false
 StartupNotify=true
-Categories=Utility;DesktopSettings;Settings;
+Categories=Settings;DesktopSettings;
 Keywords=wallpaper;live;video;cosmic;popos;animated;background;

@@ -91,3 +91,76 @@ impl Config {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let cfg = Config::default();
+        assert_eq!(cfg.order, "random");
+        assert_eq!(cfg.interval, 30);
+        assert!(cfg.auto_theme);
+        assert!(cfg.auto_dark);
+        assert!(cfg.mute);
+        assert!(cfg.smart_pause);
+        assert!(cfg.keep_running_on_close);
+        assert_eq!(cfg.hwdec, "auto-safe");
+        assert_eq!(cfg.output, "*");
+        assert!(!cfg.dirs.is_empty());
+    }
+
+    #[test]
+    fn test_config_serialization_roundtrip() {
+        let mut cfg = Config::default();
+        cfg.wallpapers.insert("DP-1".into(), "/path/to/vid.mp4".into());
+        cfg.scaling.insert("DP-1".into(), "fill".into());
+        cfg.current = Some("/path/to/vid.mp4".into());
+        cfg.language = "en".into();
+
+        let json = serde_json::to_string_pretty(&cfg).expect("serialize config");
+        let deserialized: Config = serde_json::from_str(&json).expect("deserialize config");
+
+        assert_eq!(deserialized.current, Some("/path/to/vid.mp4".into()));
+        assert_eq!(deserialized.wallpapers.get("DP-1").unwrap(), "/path/to/vid.mp4");
+        assert_eq!(deserialized.scaling.get("DP-1").unwrap(), "fill");
+        assert_eq!(deserialized.language, "en");
+    }
+
+    #[test]
+    fn test_config_backward_compatibility_missing_language() {
+        // Old configs without the "language" key should deserialize properly
+        let old_json = r#"{
+            "current": null,
+            "wallpapers": {},
+            "dirs": ["/home/test/Videos"],
+            "custom_videos": [],
+            "output": "*",
+            "scaling": {},
+            "auto_theme": true,
+            "auto_dark": true,
+            "rotation": false,
+            "interval": 30,
+            "order": "random",
+            "seq_index": 0,
+            "mute": true,
+            "hwdec": "auto-safe",
+            "smart_pause": true,
+            "keep_running_on_close": true
+        }"#;
+
+        let cfg: Result<Config, _> = serde_json::from_str(old_json);
+        assert!(cfg.is_ok());
+        let cfg = cfg.unwrap();
+        assert!(!cfg.language.is_empty());
+    }
+
+    #[test]
+    fn test_config_paths() {
+        let dir = Config::config_dir();
+        let file = Config::config_file();
+        assert!(dir.ends_with(".config/aura"));
+        assert!(file.ends_with(".config/aura/config.json"));
+    }
+}

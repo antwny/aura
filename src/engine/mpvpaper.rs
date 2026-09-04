@@ -27,16 +27,7 @@ impl WallpaperEngine {
         // Kill existing instance for this specific output first
         self.stop_output(output);
 
-        let mut opts = format!("loop-file=inf --hwdec={} --no-config", hwdec);
-        if mute {
-            opts.push_str(" --no-audio");
-        }
-
-        match scaling {
-            "fill" => opts.push_str(" --panscan=1.0"),
-            "stretch" => opts.push_str(" --no-keepaspect"),
-            _ => {} // fit is default
-        }
+        let opts = Self::build_mpv_options(scaling, mute, hwdec);
 
         let child = Command::new("mpvpaper")
             .arg("-o")
@@ -109,6 +100,20 @@ impl WallpaperEngine {
         self.is_paused = false;
     }
 
+    pub fn build_mpv_options(scaling: &str, mute: bool, hwdec: &str) -> String {
+        let mut opts = format!("loop-file=inf --hwdec={} --no-config", hwdec);
+        if mute {
+            opts.push_str(" --no-audio");
+        }
+
+        match scaling {
+            "fill" => opts.push_str(" --panscan=1.0"),
+            "stretch" => opts.push_str(" --no-keepaspect"),
+            _ => {} // fit is default
+        }
+        opts
+    }
+
     pub fn write_autostart(&self, wallpapers: &HashMap<String, String>, scaling: &HashMap<String, String>, mute: bool, hwdec: &str) -> std::io::Result<()> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         let autostart_dir = PathBuf::from(&home).join(".config").join("autostart");
@@ -122,19 +127,13 @@ impl WallpaperEngine {
 
         for (output, path) in wallpapers {
             let sc = scaling.get(output).map(|s| s.as_str()).unwrap_or("fit");
-            let mut opts = format!("loop-file=inf --hwdec={} --no-config", hwdec);
-            if mute {
-                opts.push_str(" --no-audio");
-            }
-            if sc == "fill" {
-                opts.push_str(" --panscan=1.0");
-            } else if sc == "stretch" {
-                opts.push_str(" --no-keepaspect");
-            }
+            let opts = Self::build_mpv_options(sc, mute, hwdec);
 
             script_content.push_str(&format!(
-                "mpvpaper --fork -o \"{}\" \"{}\" \"{}\"\n",
-                opts, output, path
+                "mpvpaper --fork -o {} {} {}\n",
+                shell_escape(&opts),
+                shell_escape(output),
+                shell_escape(path)
             ));
         }
 
@@ -178,5 +177,39 @@ impl WallpaperEngine {
     pub fn is_autostart_enabled() -> bool {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         PathBuf::from(home).join(".config").join("autostart").join("io.github.antwny.aura.desktop").exists()
+    }
+}
+
+pub fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_mpv_options() {
+        let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, "auto-safe");
+        assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
+        assert!(opts_fit_mute.contains("--no-audio"));
+        assert!(!opts_fit_mute.contains("--panscan"));
+
+        let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, "vaapi");
+        assert!(opts_fill_sound.contains("--hwdec=vaapi"));
+        assert!(!opts_fill_sound.contains("--no-audio"));
+        assert!(opts_fill_sound.contains("--panscan=1.0"));
+
+        let opts_stretch = WallpaperEngine::build_mpv_options("stretch", false, "nvdec");
+        assert!(opts_stretch.contains("--no-keepaspect"));
+    }
+
+    #[test]
+    fn test_shell_escape_safety() {
+        assert_eq!(shell_escape("normal_string"), "'normal_string'");
+        assert_eq!(shell_escape("with space"), "'with space'");
+        assert_eq!(shell_escape("with$dollar"), "'with$dollar'");
+        assert_eq!(shell_escape("with`backtick`"), "'with`backtick`'");
+        assert_eq!(shell_escape("with'quote"), "'with'\\''quote'");
     }
 }

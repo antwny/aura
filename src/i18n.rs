@@ -598,3 +598,55 @@ impl Language {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_language_from_code() {
+        assert_eq!(Language::from_code("es"), Language::Es);
+        assert_eq!(Language::from_code("ES"), Language::Es);
+        assert_eq!(Language::from_code("spanish"), Language::Es);
+        assert_eq!(Language::from_code("español"), Language::Es);
+        assert_eq!(Language::from_code("en"), Language::En);
+        assert_eq!(Language::from_code("EN"), Language::En);
+        assert_eq!(Language::from_code("english"), Language::En);
+        assert_eq!(Language::from_code("fr"), Language::En);
+        assert_eq!(Language::from_code(""), Language::En);
+    }
+
+    #[test]
+    fn test_language_code() {
+        assert_eq!(Language::Es.code(), "es");
+        assert_eq!(Language::En.code(), "en");
+    }
+
+    #[test]
+    fn test_translations_non_empty() {
+        for lang in &[Language::Es, Language::En] {
+            assert!(!lang.nav_library().is_empty());
+            assert!(!lang.nav_monitors().is_empty());
+            assert!(!lang.nav_settings().is_empty());
+            assert!(!lang.nav_about().is_empty());
+            assert!(!lang.header_add_video().is_empty());
+            assert!(!lang.header_add_folder().is_empty());
+            assert!(!lang.library_search_placeholder().is_empty());
+            assert!(!lang.library_empty_title().is_empty());
+            assert!(!lang.settings_title().is_empty());
+            assert!(!lang.about_tagline().is_empty());
+            assert!(!lang.tray_open().is_empty());
+            assert!(!lang.tray_quit().is_empty());
+            assert!(!lang.status_paused().is_empty());
+            assert!(!lang.status_resumed().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_dynamic_formatting() {
+        assert_eq!(Language::Es.header_wallpapers_count(5), "(5 fondos)");
+        assert_eq!(Language::En.header_wallpapers_count(5), "(5 wallpapers)");
+        assert!(Language::Es.status_applied("DP-1", "ocean.mp4").contains("DP-1"));
+        assert!(Language::En.status_applied("DP-1", "ocean.mp4").contains("ocean.mp4"));
+    }
+}
