@@ -360,8 +360,8 @@ impl Language {
 
     pub fn about_version_info(&self) -> &'static str {
         match self {
-            Language::Es => "Versión 0.1.0 • Pop!_OS 24.04 LTS",
-            Language::En => "Version 0.1.0 • Pop!_OS 24.04 LTS",
+            Language::Es => concat!("Versión ", env!("CARGO_PKG_VERSION"), " • Pop!_OS 24.04 LTS"),
+            Language::En => concat!("Version ", env!("CARGO_PKG_VERSION"), " • Pop!_OS 24.04 LTS"),
         }
     }
 
