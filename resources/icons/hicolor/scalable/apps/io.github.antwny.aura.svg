@@ -1,159 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Drop shadow for the main container -->
-    <filter id="squircle-shadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.5"/>
-    </filter>
-
-    <!-- Celestial glow filter -->
-    <filter id="celestial-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="blur2"/>
-      <feMerge>
-        <feMergeNode in="blur2"/>
-        <feMergeNode in="blur1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <!-- Intense core glow -->
-    <filter id="intense-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <!-- Background squircle gradient (Deep cosmic space) -->
-    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#141126"/>
-      <stop offset="50%" stop-color="#0c0c17"/>
-      <stop offset="100%" stop-color="#080710"/>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#121622" />
+      <stop offset="50%" stop-color="#0E111A" />
+      <stop offset="100%" stop-color="#080A10" />
     </linearGradient>
 
-    <!-- Glassmorphic border stroke -->
-    <linearGradient id="border-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
-      <stop offset="40%" stop-color="#a855f7" stop-opacity="0.2"/>
-      <stop offset="70%" stop-color="#00f5ff" stop-opacity="0.15"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    <!-- Subtle Inset Rim Stroke -->
+    <linearGradient id="rim-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="50%" stop-color="#38BDF8" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4" />
     </linearGradient>
 
-    <!-- Cosmic nebula radial glows -->
-    <radialGradient id="nebula-purple" cx="30%" cy="35%" r="55%">
-      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.45"/>
-      <stop offset="50%" stop-color="#6d28d9" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
+    <!-- Left Shard Gradient (Electric Cyan -> Deep Cobalt) -->
+    <linearGradient id="left-shard" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#00F5FF" />
+      <stop offset="50%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#1E1B4B" />
+    </linearGradient>
+
+    <!-- Right Shard Gradient (Cosmic Violet -> Radiant Fuchsia) -->
+    <linearGradient id="right-shard" x1="80%" y1="0%" x2="20%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4C1D95" />
+    </linearGradient>
+
+    <!-- Light Crossbar Gradient (Prismatic Horizon) -->
+    <linearGradient id="cross-beam" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#E0E7FF" stop-opacity="1" />
+      <stop offset="100%" stop-color="#F472B6" stop-opacity="0.95" />
+    </linearGradient>
+
+    <!-- Ambient Shadow Under Monolith -->
+    <radialGradient id="under-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.25" />
+      <stop offset="60%" stop-color="#7C3AED" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
     </radialGradient>
 
-    <radialGradient id="nebula-cyan" cx="75%" cy="65%" r="50%">
-      <stop offset="0%" stop-color="#00f5ff" stop-opacity="0.4"/>
-      <stop offset="40%" stop-color="#00d284" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#00f5a0" stop-opacity="0"/>
-    </radialGradient>
+    <!-- Soft Drop Shadow for Icon Base -->
+    <filter id="shadow-base" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.55" />
+    </filter>
 
-    <!-- Main Celestial Aura Ring Gradient (Purple -> Blue -> Cyan -> Emerald) -->
-    <linearGradient id="aura-ring-grad" x1="10%" y1="90%" x2="90%" y2="10%">
-      <stop offset="0%" stop-color="#a855f7"/>
-      <stop offset="28%" stop-color="#3b82f6"/>
-      <stop offset="65%" stop-color="#00f5ff"/>
-      <stop offset="100%" stop-color="#00f5a0"/>
-    </linearGradient>
-
-    <!-- Secondary Harmonic Orbit Gradient -->
-    <linearGradient id="orbit-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f5ff"/>
-      <stop offset="45%" stop-color="#38bdf8"/>
-      <stop offset="80%" stop-color="#818cf8"/>
-      <stop offset="100%" stop-color="#c084fc"/>
-    </linearGradient>
-
-    <!-- Core Star Flare Gradient -->
-    <linearGradient id="star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="50%" stop-color="#e0e7ff"/>
-      <stop offset="100%" stop-color="#a5f3fc"/>
-    </linearGradient>
-
-    <!-- Core Radial Glow -->
-    <radialGradient id="core-glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="25%" stop-color="#38bdf8" stop-opacity="0.7"/>
-      <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
-    </radialGradient>
-
-    <!-- Clip path for squircle -->
-    <clipPath id="squircle-clip">
-      <rect x="20" y="20" width="216" height="216" rx="52" ry="52"/>
-    </clipPath>
+    <!-- Glow for Central Apex -->
+    <filter id="apex-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
   </defs>
 
-  <!-- Base App Squircle with Drop Shadow -->
-  <rect x="20" y="20" width="216" height="216" rx="52" ry="52" fill="url(#bg-grad)" filter="url(#squircle-shadow)"/>
+  <!-- Base Squircle Container -->
+  <rect x="24" y="24" width="464" height="464" rx="104" ry="104" fill="url(#bg-1)" filter="url(#shadow-base)" />
+  <rect x="24.5" y="24.5" width="463" height="463" rx="103.5" ry="103.5" fill="none" stroke="url(#rim-1)" stroke-width="2" />
 
-  <!-- Interior Masked Elements -->
-  <g clip-path="url(#squircle-clip)">
-    <!-- Deep Cosmic Ambient Nebulae -->
-    <circle cx="85" cy="90" r="95" fill="url(#nebula-purple)"/>
-    <circle cx="170" cy="165" r="90" fill="url(#nebula-cyan)"/>
+  <!-- Ambient Backdrop Glow -->
+  <circle cx="256" cy="260" r="170" fill="url(#under-glow)" />
 
-    <!-- Subtle Stardust / Celestial Sparks -->
-    <circle cx="65" cy="55" r="1.5" fill="#ffffff" opacity="0.6"/>
-    <circle cx="190" cy="68" r="1.2" fill="#a5f3fc" opacity="0.5"/>
-    <circle cx="50" cy="180" r="1.2" fill="#c084fc" opacity="0.5"/>
-    <circle cx="205" cy="195" r="1.5" fill="#6ee7b7" opacity="0.6"/>
-    <circle cx="128" cy="40" r="1" fill="#ffffff" opacity="0.4"/>
-    <circle cx="135" cy="216" r="1" fill="#00f5ff" opacity="0.4"/>
+  <!-- Dynamic Geometry of the "Kinetic A" -->
+  <g transform="translate(256, 252)">
+    <!-- Shadow under left shard -->
+    <path d="M -90 130 L -30 -140 L 0 -140 L -45 130 Z" fill="#000000" opacity="0.4" />
 
-    <!-- Ambient Center Flare -->
-    <circle cx="128" cy="128" r="70" fill="url(#core-glow)" opacity="0.4"/>
+    <!-- Left Pillar Shard -->
+    <path d="M -105 130 L -36 -140 L 4 -140 L -45 130 Z" fill="url(#left-shard)" />
 
-    <!-- Outer Radiance Wave (Dynamic Live Pulse Ring) -->
-    <circle cx="128" cy="128" r="82" fill="none" stroke="url(#aura-ring-grad)" stroke-width="1.5" opacity="0.25" stroke-dasharray="8 6"/>
+    <!-- Right Pillar Shard -->
+    <path d="M 45 130 L -4 -140 L 36 -140 L 105 130 Z" fill="url(#right-shard)" />
 
-    <!-- Celestial Aura Ring - Glow Layer (Back) -->
-    <g filter="url(#celestial-glow)" opacity="0.85">
-      <!-- Main Aura Ring Blur -->
-      <circle cx="128" cy="128" r="62" fill="none" stroke="url(#aura-ring-grad)" stroke-width="14" stroke-linecap="round"/>
-      <!-- Harmonic Orbital Ring Blur -->
-      <ellipse cx="128" cy="128" rx="74" ry="38" fill="none" stroke="url(#orbit-grad)" stroke-width="6" transform="rotate(-28 128 128)"/>
-    </g>
+    <!-- Apex Keystone (The Peak of the A, where the two shafts converge) -->
+    <path d="M -36 -140 L 0 -156 L 36 -140 L 10 -90 L -10 -90 Z" fill="#E0E7FF" opacity="0.9" />
 
-    <!-- Celestial Aura Ring - Sharp High-Contrast Foreground Layer -->
-    <!-- Primary Torus Ring -->
-    <circle cx="128" cy="128" r="62" fill="none" stroke="url(#aura-ring-grad)" stroke-width="12" stroke-linecap="round"/>
+    <!-- Dynamic Prismatic Crossbar (The Horizon Beam) -->
+    <!-- It slices through the A horizontally with perspective, projecting forward -->
+    <path d="M -125 42 L 125 42 L 105 76 L -105 76 Z" fill="url(#cross-beam)" />
 
-    <!-- Inner Highlight Rim on Primary Ring -->
-    <circle cx="128" cy="128" r="66" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.3"/>
+    <!-- Internal Core Facet (Reflective Inset) -->
+    <polygon points="0,-140 18,-60 -18,-60" fill="#FFFFFF" opacity="0.35" />
 
-    <!-- Intersecting Dynamic Orbital Wave (Cosmic Orbit) -->
-    <ellipse cx="128" cy="128" rx="74" ry="38" fill="none" stroke="url(#orbit-grad)" stroke-width="5" transform="rotate(-28 128 128)" stroke-linecap="round"/>
+    <!-- Sharp Horizon Accent Line inside beam -->
+    <line x1="-115" y1="59" x2="115" y2="59" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.75" />
 
-    <!-- Inner Celestial Harmonic Wave -->
-    <circle cx="128" cy="128" r="42" fill="none" stroke="url(#aura-ring-grad)" stroke-width="2.5" opacity="0.5"/>
-
-    <!-- Orbital Light Beacon 1 (Emerald/Cyan Node at top right) -->
-    <circle cx="178" cy="98" r="4.5" fill="#ffffff" filter="url(#intense-glow)"/>
-    <circle cx="178" cy="98" r="2.5" fill="#00f5ff"/>
-
-    <!-- Orbital Light Beacon 2 (Purple/Violet Node at bottom left) -->
-    <circle cx="78" cy="158" r="4" fill="#ffffff" filter="url(#intense-glow)"/>
-    <circle cx="78" cy="158" r="2" fill="#c084fc"/>
-
-    <!-- Core Celestial Star / Radiant Diamond (Center of Aura) -->
-    <g filter="url(#intense-glow)">
-      <!-- 4-pointed radiant flare -->
-      <path d="M 128 106 C 128 120 120 128 106 128 C 120 128 128 136 128 150 C 128 136 136 128 150 128 C 136 128 128 120 128 106 Z" fill="url(#star-grad)"/>
-      <!-- Core brilliant white center -->
-      <circle cx="128" cy="128" r="3.5" fill="#ffffff"/>
-    </g>
-
-    <!-- Subtle diagonal light sheen across the squircle glass -->
-    <path d="M 20 20 L 160 20 L 20 160 Z" fill="#ffffff" opacity="0.035"/>
+    <!-- Center Play/Focus Negative Space Geometry -->
+    <polygon points="0,-35 -38,32 38,32" fill="#0E111A" />
+    <polygon points="0,-25 -26,26 26,26" fill="url(#left-shard)" opacity="0.2" />
   </g>
-
-  <!-- Elegant Container Border Stroke -->
-  <rect x="20" y="20" width="216" height="216" rx="52" ry="52" fill="none" stroke="url(#border-grad)" stroke-width="1.5"/>
 </svg>
