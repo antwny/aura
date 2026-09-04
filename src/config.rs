@@ -20,6 +20,12 @@ pub struct Config {
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
     pub smart_pause: bool,
     pub keep_running_on_close: bool,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    crate::i18n::detect_system_language().code().to_string()
 }
 
 impl Default for Config {
@@ -50,6 +56,7 @@ impl Default for Config {
             hwdec: "auto-safe".into(),
             smart_pause: true,
             keep_running_on_close: true,
+            language: default_language(),
         }
     }
 }

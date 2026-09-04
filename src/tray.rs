@@ -17,6 +17,7 @@ pub struct AuraTray {
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
+    pub language: Arc<Mutex<crate::i18n::Language>>,
 }
 
 impl Tray for AuraTray {
@@ -33,11 +34,12 @@ impl Tray for AuraTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
+        let lang = *self.language.lock().unwrap();
         let name = self.current_name.lock().unwrap().clone();
         let desc = if name.is_empty() {
-            "Sin fondo en reproducción".to_string()
+            lang.tray_tooltip_idle().to_string()
         } else {
-            format!("Reproduciendo: {}", name)
+            lang.tray_tooltip_playing(&name)
         };
         ToolTip {
             title: "Aura • Live Wallpaper".into(),
@@ -52,12 +54,13 @@ impl Tray for AuraTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
+        let lang = *self.language.lock().unwrap();
         let is_paused = *self.is_paused.lock().unwrap();
         let has_wall = *self.has_wallpaper.lock().unwrap();
 
         vec![
             StandardItem {
-                label: "Abrir Aura".into(),
+                label: lang.tray_open().into(),
                 activate: Box::new(|tray: &mut AuraTray| {
                     let _ = tray.tx.send(TrayAction::ShowApp);
                 }),
@@ -66,9 +69,9 @@ impl Tray for AuraTray {
             .into(),
             StandardItem {
                 label: if is_paused {
-                    "Reanudar Fondo".into()
+                    lang.tray_resume().into()
                 } else {
-                    "Pausar Fondo".into()
+                    lang.tray_pause().into()
                 },
                 enabled: has_wall,
                 activate: Box::new(|tray: &mut AuraTray| {
@@ -78,7 +81,7 @@ impl Tray for AuraTray {
             }
             .into(),
             StandardItem {
-                label: "Siguiente Fondo".into(),
+                label: lang.tray_next().into(),
                 enabled: has_wall,
                 activate: Box::new(|tray: &mut AuraTray| {
                     let _ = tray.tx.send(TrayAction::NextWallpaper);
@@ -87,7 +90,7 @@ impl Tray for AuraTray {
             }
             .into(),
             StandardItem {
-                label: "Detener Fondo".into(),
+                label: lang.tray_stop().into(),
                 enabled: has_wall,
                 activate: Box::new(|tray: &mut AuraTray| {
                     let _ = tray.tx.send(TrayAction::StopWallpaper);
@@ -97,7 +100,7 @@ impl Tray for AuraTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
-                label: "Salir de Aura".into(),
+                label: lang.tray_quit().into(),
                 activate: Box::new(|tray: &mut AuraTray| {
                     let _ = tray.tx.send(TrayAction::QuitApp);
                 }),
@@ -113,15 +116,17 @@ pub struct TrayController {
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
+    pub language: Arc<Mutex<crate::i18n::Language>>,
     pub handle: Arc<Mutex<Option<Handle<AuraTray>>>>,
 }
 
 impl TrayController {
-    pub fn new() -> (Self, AuraTray) {
+    pub fn new(lang: crate::i18n::Language) -> (Self, AuraTray) {
         let (tx, rx) = channel();
         let current_name = Arc::new(Mutex::new(String::new()));
         let is_paused = Arc::new(Mutex::new(false));
         let has_wallpaper = Arc::new(Mutex::new(false));
+        let language = Arc::new(Mutex::new(lang));
         let handle = Arc::new(Mutex::new(None));
 
         let tray = AuraTray {
@@ -129,6 +134,7 @@ impl TrayController {
             current_name: current_name.clone(),
             is_paused: is_paused.clone(),
             has_wallpaper: has_wallpaper.clone(),
+            language: language.clone(),
         };
 
         let controller = Self {
@@ -136,10 +142,21 @@ impl TrayController {
             current_name,
             is_paused,
             has_wallpaper,
+            language,
             handle,
         };
 
         (controller, tray)
+    }
+
+    pub fn set_language(&self, lang: crate::i18n::Language) {
+        *self.language.lock().unwrap() = lang;
+        let handle_opt = self.handle.lock().unwrap().clone();
+        if let Some(handle) = handle_opt {
+            tokio::spawn(async move {
+                let _ = handle.update(|_| {}).await;
+            });
+        }
     }
 
     pub fn update_state(&self, name: String, paused: bool, has_wall: bool) {

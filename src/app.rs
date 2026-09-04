@@ -23,6 +23,7 @@ pub enum Page {
 #[allow(dead_code)]
 pub enum Message {
     SelectPage(nav_bar::Id),
+    SetLanguage(crate::i18n::Language),
     ApplyWallpaper { video_path: PathBuf, output: String },
     StopWallpaper(Option<String>),
     TogglePause,
@@ -50,6 +51,7 @@ pub enum Message {
     FilesDropped(Vec<PathBuf>),
     DismissStatus,
     OpenGitHub,
+    OpenYouTube,
     TrayPoll,
     ShowMainWindow,
     WindowCloseRequested(cosmic::iced::window::Id),
@@ -82,6 +84,7 @@ pub struct AuraApp {
     nav: nav_bar::Model,
     active_page: Page,
     config: Config,
+    pub language: crate::i18n::Language,
     engine: WallpaperEngine,
     outputs: Vec<MonitorOutput>,
     selected_output: String,
@@ -110,31 +113,10 @@ impl cosmic::Application for AuraApp {
     }
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
-        let mut nav = nav_bar::Model::default();
-
-        // Use clean monochrome symbolic icon for Biblioteca
-        nav.insert()
-            .text("Biblioteca")
-            .data(Page::Library)
-            .icon(widget::icon::from_name("video-x-generic-symbolic"))
-            .activate();
-
-        nav.insert()
-            .text("Pantallas")
-            .data(Page::Monitors)
-            .icon(widget::icon::from_name("video-display-symbolic"));
-
-        nav.insert()
-            .text("Ajustes")
-            .data(Page::Settings)
-            .icon(widget::icon::from_name("preferences-system-symbolic"));
-
-        nav.insert()
-            .text("Acerca de")
-            .data(Page::About)
-            .icon(widget::icon::from_name("help-about-symbolic"));
-
         let config = Config::load();
+        let language = crate::i18n::Language::from_code(&config.language);
+        let nav = Self::build_nav(language, Page::Library);
+
         let outputs = detect_outputs();
         let selected_output = outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
         let autostart_active = WallpaperEngine::is_autostart_enabled();
@@ -161,7 +143,7 @@ impl cosmic::Application for AuraApp {
             }
         }
 
-        let (tray_controller, tray) = crate::tray::TrayController::new();
+        let (tray_controller, tray) = crate::tray::TrayController::new(language);
         let current_title = if let Some(curr) = &config.current {
             std::path::Path::new(curr)
                 .file_stem()
@@ -178,6 +160,7 @@ impl cosmic::Application for AuraApp {
             nav,
             active_page: Page::Library,
             config,
+            language,
             engine: WallpaperEngine::new(),
             outputs,
             selected_output,
@@ -213,18 +196,18 @@ impl cosmic::Application for AuraApp {
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
         vec![
             Element::from(widget::text::title3("Aura")),
-            Element::from(widget::text::body(format!("({} fondos)", self.videos.len()))),
+            Element::from(widget::text::body(self.language.header_wallpapers_count(self.videos.len()))),
         ]
     }
 
     fn header_end(&self) -> Vec<Element<'_, Self::Message>> {
         vec![
             Element::from(
-                widget::button::suggested("+ Añadir Video")
+                widget::button::suggested(self.language.header_add_video())
                     .on_press(Message::PickVideoFile)
             ),
             Element::from(
-                widget::button::standard("+ Carpeta")
+                widget::button::standard(self.language.header_add_folder())
                     .on_press(Message::PickFolder)
             ),
         ]
@@ -374,6 +357,16 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
+            Message::SetLanguage(lang) => {
+                self.language = lang;
+                self.config.language = lang.code().to_string();
+                let _ = self.config.save();
+                self.nav = Self::build_nav(self.language, self.active_page);
+                self.tray_controller.set_language(lang);
+                self.status_message = Some(lang.status_lang_changed().into());
+                self.status_timer = 5;
+            }
+
             Message::QuitApp => {
                 self.engine.stop_all();
                 std::process::exit(0);
@@ -381,6 +374,10 @@ impl cosmic::Application for AuraApp {
 
             Message::OpenGitHub => {
                 let _ = open::that_detached("https://github.com/antwny/aura");
+            }
+
+            Message::OpenYouTube => {
+                let _ = open::that_detached("https://www.youtube.com/@antwny");
             }
 
             Message::ApplyWallpaper { video_path, output } => {
@@ -396,7 +393,7 @@ impl cosmic::Application for AuraApp {
                     self.is_paused = false;
 
                     let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
-                    self.status_message = Some(format!("Fondo aplicado en {}: '{}'", output, file_name));
+                    self.status_message = Some(self.language.status_applied(&output, &file_name));
                     self.status_timer = 5;
 
                     self.tray_controller.update_state(file_name, false, true);
@@ -418,9 +415,9 @@ impl cosmic::Application for AuraApp {
                 let now_paused = self.engine.toggle_pause();
                 self.is_paused = now_paused;
                 self.status_message = Some(if now_paused {
-                    "Fondo pausado (0% GPU/CPU)".into()
+                    self.language.status_paused().into()
                 } else {
-                    "Fondo reanudado".into()
+                    self.language.status_resumed().into()
                 });
                 self.status_timer = 5;
 
@@ -434,12 +431,12 @@ impl cosmic::Application for AuraApp {
                 if let Some(out) = output {
                     self.engine.stop_output(&out);
                     self.config.wallpapers.remove(&out);
-                    self.status_message = Some(format!("Fondo detenido en {}", out));
+                    self.status_message = Some(self.language.status_stopped_output(&out));
                 } else {
                     self.engine.stop_all();
                     self.config.wallpapers.clear();
                     self.config.current = None;
-                    self.status_message = Some("Todos los fondos han sido detenidos".into());
+                    self.status_message = Some(self.language.status_stopped_all().into());
                 }
                 self.status_timer = 5;
                 self.is_paused = false;
@@ -503,7 +500,7 @@ impl cosmic::Application for AuraApp {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                     let _ = self.engine.set_wallpaper(&output, &path, &sc, mute, &self.config.hwdec);
                 }
-                self.status_message = Some(if mute { "Audio silenciado".into() } else { "Audio activado".into() });
+                self.status_message = Some(if mute { self.language.status_muted().into() } else { self.language.status_unmuted().into() });
                 self.status_timer = 5;
             }
 
@@ -511,13 +508,13 @@ impl cosmic::Application for AuraApp {
                 self.config.dirs.retain(|d| d != &folder);
                 let _ = self.config.save();
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
-                self.status_message = Some(format!("Carpeta eliminada: {}", folder));
+                self.status_message = Some(self.language.status_folder_removed(&folder));
                 self.status_timer = 5;
             }
 
             Message::RefreshLibrary => {
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
-                self.status_message = Some("Biblioteca actualizada".into());
+                self.status_message = Some(self.language.status_library_refreshed().into());
                 self.status_timer = 5;
             }
 
@@ -543,10 +540,11 @@ impl cosmic::Application for AuraApp {
 
             // XDG File Dialog: Pick Video
             Message::PickVideoFile => {
+                let title = self.language.dialog_pick_video();
                 return Task::perform(
-                    async {
+                    async move {
                         let file = rfd::AsyncFileDialog::new()
-                            .set_title("Seleccionar Video de Fondo")
+                            .set_title(title)
                             .add_filter("Videos", &["mp4", "webm", "mkv", "avi", "mov"])
                             .pick_file()
                             .await;
@@ -563,7 +561,8 @@ impl cosmic::Application for AuraApp {
                     let _ = self.config.save();
                 }
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
-                self.status_message = Some(format!("Video añadido: {}", path.file_name().unwrap_or_default().to_string_lossy()));
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                self.status_message = Some(self.language.status_video_added(&file_name));
                 self.status_timer = 5;
 
                 // Trigger thumbnail generation and apply immediately
@@ -587,10 +586,11 @@ impl cosmic::Application for AuraApp {
 
             // XDG File Dialog: Pick Folder
             Message::PickFolder => {
+                let title = self.language.dialog_pick_folder();
                 return Task::perform(
-                    async {
+                    async move {
                         let folder = rfd::AsyncFileDialog::new()
-                            .set_title("Seleccionar Carpeta con Videos")
+                            .set_title(title)
                             .pick_folder()
                             .await;
                         folder.map(|f| f.path().to_path_buf())
@@ -606,7 +606,7 @@ impl cosmic::Application for AuraApp {
                     let _ = self.config.save();
                 }
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
-                self.status_message = Some(format!("Carpeta añadida: {}", folder_str));
+                self.status_message = Some(self.language.status_folder_added(&folder_str));
                 self.status_timer = 5;
 
                 // Generate thumbnails for new videos in folder
@@ -651,7 +651,7 @@ impl cosmic::Application for AuraApp {
                 if added_any {
                     let _ = self.config.save();
                     self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
-                    self.status_message = Some("Videos añadidos a la biblioteca".into());
+                    self.status_message = Some(self.language.status_videos_dropped().into());
                     self.status_timer = 5;
 
                     if let Some(video_to_apply) = apply_last {
@@ -676,7 +676,7 @@ impl cosmic::Application for AuraApp {
                 if current_outputs != self.outputs {
                     let new_count = current_outputs.len();
                     self.outputs = current_outputs;
-                    self.status_message = Some(format!("Topología de pantallas actualizada ({} monitores)", new_count));
+                    self.status_message = Some(self.language.status_topology_updated(new_count));
                     self.status_timer = 5;
                 }
             }
@@ -691,12 +691,12 @@ impl cosmic::Application for AuraApp {
                     if is_gaming && !self.is_paused {
                         self.engine.pause_all();
                         self.is_paused = true;
-                        self.status_message = Some("Modo Juego: Fondo pausado para máximo rendimiento".into());
+                        self.status_message = Some(self.language.status_game_paused().into());
                         self.status_timer = 5;
                     } else if !is_gaming && self.is_paused {
                         self.engine.resume_all();
                         self.is_paused = false;
-                        self.status_message = Some("Juego minimizado: Fondo reanudado".into());
+                        self.status_message = Some(self.language.status_game_resumed().into());
                         self.status_timer = 5;
                     }
                 }
@@ -768,8 +768,41 @@ impl cosmic::Application for AuraApp {
 }
 
 impl AuraApp {
+    pub fn build_nav(lang: crate::i18n::Language, active_page: Page) -> nav_bar::Model {
+        let mut nav = nav_bar::Model::default();
+
+        nav.insert()
+            .text(lang.nav_library())
+            .data(Page::Library)
+            .icon(widget::icon::from_name("video-x-generic-symbolic"));
+
+        nav.insert()
+            .text(lang.nav_monitors())
+            .data(Page::Monitors)
+            .icon(widget::icon::from_name("video-display-symbolic"));
+
+        nav.insert()
+            .text(lang.nav_settings())
+            .data(Page::Settings)
+            .icon(widget::icon::from_name("preferences-system-symbolic"));
+
+        nav.insert()
+            .text(lang.nav_about())
+            .data(Page::About)
+            .icon(widget::icon::from_name("help-about-symbolic"));
+
+        match active_page {
+            Page::Library => { nav.activate_position(0); }
+            Page::Monitors => { nav.activate_position(1); }
+            Page::Settings => { nav.activate_position(2); }
+            Page::About => { nav.activate_position(3); }
+        }
+
+        nav
+    }
+
     fn view_library(&self) -> Element<'_, Message> {
-        let search_bar = widget::text_input::search_input("Buscar fondos por nombre...", &self.search_query)
+        let search_bar = widget::text_input::search_input(self.language.library_search_placeholder(), &self.search_query)
             .on_input(Message::SearchChanged)
             .width(Length::Fill);
 
@@ -789,13 +822,13 @@ impl AuraApp {
             let empty_msg = widget::column::with_capacity(4)
                 .spacing(14)
                 .align_x(Horizontal::Center)
-                .push(widget::text::title2("Tu Biblioteca de Fondos está vacía"))
-                .push(widget::text::body("Añade videos o carpetas para empezar a personalizar tu escritorio:"))
+                .push(widget::text::title2(self.language.library_empty_title()))
+                .push(widget::text::body(self.language.library_empty_desc()))
                 .push(
                     widget::row::with_capacity(2)
                         .spacing(12)
-                        .push(widget::button::suggested("+ Añadir Video").on_press(Message::PickVideoFile))
-                        .push(widget::button::standard("+ Añadir Carpeta").on_press(Message::PickFolder))
+                        .push(widget::button::suggested(self.language.library_btn_add_video()).on_press(Message::PickVideoFile))
+                        .push(widget::button::standard(self.language.library_btn_add_folder()).on_press(Message::PickFolder))
                 );
 
             return Element::from(
@@ -838,7 +871,7 @@ impl AuraApp {
                             });
                         card_content = card_content.push(img_btn);
                     } else {
-                        let placeholder = widget::container(widget::text::body("Extrayendo fotograma..."))
+                        let placeholder = widget::container(widget::text::body(self.language.library_extracting_frame()))
                             .width(Length::Fixed(240.0))
                             .height(Length::Fixed(135.0))
                             .align_x(Horizontal::Center)
@@ -851,9 +884,9 @@ impl AuraApp {
                     card_content = card_content.push(title).push(size_lbl);
 
                     let apply_btn = if is_active {
-                        widget::button::suggested("★ Activo")
+                        widget::button::suggested(self.language.library_active())
                     } else {
-                        widget::button::standard("Aplicar")
+                        widget::button::standard(self.language.library_apply())
                     }.on_press(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
                         output: selected_output.clone(),
@@ -887,8 +920,8 @@ impl AuraApp {
             .spacing(18)
             .width(Length::Fill);
 
-        col = col.push(widget::text::title2("Visualizador Interactivo de Pantallas"));
-        col = col.push(widget::text::body("Representación a escala de tus pantallas detectadas en COSMIC. Configura fondos y escalado independiente:"));
+        col = col.push(widget::text::title2(self.language.monitors_title()));
+        col = col.push(widget::text::body(self.language.monitors_desc()));
 
         // Horizontal Canvas of Virtual Monitors
         let mut monitors_canvas = widget::row::with_capacity(self.outputs.len())
@@ -912,13 +945,13 @@ impl AuraApp {
                     )
                 } else {
                     Element::from(
-                        widget::button::standard(format!("Pantalla {}", monitor.name))
+                        widget::button::standard(self.language.monitors_screen_name(&monitor.name))
                             .width(screen_w)
                     )
                 }
             } else {
                 Element::from(
-                    widget::button::standard(format!("Pantalla {}\n(Escritorio COSMIC)", monitor.name))
+                    widget::button::standard(self.language.monitors_screen_idle(&monitor.name))
                         .width(screen_w)
                 )
             };
@@ -955,7 +988,7 @@ impl AuraApp {
                             }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "stretch".into() })
                         )
                         .push(
-                            widget::button::destructive("Detener")
+                            widget::button::destructive(self.language.monitors_stop())
                                 .on_press(Message::StopWallpaper(Some(monitor.name.clone())))
                         )
                 );
@@ -973,26 +1006,26 @@ impl AuraApp {
 
         let (wall_title, out_label) = if let Some(curr) = &self.config.current {
             let p = std::path::Path::new(curr);
-            let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Fondo Activo".into());
+            let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| self.language.bar_active_title_default().into());
             let out = self.config.wallpapers.keys().cloned().collect::<Vec<_>>().join(", ");
-            (name, format!("Pantalla: {}", out))
+            (name, self.language.bar_display_label(&out))
         } else {
-            ("Ningún fondo en reproducción".into(), "Escritorio COSMIC estándar".into())
+            (self.language.bar_idle_title().into(), self.language.bar_idle_desc().into())
         };
 
         let play_pause_btn = if self.is_paused {
-            widget::button::suggested("Reanudar").on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
+            widget::button::suggested(self.language.bar_resume()).on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
         } else {
-            widget::button::standard("Pausar").on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
+            widget::button::standard(self.language.bar_pause()).on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
         };
 
         let mute_btn = if self.config.mute {
-            widget::button::standard("Silenciado").on_press(Message::ToggleMute(false))
+            widget::button::standard(self.language.bar_muted()).on_press(Message::ToggleMute(false))
         } else {
-            widget::button::suggested("Sonido Activo").on_press(Message::ToggleMute(true))
+            widget::button::suggested(self.language.bar_audio_active()).on_press(Message::ToggleMute(true))
         };
 
-        let stop_btn = widget::button::destructive("Detener")
+        let stop_btn = widget::button::destructive(self.language.bar_stop())
             .on_press_maybe(if has_wallpapers { Some(Message::StopWallpaper(None)) } else { None });
 
         let bar_content = widget::row::with_capacity(3)
@@ -1021,8 +1054,8 @@ impl AuraApp {
                 widget::column::with_capacity(2)
                     .spacing(2)
                     .align_x(Horizontal::Right)
-                    .push(widget::text::caption(format!("Aceleración GPU: {}", self.config.hwdec)))
-                    .push(widget::text::caption("Wayland Layer-Shell"))
+                    .push(widget::text::caption(self.language.bar_gpu_accel(&self.config.hwdec)))
+                    .push(widget::text::caption(self.language.bar_wayland_tag()))
             );
 
         Element::from(
@@ -1033,51 +1066,80 @@ impl AuraApp {
     }
 
     fn view_settings(&self) -> Element<'_, Message> {
-        let mut col = widget::column::with_capacity(4)
+        let mut col = widget::column::with_capacity(5)
             .spacing(18)
             .width(Length::Fill);
 
-        col = col.push(widget::text::title2("Ajustes del Sistema"));
+        col = col.push(widget::text::title2(self.language.settings_title()));
+
+        // Language selection section
+        let lang_section = widget::column::with_capacity(3)
+            .spacing(12)
+            .padding(16)
+            .push(widget::text::title3(self.language.settings_lang_title()))
+            .push(widget::text::caption(self.language.settings_lang_desc()))
+            .push(
+                widget::row::with_capacity(2)
+                    .spacing(12)
+                    .push(
+                        if self.language == crate::i18n::Language::Es {
+                            widget::button::suggested("Español")
+                        } else {
+                            widget::button::standard("Español")
+                        }
+                        .on_press(Message::SetLanguage(crate::i18n::Language::Es))
+                    )
+                    .push(
+                        if self.language == crate::i18n::Language::En {
+                            widget::button::suggested("English")
+                        } else {
+                            widget::button::standard("English")
+                        }
+                        .on_press(Message::SetLanguage(crate::i18n::Language::En))
+                    )
+            );
+
+        col = col.push(widget::container(lang_section).width(Length::Fill));
 
         // General settings (Clean, elegant, emoji-free)
         let general_section = widget::column::with_capacity(6)
             .spacing(14)
             .padding(16)
-            .push(widget::text::title3("Integración y Rendimiento"))
+            .push(widget::text::title3(self.language.settings_integration_title()))
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.autostart_active).on_toggle(Message::ToggleAutostart))
-                    .push(widget::text::body("Iniciar fondo animado automáticamente al iniciar sesión en Pop!_OS"))
+                    .push(widget::text::body(self.language.settings_autostart()))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.smart_pause).on_toggle(Message::ToggleSmartPause))
-                    .push(widget::text::body("Pausar automáticamente en juegos y ventanas a pantalla completa (Smart Pause)"))
+                    .push(widget::text::body(self.language.settings_smart_pause()))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.keep_running_on_close).on_toggle(Message::ToggleKeepRunningOnClose))
-                    .push(widget::text::body("Minimizar a la barra superior (bandeja del sistema) al cerrar la ventana"))
+                    .push(widget::text::body(self.language.settings_keep_running()))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.auto_theme).on_toggle(Message::ToggleAutoTheme))
-                    .push(widget::text::body("Sincronizar color de acento del sistema con el fondo (Auto-Tema COSMIC)"))
+                    .push(widget::text::body(self.language.settings_auto_theme()))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.auto_dark).on_toggle(Message::ToggleAutoDark))
-                    .push(widget::text::body("Cambiar automáticamente entre Modo Oscuro y Claro según la claridad del video"))
+                    .push(widget::text::body(self.language.settings_auto_dark()))
             );
 
         col = col.push(widget::container(general_section).width(Length::Fill));
@@ -1091,8 +1153,8 @@ impl AuraApp {
             widget::row::with_capacity(2)
                 .spacing(16)
                 .align_y(Alignment::Center)
-                .push(widget::text::title3("Carpetas Monitoreadas").width(Length::Fill))
-                .push(widget::button::suggested("+ Añadir Carpeta").on_press(Message::PickFolder))
+                .push(widget::text::title3(self.language.settings_monitored_folders()).width(Length::Fill))
+                .push(widget::button::suggested(self.language.settings_btn_add_folder()).on_press(Message::PickFolder))
         );
 
         for dir in &self.config.dirs {
@@ -1102,7 +1164,7 @@ impl AuraApp {
                 .align_y(Alignment::Center)
                 .push(widget::text::body(dir).width(Length::Fill))
                 .push(
-                    widget::button::destructive("Eliminar")
+                    widget::button::destructive(self.language.settings_btn_delete())
                         .on_press(Message::RemoveFolder(dir_clone))
                 );
             folders_box = folders_box.push(dir_row);
@@ -1114,11 +1176,8 @@ impl AuraApp {
         let info_card = widget::column::with_capacity(2)
             .spacing(6)
             .padding(14)
-            .push(widget::text::title3("Persistencia en segundo plano"))
-            .push(widget::text::caption(
-                "Aura funciona como centro de control. Al cerrar esta ventana, tu fondo animado continuará reproduciéndose \
-                sin problemas en tu compositor Wayland a través de mpvpaper, liberando el 100% de la memoria de la interfaz."
-            ));
+            .push(widget::text::title3(self.language.settings_persistence_title()))
+            .push(widget::text::caption(self.language.settings_persistence_desc()));
 
         col = col.push(widget::container(info_card).width(Length::Fill));
 
@@ -1132,53 +1191,63 @@ impl AuraApp {
             .align_x(Horizontal::Center)
             .width(Length::Fill);
 
-        let icon_widget = widget::icon::from_name("help-about-symbolic").size(56);
+        // Official high-resolution Kinetic A vector logo
+        let logo_widget = widget::icon::from_svg_bytes(
+            include_bytes!("../resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg")
+        )
+        .icon()
+        .size(104);
 
         let title_box = widget::column::with_capacity(3)
             .spacing(6)
             .align_x(Horizontal::Center)
             .push(widget::text::title1("Aura"))
-            .push(widget::text::title3("Gestor Nativo de Fondos Animados para COSMIC Desktop"))
-            .push(widget::text::caption("Versión 0.1.0 • Pop!_OS 24.04 LTS"));
+            .push(widget::text::title3(self.language.about_tagline()))
+            .push(widget::text::caption(self.language.about_version_info()));
 
         let info_card = widget::column::with_capacity(6)
             .spacing(12)
             .padding(20)
-            .width(Length::Fixed(560.0))
-            .push(widget::text::title3("Detalles de la Aplicación"))
+            .width(Length::Fixed(580.0))
+            .push(widget::text::title3(self.language.about_details_title()))
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
-                    .push(widget::text::body("Desarrollador:").width(Length::Fixed(140.0)))
+                    .push(widget::text::body(self.language.about_developer_lbl()).width(Length::Fixed(140.0)))
                     .push(widget::text::body("Antwny"))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
-                    .push(widget::text::body("Arquitectura:").width(Length::Fixed(140.0)))
+                    .push(widget::text::body(self.language.about_architecture_lbl()).width(Length::Fixed(140.0)))
                     .push(widget::text::caption("Rust 1.95 • libcosmic • wgpu • Tokio • mpvpaper"))
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(20)
-                    .push(widget::text::body("Licencia:").width(Length::Fixed(140.0)))
+                    .push(widget::text::body(self.language.about_license_lbl()).width(Length::Fixed(140.0)))
                     .push(widget::text::body("GNU General Public License v3.0 (GPL-3.0)"))
             )
             .push(
-                widget::text::caption(
-                    "Aura fue concebido para transformar la experiencia de fondos de pantalla animados en Linux. \
-                    Aprovechando el poder de Rust y libcosmic, elimina los congelamientos tradicionales y consume \
-                    menos de 25 MB de memoria RAM con decodificación completa por GPU y sincronización automática de color."
-                )
+                widget::text::caption(self.language.about_summary_desc())
             );
 
-        let action_btn = widget::button::suggested("Visitar Repositorio en GitHub")
-            .on_press(Message::OpenGitHub);
+        let action_buttons = widget::row::with_capacity(2)
+            .spacing(14)
+            .align_y(Alignment::Center)
+            .push(
+                widget::button::suggested(self.language.about_github_btn())
+                    .on_press(Message::OpenGitHub)
+            )
+            .push(
+                widget::button::standard(self.language.about_youtube_btn())
+                    .on_press(Message::OpenYouTube)
+            );
 
-        col = col.push(icon_widget)
+        col = col.push(logo_widget)
             .push(title_box)
             .push(widget::container(info_card))
-            .push(action_btn);
+            .push(action_buttons);
 
         Element::from(widget::scrollable(col).height(Length::Fill))
     }

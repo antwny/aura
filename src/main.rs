@@ -2,6 +2,7 @@ mod app;
 mod cli;
 mod config;
 mod engine;
+mod i18n;
 mod scanner;
 mod theme;
 mod tray;
