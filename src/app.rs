@@ -50,17 +50,30 @@ pub enum Message {
     FilesDropped(Vec<PathBuf>),
     DismissStatus,
     OpenGitHub,
+    TrayPoll,
+    ShowMainWindow,
+    WindowCloseRequested(cosmic::iced::window::Id),
+    WindowClosed(cosmic::iced::window::Id),
+    NextWallpaper,
+    QuitApp,
 }
 
 fn handle_window_events(
     event: cosmic::iced::Event,
     _status: cosmic::iced::event::Status,
-    _window: cosmic::iced::window::Id,
+    window: cosmic::iced::window::Id,
 ) -> Option<Message> {
-    if let cosmic::iced::Event::Window(cosmic::iced::window::Event::FileDropped(paths)) = event {
-        Some(Message::FilesDropped(paths))
-    } else {
-        None
+    match event {
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::FileDropped(paths)) => {
+            Some(Message::FilesDropped(paths))
+        }
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::CloseRequested) => {
+            Some(Message::WindowCloseRequested(window))
+        }
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::Closed) => {
+            Some(Message::WindowClosed(window))
+        }
+        _ => None,
     }
 }
 
@@ -78,6 +91,8 @@ pub struct AuraApp {
     status_message: Option<String>,
     status_timer: u8,
     is_paused: bool,
+    tray_controller: crate::tray::TrayController,
+    is_window_open: bool,
 }
 
 impl cosmic::Application for AuraApp {
@@ -146,6 +161,18 @@ impl cosmic::Application for AuraApp {
             }
         }
 
+        let (tray_controller, tray) = crate::tray::TrayController::new();
+        let current_title = if let Some(curr) = &config.current {
+            std::path::Path::new(curr)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        tray_controller.update_state(current_title, false, !config.wallpapers.is_empty());
+        tray_controller.spawn_service(tray);
+
         let app = Self {
             core,
             nav,
@@ -160,9 +187,15 @@ impl cosmic::Application for AuraApp {
             status_message: None,
             status_timer: 0,
             is_paused: false,
+            tray_controller,
+            is_window_open: true,
         };
 
         (app, Task::batch(tasks))
+    }
+
+    fn on_close_requested(&self, id: cosmic::iced::window::Id) -> Option<Self::Message> {
+        Some(Message::WindowCloseRequested(id))
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -207,6 +240,12 @@ impl cosmic::Application for AuraApp {
         subs.push(
             cosmic::iced::time::every(Duration::from_secs(1))
                 .map(|_| Message::TickSecond)
+        );
+
+        // 3. Tray actions listener (every 120ms, non-blocking)
+        subs.push(
+            cosmic::iced::time::every(Duration::from_millis(120))
+                .map(|_| Message::TrayPoll)
         );
 
         // 3. Playlist auto-rotation
@@ -257,6 +296,78 @@ impl cosmic::Application for AuraApp {
                 self.status_timer = 0;
             }
 
+            Message::TrayPoll => {
+                while let Ok(action) = self.tray_controller.rx.try_recv() {
+                    match action {
+                        crate::tray::TrayAction::ShowApp => {
+                            return Task::done(cosmic::Action::App(Message::ShowMainWindow));
+                        }
+                        crate::tray::TrayAction::TogglePause => {
+                            return Task::done(cosmic::Action::App(Message::TogglePause));
+                        }
+                        crate::tray::TrayAction::NextWallpaper => {
+                            return Task::done(cosmic::Action::App(Message::NextWallpaper));
+                        }
+                        crate::tray::TrayAction::StopWallpaper => {
+                            return Task::done(cosmic::Action::App(Message::StopWallpaper(None)));
+                        }
+                        crate::tray::TrayAction::QuitApp => {
+                            return Task::done(cosmic::Action::App(Message::QuitApp));
+                        }
+                    }
+                }
+            }
+
+            Message::ShowMainWindow => {
+                if !self.is_window_open {
+                    let (new_id, open_task) = cosmic::iced::window::open(cosmic::iced::window::Settings {
+                        size: cosmic::iced::Size::new(1024.0, 720.0),
+                        min_size: Some(cosmic::iced::Size::new(840.0, 580.0)),
+                        exit_on_close_request: false,
+                        decorations: true,
+                        ..Default::default()
+                    });
+                    self.is_window_open = true;
+                    self.core_mut().set_main_window_id(Some(new_id));
+                    return open_task.discard();
+                } else if let Some(id) = self.core().main_window_id() {
+                    return cosmic::iced::window::gain_focus(id);
+                }
+            }
+
+            Message::WindowCloseRequested(id) => {
+                if self.config.keep_running_on_close {
+                    self.is_window_open = false;
+                    return cosmic::iced::window::close(id);
+                } else {
+                    self.engine.stop_all();
+                    std::process::exit(0);
+                }
+            }
+
+            Message::WindowClosed(_) => {
+                self.is_window_open = false;
+            }
+
+            Message::NextWallpaper => {
+                if !self.videos.is_empty() {
+                    let next_idx = (self.config.seq_index + 1) % self.videos.len();
+                    self.config.seq_index = next_idx;
+                    let _ = self.config.save();
+                    let video = &self.videos[next_idx];
+                    let output = self.selected_output.clone();
+                    return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                        video_path: video.path.clone(),
+                        output,
+                    }));
+                }
+            }
+
+            Message::QuitApp => {
+                self.engine.stop_all();
+                std::process::exit(0);
+            }
+
             Message::OpenGitHub => {
                 let _ = open::that_detached("https://github.com/antwny/aura");
             }
@@ -276,6 +387,8 @@ impl cosmic::Application for AuraApp {
                     let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
                     self.status_message = Some(format!("Fondo aplicado en {}: '{}'", output, file_name));
                     self.status_timer = 5;
+
+                    self.tray_controller.update_state(file_name, false, true);
 
                     // COSMIC dynamic accent theme
                     if self.config.auto_theme {
@@ -299,6 +412,11 @@ impl cosmic::Application for AuraApp {
                     "Fondo reanudado".into()
                 });
                 self.status_timer = 5;
+
+                let current_title = self.config.current.as_ref()
+                    .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .unwrap_or_default();
+                self.tray_controller.update_state(current_title, now_paused, !self.config.wallpapers.is_empty());
             }
 
             Message::StopWallpaper(output) => {
@@ -318,6 +436,11 @@ impl cosmic::Application for AuraApp {
                 if self.autostart_active {
                     let _ = self.engine.write_autostart(&self.config.wallpapers, &self.config.scaling, self.config.mute, &self.config.hwdec);
                 }
+
+                let current_title = self.config.current.as_ref()
+                    .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .unwrap_or_default();
+                self.tray_controller.update_state(current_title, false, !self.config.wallpapers.is_empty());
             }
 
             Message::SelectScaling { output, scaling } => {
@@ -929,7 +1052,7 @@ impl AuraApp {
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.keep_running_on_close).on_toggle(Message::ToggleKeepRunningOnClose))
-                    .push(widget::text::body("Mantener el fondo activo al cerrar la aplicación (recomendado)"))
+                    .push(widget::text::body("Minimizar a la barra superior (bandeja del sistema) al cerrar la ventana"))
             )
             .push(
                 widget::row::with_capacity(2)
