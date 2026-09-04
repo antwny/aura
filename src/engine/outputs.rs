@@ -11,6 +11,7 @@ pub struct MonitorOutput {
 }
 
 impl MonitorOutput {
+    #[allow(dead_code)]
     pub fn aspect_ratio(&self) -> f32 {
         if self.height > 0 {
             self.width as f32 / self.height as f32
