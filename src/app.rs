@@ -319,14 +319,21 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::ShowMainWindow => {
-                if !self.is_window_open {
-                    let (new_id, open_task) = cosmic::iced::window::open(cosmic::iced::window::Settings {
-                        size: cosmic::iced::Size::new(1024.0, 720.0),
-                        min_size: Some(cosmic::iced::Size::new(840.0, 580.0)),
-                        exit_on_close_request: false,
-                        decorations: true,
-                        ..Default::default()
-                    });
+                if !self.is_window_open || self.core().main_window_id().is_none() {
+                    let mut win_settings = cosmic::iced::window::Settings::default();
+                    win_settings.size = cosmic::iced::Size::new(1024.0, 720.0);
+                    win_settings.min_size = Some(cosmic::iced::Size::new(840.0, 580.0));
+                    win_settings.exit_on_close_request = false;
+                    win_settings.decorations = false;
+                    win_settings.transparent = true;
+                    win_settings.resizable = true;
+                    win_settings.resize_border = 8;
+                    #[cfg(target_os = "linux")]
+                    {
+                        win_settings.platform_specific.application_id = Self::APP_ID.to_string();
+                    }
+
+                    let (new_id, open_task) = cosmic::iced::window::open(win_settings);
                     self.is_window_open = true;
                     self.core_mut().set_main_window_id(Some(new_id));
                     return open_task.discard();
@@ -338,6 +345,7 @@ impl cosmic::Application for AuraApp {
             Message::WindowCloseRequested(id) => {
                 if self.config.keep_running_on_close {
                     self.is_window_open = false;
+                    self.core_mut().set_main_window_id(None);
                     return cosmic::iced::window::close(id);
                 } else {
                     self.engine.stop_all();
@@ -345,8 +353,11 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::WindowClosed(_) => {
+            Message::WindowClosed(id) => {
                 self.is_window_open = false;
+                if self.core().main_window_id() == Some(id) {
+                    self.core_mut().set_main_window_id(None);
+                }
             }
 
             Message::NextWallpaper => {
