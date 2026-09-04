@@ -1,1 +1,25 @@
-/target
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.lprof
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+.directory
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Logs & Temporary files
+*.log
+scratch/
+.env
+
+# Local test media / caches
+local_tests/

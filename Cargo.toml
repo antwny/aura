@@ -2,8 +2,14 @@
 name = "aura"
 version = "0.1.0"
 edition = "2021"
-description = "Animated live wallpaper manager for Pop!_OS COSMIC"
+description = "Next-generation animated live wallpaper manager built natively in Rust for Pop!_OS COSMIC Desktop"
 authors = ["Antwny"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/antwny/aura"
+homepage = "https://github.com/antwny/aura"
+readme = "README.md"
+keywords = ["wallpaper", "cosmic", "wayland", "popos", "live-wallpaper"]
+categories = ["gui", "multimedia", "desktop-environment"]
 
 [dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic.git", features = ["wgpu", "tokio", "single-instance"] }
@@ -15,3 +21,10 @@ open = "5.3"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

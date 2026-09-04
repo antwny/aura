@@ -19,6 +19,14 @@ build-debug:
 check:
     cargo check
 
+# Format source code (if installed)
+fmt:
+    @command -v rustfmt >/dev/null 2>&1 && cargo fmt || echo "rustfmt not installed; skipping format"
+
+# Run Clippy linter (if installed)
+lint:
+    @cargo clippy --help >/dev/null 2>&1 && cargo clippy -- -D warnings || echo "clippy not installed; skipping clippy"
+
 # Clean build artifacts
 clean:
     cargo clean

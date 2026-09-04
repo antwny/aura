@@ -62,8 +62,9 @@ Traditional Linux wallpaper switchers rely on heavy interpreted Python scripts, 
 - **Fast FNV-1a Deterministic Hashing**: Hashes video file paths using high-throughput FNV-1a hashing to uniquely bind cache files in `~/.cache/aura/thumbs/`, skipping expensive disk lookups.
 - **Smooth 60 FPS UI**: Interactive catalog scrolling stays rock-solid, even when indexing hundreds of high-bitrate 4K video files.
 
-### 🧊 Frosted Glass & Acrylic Visuals
+### 🧊 Frosted Glass, Acrylic Visuals & Responsive Grid
 - **Authentic COSMIC Aesthetic**: Designed with `libcosmic` UI primitives, honoring system corner radii, surface opacities, and font hierarchies.
+- **Dynamic Window Reflow Grid**: Responsive layout engine recalculates available viewport width in real-time, fluidly reflowing wallpaper cards across 1 to 6+ columns without layout clipping.
 - **Compositor Blur**: Blends effortlessly with COSMIC's native Wayland blurred acrylic surfaces and translucent panels.
 - **Persistent Now Playing Bar**: A sleek acrylic footer at the base of the window with live thumbnail, playback pause/resume toggles, mute controls, and GPU status.
 
@@ -71,9 +72,9 @@ Traditional Linux wallpaper switchers rely on heavy interpreted Python scripts, 
 - **0% GPU & Zero FPS Impact**: Automatically pauses video playback (`SIGSTOP`) when a game or fullscreen window is detected (Steam, Gamescope, Lutris, Heroic, etc.).
 - **Instant Resume**: Seamlessly resumes playback (`SIGCONT`) when exiting fullscreen or minimizing games, eliminating stutter and conserving battery life.
 
-### 📁 XDG Portal File Picker & Drag & Drop
-- **Native Wayland Dialogs**: Uses `rfd` and XDG Desktop Portal to let you pick individual video files or entire folders with native Pop!_OS file dialogs.
-- **Drag & Drop Ready**: Drag any `.mp4`, `.webm`, or `.mkv` video file directly from `cosmic-files` onto Aura to instantly register and apply it.
+### 📁 Native XDG Desktop Portal File Picker
+- **System-Native File & Folder Chooser**: Uses `rfd` and XDG Desktop Portal (`xdg-desktop-portal-cosmic`) with dedicated buttons (`+ Añadir Video`, `+ Añadir Carpeta`) to register videos anywhere on disk without copying or relocating files.
+- **Sub-Second Scanning**: Instantaneous registration with background thumbnail extraction.
 
 ### 🖥️ Interactive Visual Monitor Layout
 - **True-to-Scale Canvas**: The "Pantallas" tab renders scaled virtual displays with calculated aspect ratios matching your physical outputs.
@@ -254,6 +255,9 @@ Aura adheres to the [XDG Base Directory Specification](https://specifications.fr
     "/home/antwny/Wallpapers/Aura",
     "/home/antwny/Videos"
   ],
+  "custom_videos": [
+    "/home/antwny/Downloads/epic_scenery.mp4"
+  ],
   "output": "*",
   "scaling": {
     "DP-1": "fill",
@@ -261,6 +265,8 @@ Aura adheres to the [XDG Base Directory Specification](https://specifications.fr
   },
   "auto_theme": true,
   "auto_dark": true,
+  "smart_pause": true,
+  "keep_running_on_close": true,
   "rotation": true,
   "interval": 30,
   "order": "random",
