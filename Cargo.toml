@@ -14,3 +14,4 @@ walkdir = "2.5"
 open = "5.3"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }

@@ -7,6 +7,7 @@ pub struct Config {
     pub current: Option<String>,
     pub wallpapers: HashMap<String, String>,
     pub dirs: Vec<String>,
+    pub custom_videos: Vec<String>,
     pub output: String,
     pub scaling: HashMap<String, String>,
     pub auto_theme: bool,
@@ -17,6 +18,8 @@ pub struct Config {
     pub seq_index: usize,
     pub mute: bool,
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
+    pub smart_pause: bool,
+    pub keep_running_on_close: bool,
 }
 
 impl Default for Config {
@@ -34,6 +37,7 @@ impl Default for Config {
             current: None,
             wallpapers: HashMap::new(),
             dirs: default_dirs,
+            custom_videos: Vec::new(),
             output: "*".into(),
             scaling: HashMap::new(),
             auto_theme: true,
@@ -44,6 +48,8 @@ impl Default for Config {
             seq_index: 0,
             mute: true,
             hwdec: "auto-safe".into(),
+            smart_pause: true,
+            keep_running_on_close: true,
         }
     }
 }

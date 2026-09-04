@@ -238,6 +238,9 @@ dependencies = [
  "serde_repr",
  "tokio",
  "url",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
  "zbus",
 ]
 
@@ -453,6 +456,7 @@ dependencies = [
  "image",
  "libcosmic",
  "open",
+ "rfd 0.15.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2749,7 +2753,7 @@ dependencies = [
  "log",
  "palette",
  "phf",
- "rfd",
+ "rfd 0.16.0",
  "ron",
  "rust-embed",
  "serde",
@@ -3974,6 +3978,30 @@ dependencies = [
  "tiny-skia 0.11.4",
  "usvg",
  "zune-jpeg 0.4.21",
+]
+
+[[package]]
+name = "rfd"
+version = "0.15.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef2bee61e6cffa4635c72d7d81a84294e28f0930db0ddcb0f66d10244674ebed"
+dependencies = [
+ "ashpd 0.11.1",
+ "block2 0.6.2",
+ "dispatch2",
+ "js-sys",
+ "log",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "pollster",
+ "raw-window-handle",
+ "urlencoding",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

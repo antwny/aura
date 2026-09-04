@@ -5,12 +5,14 @@ use std::process::{Child, Command, Stdio};
 pub struct WallpaperEngine {
     // Stores active process handle per output
     processes: HashMap<String, Child>,
+    pub is_paused: bool,
 }
 
 impl WallpaperEngine {
     pub fn new() -> Self {
         Self {
             processes: HashMap::new(),
+            is_paused: false,
         }
     }
 
@@ -48,7 +50,43 @@ impl WallpaperEngine {
 
         let pid = child.id();
         self.processes.insert(output.to_string(), child);
+        self.is_paused = false;
         Ok(pid)
+    }
+
+    #[allow(dead_code)]
+    pub fn is_running(&self) -> bool {
+        !self.processes.is_empty()
+    }
+
+    pub fn toggle_pause(&mut self) -> bool {
+        if self.is_paused {
+            self.resume_all();
+            false
+        } else {
+            self.pause_all();
+            true
+        }
+    }
+
+    pub fn pause_all(&mut self) {
+        // Send SIGSTOP to freeze video playback and reduce GPU/CPU load to 0%
+        for (_, child) in &self.processes {
+            let pid = child.id().to_string();
+            let _ = Command::new("kill").args(["-STOP", &pid]).status();
+        }
+        let _ = Command::new("pkill").args(["-STOP", "-x", "mpvpaper"]).status();
+        self.is_paused = true;
+    }
+
+    pub fn resume_all(&mut self) {
+        // Send SIGCONT to smoothly unfreeze playback
+        for (_, child) in &self.processes {
+            let pid = child.id().to_string();
+            let _ = Command::new("kill").args(["-CONT", &pid]).status();
+        }
+        let _ = Command::new("pkill").args(["-CONT", "-x", "mpvpaper"]).status();
+        self.is_paused = false;
     }
 
     pub fn stop_output(&mut self, output: &str) {
@@ -68,6 +106,7 @@ impl WallpaperEngine {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
+        self.is_paused = false;
     }
 
     pub fn write_autostart(&self, wallpapers: &HashMap<String, String>, scaling: &HashMap<String, String>, mute: bool, hwdec: &str) -> std::io::Result<()> {
@@ -116,7 +155,7 @@ impl WallpaperEngine {
             Type=Application\n\
             Name=Aura Live Wallpaper\n\
             Exec={}\n\
-            Icon=preferences-desktop-wallpaper\n\
+            Icon=io.github.antwny.aura\n\
             Terminal=false\n\
             X-GNOME-Autostart-enabled=true\n\
             Categories=Utility;DesktopSettings;\n",

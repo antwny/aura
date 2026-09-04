@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "mkv", "avi", "mov"];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoItem {
     pub path: PathBuf,
     pub name: String,
@@ -13,9 +13,11 @@ pub struct VideoItem {
     pub thumb_path: Option<PathBuf>,
 }
 
-pub fn scan_directories(dirs: &[String]) -> Vec<VideoItem> {
+pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoItem> {
     let mut items = Vec::new();
+    let mut seen_paths = std::collections::HashSet::new();
 
+    // 1. Scan configured directories
     for dir_str in dirs {
         let dir = Path::new(dir_str);
         if !dir.exists() {
@@ -27,31 +29,55 @@ pub fn scan_directories(dirs: &[String]) -> Vec<VideoItem> {
             if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-                        let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
-                        let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                        let size_formatted = if size_bytes > 1024 * 1024 * 1024 {
-                            format!("{:.1} GB", size_bytes as f64 / (1024.0 * 1024.0 * 1024.0))
-                        } else if size_bytes > 1024 * 1024 {
-                            format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
-                        } else {
-                            format!("{:.0} KB", size_bytes as f64 / 1024.0)
-                        };
+                        let canonical = path.to_path_buf();
+                        if seen_paths.insert(canonical.clone()) {
+                            let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
+                            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            let size_formatted = format_file_size(size_bytes);
 
-                        let potential_thumb = thumbs::thumb_path_for_video(path);
-                        let thumb_path = if potential_thumb.exists() {
-                            Some(potential_thumb)
-                        } else {
-                            None
-                        };
+                            let potential_thumb = thumbs::thumb_path_for_video(path);
+                            let thumb_path = if potential_thumb.exists() {
+                                Some(potential_thumb)
+                            } else {
+                                None
+                            };
 
-                        items.push(VideoItem {
-                            path: path.to_path_buf(),
-                            name,
-                            size_formatted,
-                            thumb_path,
-                        });
+                            items.push(VideoItem {
+                                path: canonical,
+                                name,
+                                size_formatted,
+                                thumb_path,
+                            });
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    // 2. Scan individually added custom files (via XDG Picker or Drag & Drop)
+    for file_str in extra_files {
+        let path = Path::new(file_str);
+        if path.is_file() {
+            let canonical = path.to_path_buf();
+            if seen_paths.insert(canonical.clone()) {
+                let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
+                let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
+                let size_formatted = format_file_size(size_bytes);
+
+                let potential_thumb = thumbs::thumb_path_for_video(path);
+                let thumb_path = if potential_thumb.exists() {
+                    Some(potential_thumb)
+                } else {
+                    None
+                };
+
+                items.push(VideoItem {
+                    path: canonical,
+                    name,
+                    size_formatted,
+                    thumb_path,
+                });
             }
         }
     }
@@ -59,4 +85,14 @@ pub fn scan_directories(dirs: &[String]) -> Vec<VideoItem> {
     // Sort alphabetically by name
     items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     items
+}
+
+fn format_file_size(bytes: u64) -> String {
+    if bytes > 1024 * 1024 * 1024 {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else if bytes > 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.0} KB", bytes as f64 / 1024.0)
+    }
 }

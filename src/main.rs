@@ -1,15 +1,21 @@
 mod app;
+mod cli;
 mod config;
 mod engine;
 mod scanner;
 mod theme;
 
 fn main() -> cosmic::iced::Result {
+    let args: Vec<String> = std::env::args().collect();
+    if cli::handle_cli(&args) {
+        return Ok(());
+    }
+
     let settings = cosmic::app::Settings::default()
         .size_limits(
             cosmic::iced::Limits::NONE
-                .min_width(780.0)
-                .min_height(520.0),
+                .min_width(840.0)
+                .min_height(580.0),
         );
 
     cosmic::app::run::<app::AuraApp>(settings, ())

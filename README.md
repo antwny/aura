@@ -65,11 +65,37 @@ Traditional Linux wallpaper switchers rely on heavy interpreted Python scripts, 
 ### 🧊 Frosted Glass & Acrylic Visuals
 - **Authentic COSMIC Aesthetic**: Designed with `libcosmic` UI primitives, honoring system corner radii, surface opacities, and font hierarchies.
 - **Compositor Blur**: Blends effortlessly with COSMIC's native Wayland blurred acrylic surfaces and translucent panels.
+- **Persistent Now Playing Bar**: A sleek acrylic footer at the base of the window with live thumbnail, playback pause/resume toggles, mute controls, and GPU status.
+
+### 🎮 Smart Pause on Gaming & Fullscreen
+- **0% GPU & Zero FPS Impact**: Automatically pauses video playback (`SIGSTOP`) when a game or fullscreen window is detected (Steam, Gamescope, Lutris, Heroic, etc.).
+- **Instant Resume**: Seamlessly resumes playback (`SIGCONT`) when exiting fullscreen or minimizing games, eliminating stutter and conserving battery life.
+
+### 📁 XDG Portal File Picker & Drag & Drop
+- **Native Wayland Dialogs**: Uses `rfd` and XDG Desktop Portal to let you pick individual video files or entire folders with native Pop!_OS file dialogs.
+- **Drag & Drop Ready**: Drag any `.mp4`, `.webm`, or `.mkv` video file directly from `cosmic-files` onto Aura to instantly register and apply it.
+
+### 🖥️ Interactive Visual Monitor Layout
+- **True-to-Scale Canvas**: The "Pantallas" tab renders scaled virtual displays with calculated aspect ratios matching your physical outputs.
+- **Live Wallpaper Mirror**: Inside each virtual monitor, see the thumbnail of the currently running live wallpaper on that specific display.
+- **Dynamic Hotplug**: Automatically queries `cosmic-randr` to detect newly plugged or unplugged HDMI and DisplayPort monitors in real time.
+
+### ⌨️ Integrated CLI for Desktop Shortcuts
+Control Aura directly from your terminal or bind keyboard shortcuts (e.g. `Super + W`) in **COSMIC Settings -> Keyboard -> Custom Shortcuts**:
+```bash
+aura next              # Switch to next wallpaper in playlist
+aura prev              # Go to previous wallpaper
+aura stop              # Stop live wallpaper
+aura toggle-pause      # Pause / resume playback (0% GPU)
+aura apply /path/video # Set a video wallpaper directly
+aura status            # Print active monitor, wallpaper & GPU stats
+```
 
 ### 🔄 Smart Playlist & Auto-Rotation
 - **Flexible Scheduling**: Cycles through configured directories at customizable intervals (e.g., every 15, 30, or 60 minutes).
 - **Playback Modes**: Supports randomized shuffle or sequential rotation.
 - **Clean Autostart Generator**: Writes standalone, lightweight autostart scripts (`~/.config/aura/autostart.sh`) and XDG `.desktop` entries to resume your live wallpapers across desktop logins without needing to keep the UI open.
+
 
 ---
 

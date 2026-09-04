@@ -1,12 +1,23 @@
 use std::process::Command;
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonitorOutput {
     pub name: String,
     pub description: String,
     pub resolution: String,
+    pub width: u32,
+    pub height: u32,
     pub is_primary: bool,
+}
+
+impl MonitorOutput {
+    pub fn aspect_ratio(&self) -> f32 {
+        if self.height > 0 {
+            self.width as f32 / self.height as f32
+        } else {
+            16.0 / 9.0
+        }
+    }
 }
 
 pub fn detect_outputs() -> Vec<MonitorOutput> {
@@ -24,10 +35,13 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                 let trimmed = line.trim();
                 if line.contains(" (enabled)") {
                     if !current_name.is_empty() && is_enabled {
+                        let (w, h) = parse_resolution(&current_res);
                         outputs.push(MonitorOutput {
                             name: current_name.clone(),
                             description: current_name.clone(),
                             resolution: if current_res.is_empty() { "Native".into() } else { current_res.clone() },
+                            width: w,
+                            height: h,
                             is_primary: outputs.is_empty(),
                         });
                     }
@@ -42,10 +56,13 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
             }
 
             if !current_name.is_empty() && is_enabled {
+                let (w, h) = parse_resolution(&current_res);
                 outputs.push(MonitorOutput {
                     name: current_name.clone(),
                     description: current_name.clone(),
                     resolution: if current_res.is_empty() { "Native".into() } else { current_res },
+                    width: w,
+                    height: h,
                     is_primary: outputs.is_empty(),
                 });
             }
@@ -64,7 +81,9 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                             outputs.push(MonitorOutput {
                                 name: name.to_string(),
                                 description: name.to_string(),
-                                resolution: "Unknown".into(),
+                                resolution: "1920x1080".into(),
+                                width: 1920,
+                                height: 1080,
                                 is_primary: outputs.is_empty(),
                             });
                         }
@@ -79,10 +98,24 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
         outputs.push(MonitorOutput {
             name: "*".to_string(),
             description: "All Monitors".to_string(),
-            resolution: "All Displays".to_string(),
+            resolution: "1920x1080".to_string(),
+            width: 1920,
+            height: 1080,
             is_primary: true,
         });
     }
 
     outputs
+}
+
+fn parse_resolution(res: &str) -> (u32, u32) {
+    if let Some((w, h)) = res.split_once('x') {
+        let w_clean: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
+        let h_clean: String = h.chars().filter(|c| c.is_ascii_digit()).collect();
+        let width = w_clean.parse::<u32>().unwrap_or(1920);
+        let height = h_clean.parse::<u32>().unwrap_or(1080);
+        (width, height)
+    } else {
+        (1920, 1080)
+    }
 }
