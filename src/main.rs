@@ -32,8 +32,23 @@ fn ensure_wayland_display() {
     }
 }
 
-fn main() -> cosmic::iced::Result {
+fn ensure_environment() {
     ensure_wayland_display();
+    // Ensure user and local bin directories are in PATH so helper utilities (mpvpaper, ffmpeg) are always found
+    if let Ok(home) = std::env::var("HOME") {
+        let local_bin = format!("{}/.local/bin", home);
+        if let Ok(path) = std::env::var("PATH") {
+            if !path.split(':').any(|p| p == local_bin) {
+                std::env::set_var("PATH", format!("{}:{}", local_bin, path));
+            }
+        } else {
+            std::env::set_var("PATH", local_bin);
+        }
+    }
+}
+
+fn main() -> cosmic::iced::Result {
+    ensure_environment();
     let args: Vec<String> = std::env::args().collect();
     if cli::is_pure_cli(&args) {
         cli::handle_pure_cli(&args);

@@ -31,4 +31,5 @@ packaging/flatpak/repo/
 .flatpak-builder/
 repo/
 builddir/
+packaging/mpvpaper
 

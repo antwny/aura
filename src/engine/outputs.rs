@@ -101,7 +101,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
 
     // 3. Fallback to mpvpaper -d (or primary for sandboxed Flatpak)
     if outputs.is_empty() {
-        if let Ok(output) = Command::new("mpvpaper").arg("-d").output() {
+        if let Ok(output) = Command::new(crate::engine::mpvpaper::resolve_mpvpaper_binary()).arg("-d").output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {

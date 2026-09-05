@@ -53,6 +53,11 @@ install -d "${META_DIR}"
 # Install binary
 install -m 755 aura "${BIN_DIR}/aura"
 
+# Install bundled mpvpaper if provided
+if [ -f "mpvpaper" ]; then
+    install -m 755 mpvpaper "${BIN_DIR}/mpvpaper"
+fi
+
 # Install icon & metainfo
 install -m 644 io.github.antwny.aura.svg "${ICONS_DIR}/io.github.antwny.aura.svg"
 install -m 644 io.github.antwny.aura.metainfo.xml "${META_DIR}/io.github.antwny.aura.metainfo.xml"
@@ -119,23 +124,34 @@ echo "Aura installed successfully to ${BIN_DIR}/aura"
 echo ""
 echo "Checking runtime dependencies:"
 DEPS_MISSING=0
-if command -v mpvpaper >/dev/null 2>&1; then
-    echo "  [OK] mpvpaper (required to display live video wallpapers)"
+
+# Check mpvpaper & libmpv2
+if [ -x "${BIN_DIR}/mpvpaper" ] || command -v mpvpaper >/dev/null 2>&1; then
+    # Verify libmpv2 shared library is available
+    if ! ldconfig -p 2>/dev/null | grep -q 'libmpv\.so\.2' && [ ! -f /lib/x86_64-linux-gnu/libmpv.so.2 ] && [ ! -f /usr/lib/x86_64-linux-gnu/libmpv.so.2 ]; then
+        echo "  [MISSING] libmpv2 (required by mpvpaper for live video playback)"
+        echo "            Install via: sudo apt install libmpv2"
+        DEPS_MISSING=1
+    else
+        echo "  [OK] mpvpaper & libmpv2 (ready for live video wallpapers)"
+    fi
 else
     echo "  [MISSING] mpvpaper (required to display live video wallpapers)"
+    echo "            Note: mpvpaper is not in default Ubuntu/Pop!_OS apt repos."
     DEPS_MISSING=1
 fi
 
 if command -v ffmpeg >/dev/null 2>&1; then
-    echo "  [OK] ffmpeg (required to generate video thumbnails in library)"
+    echo "  [OK] ffmpeg (video thumbnail generation)"
 else
     echo "  [MISSING] ffmpeg (required to generate video thumbnails in library)"
+    echo "            Install via: sudo apt install ffmpeg"
     DEPS_MISSING=1
 fi
 
 if [ "$DEPS_MISSING" -eq 1 ]; then
     echo ""
-    echo "Tip: Aura will open and function normally, but to play live video wallpapers"
-    echo "and generate video thumbnails, please install the missing dependencies:"
-    echo "  sudo apt install mpvpaper ffmpeg"
+    echo "Tip: Aura will open and function normally for static wallpapers,"
+    echo "but to enable live video wallpapers and video thumbnails, run:"
+    echo "  sudo apt install libmpv2 ffmpeg"
 fi

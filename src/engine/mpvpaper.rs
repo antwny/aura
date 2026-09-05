@@ -2,6 +2,36 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
+pub fn resolve_mpvpaper_binary() -> std::ffi::OsString {
+    // 1. Check if mpvpaper exists alongside current_exe
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let sibling = parent.join("mpvpaper");
+            if sibling.is_file() {
+                return sibling.into_os_string();
+            }
+        }
+    }
+    // 2. Check ~/.local/bin/mpvpaper
+    if let Ok(home) = std::env::var("HOME") {
+        let p = std::path::PathBuf::from(home).join(".local/bin/mpvpaper");
+        if p.is_file() {
+            return p.into_os_string();
+        }
+    }
+    // 3. Check /usr/local/bin/mpvpaper
+    let p = std::path::Path::new("/usr/local/bin/mpvpaper");
+    if p.is_file() {
+        return p.into();
+    }
+    // 4. Check /usr/bin/mpvpaper
+    let p = std::path::Path::new("/usr/bin/mpvpaper");
+    if p.is_file() {
+        return p.into();
+    }
+    "mpvpaper".into()
+}
+
 pub struct WallpaperEngine {
     // Stores active process handle per output
     processes: HashMap<String, Child>,
@@ -51,7 +81,7 @@ impl WallpaperEngine {
 
         let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
 
-        let child = match Command::new("mpvpaper")
+        let child = match Command::new(resolve_mpvpaper_binary())
             .arg("-p") // Wayland layer-shell compositor native auto-pause when obscured
             .arg("-o")
             .arg(&opts)

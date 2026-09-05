@@ -91,6 +91,7 @@ package version="1.0.1": build
     cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/io.github.antwny.aura.metainfo.xml "target/package/aura-v{{version}}-x86_64-linux/"
     cp LICENSE "target/package/aura-v{{version}}-x86_64-linux/"
+    @if [ -f "packaging/mpvpaper" ]; then cp packaging/mpvpaper "target/package/aura-v{{version}}-x86_64-linux/"; elif [ -f "/usr/bin/mpvpaper" ]; then cp /usr/bin/mpvpaper "target/package/aura-v{{version}}-x86_64-linux/"; fi
     cp packaging/install.sh "target/package/aura-v{{version}}-x86_64-linux/install.sh"
     cp packaging/uninstall.sh "target/package/aura-v{{version}}-x86_64-linux/uninstall.sh"
     chmod +x "target/package/aura-v{{version}}-x86_64-linux/install.sh"

@@ -32,6 +32,10 @@ remove_from_prefix() {
         rm -f "${P}/bin/aura"
         REMOVED=1
     fi
+    if [ -f "${P}/bin/mpvpaper" ]; then
+        rm -f "${P}/bin/mpvpaper"
+        REMOVED=1
+    fi
     if [ -f "${P}/share/applications/io.github.antwny.aura.desktop" ]; then
         rm -f "${P}/share/applications/io.github.antwny.aura.desktop"
         REMOVED=1

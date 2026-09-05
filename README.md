@@ -155,12 +155,14 @@ Measured on Pop!_OS 24.04 LTS (AMD Ryzen 5 4500U, Radeon Graphics, Wayland):
 
 ### System Requirements
 
-Ensure the Wayland video engine and runtime dependencies are installed:
+Install the multimedia runtime libraries (`libmpv2` for Wayland wallpaper playback and `ffmpeg` for video thumbnail generation):
 
 ```bash
 sudo apt update
-sudo apt install mpvpaper ffmpeg
+sudo apt install libmpv2 ffmpeg
 ```
+
+> Note: The standalone release package (`tar.gz`) bundles the `mpvpaper` Wayland engine binary, so compiling from source is not required.
 
 ---
 
