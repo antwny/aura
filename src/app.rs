@@ -2,6 +2,10 @@ use crate::config::Config;
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
 use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, VIDEO_EXTENSIONS};
 use crate::theme::apply_cosmic_theme;
+use crate::online::{
+    download_to_file, fetch_bing_wallpapers, fetch_wallhaven_wallpapers,
+    OnlineSource, OnlineWallpaperItem,
+};
 
 use cosmic::app::Core;
 use cosmic::iced::alignment::{Horizontal, Vertical};
@@ -14,6 +18,7 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Library,
+    Explore,
     Monitors,
     Settings,
     About,
@@ -59,6 +64,14 @@ pub enum Message {
     WindowClosed(cosmic::iced::window::Id),
     NextWallpaper,
     QuitApp,
+    SelectExploreSource(OnlineSource),
+    FetchOnlineWallpapers(OnlineSource),
+    OnlineWallpapersFetched(Result<(OnlineSource, Vec<OnlineWallpaperItem>), String>),
+    DownloadOnlineWallpaper { item: OnlineWallpaperItem, auto_apply: bool },
+    OnlineWallpaperDownloaded { id: String, path: PathBuf, auto_apply: bool },
+    OnlineWallpaperDownloadFailed { id: String, error: String },
+    OnlineThumbLoaded { id: String, path: PathBuf },
+    ApplyDownloadedOnlineWallpaper(PathBuf),
 }
 
 fn handle_window_events(
@@ -105,6 +118,14 @@ pub struct AuraApp {
     is_paused: bool,
     tray_controller: crate::tray::TrayController,
     is_window_open: bool,
+    explore_source: OnlineSource,
+    bing_wallpapers: Vec<OnlineWallpaperItem>,
+    wallhaven_wallpapers: Vec<OnlineWallpaperItem>,
+    explore_loading: bool,
+    explore_error: Option<String>,
+    downloading_online_ids: std::collections::HashSet<String>,
+    online_thumbs: std::collections::HashMap<String, PathBuf>,
+    http_client: reqwest::Client,
 }
 
 impl cosmic::Application for AuraApp {
@@ -181,6 +202,14 @@ impl cosmic::Application for AuraApp {
             is_paused: false,
             tray_controller,
             is_window_open: true,
+            explore_source: OnlineSource::Bing,
+            bing_wallpapers: Vec::new(),
+            wallhaven_wallpapers: Vec::new(),
+            explore_loading: false,
+            explore_error: None,
+            downloading_online_ids: std::collections::HashSet::new(),
+            online_thumbs: std::collections::HashMap::new(),
+            http_client: reqwest::Client::new(),
         };
 
         (app, Task::batch(tasks))
@@ -198,6 +227,15 @@ impl cosmic::Application for AuraApp {
         self.nav.activate(id);
         if let Some(&page) = self.nav.active_data::<Page>() {
             self.active_page = page;
+            if page == Page::Explore {
+                let need_fetch = match self.explore_source {
+                    OnlineSource::Bing => self.bing_wallpapers.is_empty(),
+                    OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                };
+                if need_fetch && !self.explore_loading {
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(self.explore_source)));
+                }
+            }
         }
         Task::none()
     }
@@ -275,6 +313,15 @@ impl cosmic::Application for AuraApp {
                 self.nav.activate(id);
                 if let Some(&page) = self.nav.active_data::<Page>() {
                     self.active_page = page;
+                    if page == Page::Explore {
+                        let need_fetch = match self.explore_source {
+                            OnlineSource::Bing => self.bing_wallpapers.is_empty(),
+                            OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                        };
+                        if need_fetch && !self.explore_loading {
+                            return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(self.explore_source)));
+                        }
+                    }
                 }
             }
 
@@ -419,6 +466,10 @@ impl cosmic::Application for AuraApp {
                     if self.config.auto_theme {
                         if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
                             apply_cosmic_theme(thumb, self.config.auto_dark);
+                        } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
+                            if crate::scanner::is_supported_wallpaper_ext(ext) {
+                                apply_cosmic_theme(&video_path, self.config.auto_dark);
+                            }
                         }
                     }
 
@@ -736,6 +787,144 @@ impl cosmic::Application for AuraApp {
                     }));
                 }
             }
+
+            Message::SelectExploreSource(source) => {
+                self.explore_source = source;
+                let need_fetch = match source {
+                    OnlineSource::Bing => self.bing_wallpapers.is_empty(),
+                    OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                };
+                if need_fetch && !self.explore_loading {
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(source)));
+                }
+            }
+
+            Message::FetchOnlineWallpapers(source) => {
+                self.explore_loading = true;
+                self.explore_error = None;
+                let client = self.http_client.clone();
+                return Task::perform(
+                    async move {
+                        match source {
+                            OnlineSource::Bing => {
+                                fetch_bing_wallpapers(&client)
+                                    .await
+                                    .map(|items| (source, items))
+                            }
+                            OnlineSource::Wallhaven => {
+                                fetch_wallhaven_wallpapers(&client)
+                                    .await
+                                    .map(|items| (source, items))
+                            }
+                        }
+                    },
+                    |res| cosmic::Action::App(Message::OnlineWallpapersFetched(res)),
+                );
+            }
+
+            Message::OnlineWallpapersFetched(result) => {
+                self.explore_loading = false;
+                match result {
+                    Ok((source, items)) => {
+                        match source {
+                            OnlineSource::Bing => self.bing_wallpapers = items.clone(),
+                            OnlineSource::Wallhaven => self.wallhaven_wallpapers = items.clone(),
+                        }
+                        self.explore_error = None;
+
+                        // Preload thumbnails in background if not already cached
+                        let mut thumb_tasks = Vec::new();
+                        let client = self.http_client.clone();
+                        for item in items {
+                            let thumb_dest = item.local_thumb_path();
+                            if thumb_dest.exists() {
+                                self.online_thumbs.insert(item.id.clone(), thumb_dest);
+                            } else {
+                                let c = client.clone();
+                                let id = item.id.clone();
+                                let url = item.thumb_url.clone();
+                                thumb_tasks.push(Task::perform(
+                                    async move {
+                                        if let Ok(path) = download_to_file(&c, &url, &thumb_dest).await {
+                                            Some((id, path))
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                    |res| {
+                                        if let Some((id, path)) = res {
+                                            cosmic::Action::App(Message::OnlineThumbLoaded { id, path })
+                                        } else {
+                                            cosmic::Action::None
+                                        }
+                                    },
+                                ));
+                            }
+                        }
+                        if !thumb_tasks.is_empty() {
+                            return Task::batch(thumb_tasks);
+                        }
+                    }
+                    Err(err) => {
+                        self.explore_error = Some(err);
+                    }
+                }
+            }
+
+            Message::OnlineThumbLoaded { id, path } => {
+                self.online_thumbs.insert(id, path);
+            }
+
+            Message::DownloadOnlineWallpaper { item, auto_apply } => {
+                self.downloading_online_ids.insert(item.id.clone());
+                let client = self.http_client.clone();
+                let id = item.id.clone();
+                let url = item.full_url.clone();
+                let dest = item.local_wallpaper_path();
+                return Task::perform(
+                    async move {
+                        match download_to_file(&client, &url, &dest).await {
+                            Ok(p) => Ok((id, p, auto_apply)),
+                            Err(e) => Err((id, e)),
+                        }
+                    },
+                    |res| match res {
+                        Ok((id, path, auto_apply)) => {
+                            cosmic::Action::App(Message::OnlineWallpaperDownloaded { id, path, auto_apply })
+                        }
+                        Err((id, error)) => {
+                            cosmic::Action::App(Message::OnlineWallpaperDownloadFailed { id, error })
+                        }
+                    },
+                );
+            }
+
+            Message::OnlineWallpaperDownloaded { id, path, auto_apply } => {
+                self.downloading_online_ids.remove(&id);
+                // Rescan library to immediately include this wallpaper in the local catalog
+                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                self.status_message = Some(format!("{} ({})", self.language.explore_toast_downloaded(), fname));
+                self.status_timer = 5;
+
+                if auto_apply {
+                    return Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path)));
+                }
+            }
+
+            Message::OnlineWallpaperDownloadFailed { id, error } => {
+                self.downloading_online_ids.remove(&id);
+                self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
+                self.status_timer = 5;
+            }
+
+            Message::ApplyDownloadedOnlineWallpaper(path) => {
+                let output = self.selected_output.clone();
+                return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                    video_path: path,
+                    output,
+                }));
+            }
         }
         Task::none()
     }
@@ -743,6 +932,7 @@ impl cosmic::Application for AuraApp {
     fn view(&self) -> Element<'_, Self::Message> {
         let content: Element<_> = match self.active_page {
             Page::Library => self.view_library(),
+            Page::Explore => self.view_explore(),
             Page::Monitors => self.view_monitors(),
             Page::Settings => self.view_settings(),
             Page::About => self.view_about(),
@@ -794,6 +984,11 @@ impl AuraApp {
             .icon(widget::icon::from_name("video-x-generic-symbolic"));
 
         nav.insert()
+            .text(lang.nav_explore())
+            .data(Page::Explore)
+            .icon(widget::icon::from_name("web-browser-symbolic"));
+
+        nav.insert()
             .text(lang.nav_monitors())
             .data(Page::Monitors)
             .icon(widget::icon::from_name("video-display-symbolic"));
@@ -810,9 +1005,10 @@ impl AuraApp {
 
         match active_page {
             Page::Library => { nav.activate_position(0); }
-            Page::Monitors => { nav.activate_position(1); }
-            Page::Settings => { nav.activate_position(2); }
-            Page::About => { nav.activate_position(3); }
+            Page::Explore => { nav.activate_position(1); }
+            Page::Monitors => { nav.activate_position(2); }
+            Page::Settings => { nav.activate_position(3); }
+            Page::About => { nav.activate_position(4); }
         }
 
         nav
@@ -928,6 +1124,231 @@ impl AuraApp {
             widget::column::with_capacity(2)
                 .spacing(14)
                 .push(search_bar)
+                .push(scroll)
+        )
+    }
+
+    fn view_explore(&self) -> Element<'_, Message> {
+        let lang = self.language;
+        let active_wallpapers = self.config.wallpapers.clone();
+        let downloading_ids = self.downloading_online_ids.clone();
+        let online_thumbs = self.online_thumbs.clone();
+        let current_source = self.explore_source;
+
+        let build_header = || {
+            let bing_btn = if current_source == OnlineSource::Bing {
+                widget::button::suggested(lang.explore_source_bing())
+            } else {
+                widget::button::standard(lang.explore_source_bing())
+            }.on_press(Message::SelectExploreSource(OnlineSource::Bing));
+
+            let wallhaven_btn = if current_source == OnlineSource::Wallhaven {
+                widget::button::suggested(lang.explore_source_wallhaven())
+            } else {
+                widget::button::standard(lang.explore_source_wallhaven())
+            }.on_press(Message::SelectExploreSource(OnlineSource::Wallhaven));
+
+            let reload_btn = widget::button::standard("🔄")
+                .on_press(Message::FetchOnlineWallpapers(current_source));
+
+            let top_bar = widget::row::with_capacity(3)
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .push(bing_btn)
+                .push(wallhaven_btn)
+                .push(reload_btn);
+
+            let subtitle = match current_source {
+                OnlineSource::Bing => lang.explore_featured_today(),
+                OnlineSource::Wallhaven => lang.explore_recent_title(),
+            };
+
+            widget::column::with_capacity(2)
+                .spacing(6)
+                .push(top_bar)
+                .push(widget::text::caption(subtitle))
+        };
+
+        if self.explore_loading {
+            let loading_content = widget::column::with_capacity(3)
+                .spacing(14)
+                .align_x(Horizontal::Center)
+                .push(widget::text::title2(lang.explore_loading()))
+                .push(widget::text::caption(match current_source {
+                    OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
+                    OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
+                }));
+
+            let loading_view = widget::container(loading_content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
+
+            return Element::from(
+                widget::column::with_capacity(2)
+                    .spacing(14)
+                    .push(build_header())
+                    .push(loading_view)
+            );
+        }
+
+        if let Some(err) = &self.explore_error {
+            let error_content = widget::column::with_capacity(3)
+                .spacing(14)
+                .align_x(Horizontal::Center)
+                .push(widget::text::title3(format!("{} {}", lang.explore_error_prefix(), err)))
+                .push(
+                    widget::button::suggested(lang.explore_btn_retry())
+                        .on_press(Message::FetchOnlineWallpapers(current_source))
+                );
+
+            let error_view = widget::container(error_content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
+
+            return Element::from(
+                widget::column::with_capacity(2)
+                    .spacing(14)
+                    .push(build_header())
+                    .push(error_view)
+            );
+        }
+
+        let items: Vec<OnlineWallpaperItem> = match current_source {
+            OnlineSource::Bing => self.bing_wallpapers.clone(),
+            OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
+        };
+
+        if items.is_empty() {
+            let empty_content = widget::column::with_capacity(3)
+                .spacing(14)
+                .align_x(Horizontal::Center)
+                .push(widget::text::title3(lang.explore_loading()))
+                .push(
+                    widget::button::suggested(lang.explore_btn_retry())
+                        .on_press(Message::FetchOnlineWallpapers(current_source))
+                );
+
+            let empty_view = widget::container(empty_content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
+
+            return Element::from(
+                widget::column::with_capacity(2)
+                    .spacing(14)
+                    .push(build_header())
+                    .push(empty_view)
+            );
+        }
+
+        let grid = widget::responsive(move |size| {
+            let card_w = 264.0f32;
+            let gap = 16.0f32;
+            let available_w = size.width.max(280.0);
+            let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
+
+            let mut cards_column = widget::column::with_capacity(items.len() / cols + 1)
+                .spacing(gap)
+                .width(Length::Fill);
+
+            for chunk in items.chunks(cols) {
+                let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
+                for item in chunk {
+                    let is_downloading = downloading_ids.contains(&item.id);
+                    let downloaded_path = item.is_downloaded();
+                    let is_active = if let Some(dp) = &downloaded_path {
+                        active_wallpapers.values().any(|p| p == &dp.to_string_lossy())
+                    } else {
+                        false
+                    };
+
+                    let thumb_path = online_thumbs.get(&item.id).cloned().or_else(|| {
+                        let p = item.local_thumb_path();
+                        if p.exists() { Some(p) } else { None }
+                    });
+
+                    let mut card_content = widget::column::with_capacity(6).spacing(8).padding(12);
+
+                    // Image preview button
+                    if let Some(thumb) = &thumb_path {
+                        let img_press = if let Some(dp) = &downloaded_path {
+                            Message::ApplyDownloadedOnlineWallpaper(dp.clone())
+                        } else {
+                            Message::DownloadOnlineWallpaper {
+                                item: item.clone(),
+                                auto_apply: true,
+                            }
+                        };
+
+                        let img_btn = widget::button::image(thumb.to_string_lossy().to_string())
+                            .width(240.0)
+                            .selected(is_active)
+                            .on_press(img_press);
+                        card_content = card_content.push(img_btn);
+                    } else {
+                        let placeholder = widget::container(widget::text::caption(lang.explore_loading()))
+                            .width(Length::Fixed(240.0))
+                            .height(Length::Fixed(135.0))
+                            .align_x(Horizontal::Center)
+                            .align_y(Vertical::Center);
+                        card_content = card_content.push(placeholder);
+                    }
+
+                    // Title
+                    let title = widget::text::body(item.title.clone()).size(14);
+                    card_content = card_content.push(title);
+
+                    // Metadata line: Resolution • Author/Date
+                    let meta_text = if let Some(d) = &item.date {
+                        format!("{} • {}", item.resolution, d)
+                    } else if !item.author_or_copyright.is_empty() {
+                        format!("{} • {}", item.resolution, item.author_or_copyright)
+                    } else {
+                        item.resolution.clone()
+                    };
+                    let meta_lbl = widget::text::caption(meta_text);
+                    card_content = card_content.push(meta_lbl);
+
+                    // Morphing Action Button
+                    let action_btn = if is_downloading {
+                        widget::button::standard(lang.explore_btn_downloading())
+                    } else if is_active {
+                        widget::button::suggested(lang.explore_badge_active())
+                    } else if let Some(dp) = downloaded_path {
+                        widget::button::suggested(lang.explore_btn_apply())
+                            .on_press(Message::ApplyDownloadedOnlineWallpaper(dp))
+                    } else {
+                        widget::button::standard(lang.explore_btn_download())
+                            .on_press(Message::DownloadOnlineWallpaper {
+                                item: item.clone(),
+                                auto_apply: false,
+                            })
+                    };
+
+                    card_content = card_content.push(action_btn);
+
+                    let card_container = widget::container(card_content)
+                        .width(Length::Fixed(card_w));
+
+                    card_row = card_row.push(card_container);
+                }
+                cards_column = cards_column.push(card_row);
+            }
+
+            Element::from(cards_column)
+        });
+
+        let scroll = widget::scrollable(grid).height(Length::Fill);
+
+        Element::from(
+            widget::column::with_capacity(2)
+                .spacing(14)
+                .push(build_header())
                 .push(scroll)
         )
     }

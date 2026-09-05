@@ -4,6 +4,12 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "mkv", "avi", "mov"];
+pub const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+pub fn is_supported_wallpaper_ext(ext: &str) -> bool {
+    let lower = ext.to_lowercase();
+    VIDEO_EXTENSIONS.contains(&lower.as_str()) || IMAGE_EXTENSIONS.contains(&lower.as_str())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoItem {
@@ -28,18 +34,22 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                    if is_supported_wallpaper_ext(ext) {
                         let canonical = path.to_path_buf();
                         if seen_paths.insert(canonical.clone()) {
                             let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
                             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             let size_formatted = format_file_size(size_bytes);
 
-                            let potential_thumb = thumbs::thumb_path_for_video(path);
-                            let thumb_path = if potential_thumb.exists() {
-                                Some(potential_thumb)
+                            let thumb_path = if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                                Some(path.to_path_buf())
                             } else {
-                                None
+                                let potential_thumb = thumbs::thumb_path_for_video(path);
+                                if potential_thumb.exists() {
+                                    Some(potential_thumb)
+                                } else {
+                                    None
+                                }
                             };
 
                             items.push(VideoItem {
@@ -65,11 +75,16 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                 let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
                 let size_formatted = format_file_size(size_bytes);
 
-                let potential_thumb = thumbs::thumb_path_for_video(path);
-                let thumb_path = if potential_thumb.exists() {
-                    Some(potential_thumb)
+                let is_image = path.extension().and_then(|e| e.to_str()).map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())).unwrap_or(false);
+                let thumb_path = if is_image {
+                    Some(path.to_path_buf())
                 } else {
-                    None
+                    let potential_thumb = thumbs::thumb_path_for_video(path);
+                    if potential_thumb.exists() {
+                        Some(potential_thumb)
+                    } else {
+                        None
+                    }
                 };
 
                 items.push(VideoItem {
@@ -122,5 +137,18 @@ mod tests {
         assert!(VIDEO_EXTENSIONS.contains(&"mov"));
         assert!(!VIDEO_EXTENSIONS.contains(&"png"));
         assert!(!VIDEO_EXTENSIONS.contains(&"exe"));
+    }
+
+    #[test]
+    fn test_image_and_supported_extensions() {
+        assert!(IMAGE_EXTENSIONS.contains(&"jpg"));
+        assert!(IMAGE_EXTENSIONS.contains(&"jpeg"));
+        assert!(IMAGE_EXTENSIONS.contains(&"png"));
+        assert!(IMAGE_EXTENSIONS.contains(&"webp"));
+        assert!(is_supported_wallpaper_ext("mp4"));
+        assert!(is_supported_wallpaper_ext("JPG"));
+        assert!(is_supported_wallpaper_ext("PNG"));
+        assert!(!is_supported_wallpaper_ext("exe"));
+        assert!(!is_supported_wallpaper_ext("txt"));
     }
 }

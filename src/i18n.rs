@@ -46,6 +46,13 @@ impl Language {
         }
     }
 
+    pub fn nav_explore(&self) -> &'static str {
+        match self {
+            Language::Es => "Explorar",
+            Language::En => "Explore",
+        }
+    }
+
     pub fn nav_monitors(&self) -> &'static str {
         match self {
             Language::Es => "Pantallas",
@@ -428,6 +435,91 @@ impl Language {
         }
     }
 
+    // --- Explore View (Online Catalog) ---
+    pub fn explore_source_bing(&self) -> &'static str {
+        match self {
+            Language::Es => "🌅 Bing del Día",
+            Language::En => "🌅 Bing Daily",
+        }
+    }
+
+    pub fn explore_source_wallhaven(&self) -> &'static str {
+        match self {
+            Language::Es => "🌌 Wallhaven (Top 4K)",
+            Language::En => "🌌 Wallhaven (Top 4K)",
+        }
+    }
+
+    pub fn explore_btn_download(&self) -> &'static str {
+        match self {
+            Language::Es => "📥 Descargar",
+            Language::En => "📥 Download",
+        }
+    }
+
+    pub fn explore_btn_downloading(&self) -> &'static str {
+        match self {
+            Language::Es => "⏳ Descargando...",
+            Language::En => "⏳ Downloading...",
+        }
+    }
+
+    pub fn explore_btn_apply(&self) -> &'static str {
+        match self {
+            Language::Es => "✨ Aplicar",
+            Language::En => "✨ Apply",
+        }
+    }
+
+    pub fn explore_badge_active(&self) -> &'static str {
+        match self {
+            Language::Es => "✓ En Uso",
+            Language::En => "✓ Active",
+        }
+    }
+
+    pub fn explore_featured_today(&self) -> &'static str {
+        match self {
+            Language::Es => "⭐ Foto Destacada de Hoy (4K UHD)",
+            Language::En => "⭐ Daily Featured Photo (4K UHD)",
+        }
+    }
+
+    pub fn explore_recent_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Galería & Archivo Online",
+            Language::En => "Online Gallery & Archive",
+        }
+    }
+
+    pub fn explore_loading(&self) -> &'static str {
+        match self {
+            Language::Es => "Cargando catálogo en línea...",
+            Language::En => "Loading online catalog...",
+        }
+    }
+
+    pub fn explore_error_prefix(&self) -> &'static str {
+        match self {
+            Language::Es => "No se pudo conectar con el catálogo en línea:",
+            Language::En => "Could not connect to online catalog:",
+        }
+    }
+
+    pub fn explore_btn_retry(&self) -> &'static str {
+        match self {
+            Language::Es => "🔄 Reintentar conexión",
+            Language::En => "🔄 Retry connection",
+        }
+    }
+
+    pub fn explore_toast_downloaded(&self) -> &'static str {
+        match self {
+            Language::Es => "¡Fondo descargado y guardado en tu biblioteca!",
+            Language::En => "Wallpaper downloaded and saved to your library!",
+        }
+    }
+
     // --- Tray (StatusNotifierItem) ---
     pub fn tray_open(&self) -> &'static str {
         match self {
@@ -640,6 +732,7 @@ mod tests {
     fn test_translations_non_empty() {
         for lang in &[Language::Es, Language::En] {
             assert!(!lang.nav_library().is_empty());
+            assert!(!lang.nav_explore().is_empty());
             assert!(!lang.nav_monitors().is_empty());
             assert!(!lang.nav_settings().is_empty());
             assert!(!lang.nav_about().is_empty());

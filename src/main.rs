@@ -6,6 +6,7 @@ mod i18n;
 mod scanner;
 mod theme;
 mod tray;
+mod online;
 
 fn main() -> cosmic::iced::Result {
     let args: Vec<String> = std::env::args().collect();

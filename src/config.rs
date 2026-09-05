@@ -32,6 +32,7 @@ impl Default for Config {
     fn default() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         let default_dirs = vec![
+            format!("{}/.local/share/aura/wallpapers/online", home),
             format!("{}/Wallpapers/Aura", home),
             format!("{}/Wallpapers/Papyrus", home),
             format!("{}/Wallpapers", home),

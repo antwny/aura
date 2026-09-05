@@ -63,6 +63,13 @@ Aura replaces legacy architectures with a compiled, memory-safe system utilizing
 - **Aspect Scaling Engine**: Independent `Fit`, `Fill` (dynamic crop), and `Stretch` modes per monitor.
 - **Dynamic Hotplug**: Automatically recognizes connected and disconnected displays via `cosmic-randr`.
 
+### 🌐 Online 4K Wallpaper Catalog & Explore Tab
+
+- **Bing Daily Wallpaper (4K UHD Archive)**: Integrates Microsoft Bing's daily high-resolution wallpapers with historical archive exploration.
+- **Wallhaven Top 4K**: Curated high-resolution anime, fantasy, and landscape artworks fetched dynamically via Wallhaven API.
+- **Morphing Action Buttons**: Smooth intuitive UX flow (`[ 📥 Descargar ]` ➔ `[ ⏳ Descargando... ]` ➔ `[ ✨ Aplicar ]` ➔ `[ ✓ En Uso ]`).
+- **Zero-Freeze Asynchronous Pipeline**: Background non-blocking network downloads (`reqwest` + `rustls`) with local thumbnail caching (`~/.cache/aura/online_thumbs/`) and instant auto-theming on application.
+
 ### 🔔 System Tray & Single-Instance Daemon
 
 - **StatusNotifierItem Integration**: Lives natively in the COSMIC top panel status area.
