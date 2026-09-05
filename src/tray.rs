@@ -13,6 +13,7 @@ pub enum TrayAction {
     QuitApp,
 }
 
+#[derive(Clone)]
 pub struct AuraTray {
     pub tx: UnboundedSender<TrayAction>,
     pub current_name: Arc<Mutex<String>>,
@@ -188,13 +189,26 @@ impl TrayController {
             let is_sandboxed = std::path::Path::new("/.flatpak-info").exists()
                 || std::env::var_os("FLATPAK_ID").is_some()
                 || std::env::var_os("SNAP").is_some();
-            let builder = tray.disable_dbus_name(is_sandboxed);
-            match builder.spawn().await {
-                Ok(handle) => {
-                    *handle_store.lock().unwrap() = Some(handle);
-                }
-                Err(e) => {
-                    eprintln!("[Aura Tray] Error al registrar StatusNotifierItem: {:?}", e);
+
+            // On boot, desktop panels (e.g. cosmic-panel) and StatusNotifierWatcher may take a few
+            // seconds to come online on D-Bus. We use assume_sni_available(true) so that ksni queues
+            // registration instead of failing immediately, and retry up to 15 times with backoff.
+            for attempt in 1..=15 {
+                let builder = tray.clone()
+                    .disable_dbus_name(is_sandboxed)
+                    .assume_sni_available(true);
+                match builder.spawn().await {
+                    Ok(handle) => {
+                        *handle_store.lock().unwrap() = Some(handle);
+                        return;
+                    }
+                    Err(e) => {
+                        if attempt == 15 {
+                            eprintln!("[Aura Tray] Error al registrar StatusNotifierItem tras 15 intentos: {:?}", e);
+                        } else {
+                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                        }
+                    }
                 }
             }
         });

@@ -82,7 +82,9 @@ impl WallpaperEngine {
         let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
 
         let child = match Command::new(resolve_mpvpaper_binary())
-            .arg("-p") // Wayland layer-shell compositor native auto-pause when obscured
+            // Note: We do NOT pass "-p" (auto-pause) to mpvpaper because COSMIC compositor (cosmic-comp)
+            // layer-shell events cause mpvpaper to prematurely freeze playback when desktop panels initialize.
+            // Aura natively controls pausing via SIGSTOP/SIGCONT and Smart Pause.
             .arg("-o")
             .arg(&opts)
             .arg(output)
@@ -198,12 +200,18 @@ impl WallpaperEngine {
             || std::env::var_os("FLATPAK_ID").is_some()
             || std::env::var_os("SNAP").is_some();
 
-        let exec_cmd = if is_sandboxed {
-            "flatpak run io.github.antwny.aura --hidden".to_string()
-        } else if let Ok(exe) = std::env::current_exe() {
-            format!("{} --hidden", exe.display())
+        let (exec_cmd, try_exec) = if is_sandboxed {
+            ("flatpak run io.github.antwny.aura --hidden".to_string(), "flatpak".to_string())
         } else {
-            "aura --hidden".to_string()
+            let home = std::env::var("HOME").unwrap_or_default();
+            let user_bin = PathBuf::from(&home).join(".local/bin/aura");
+            if user_bin.exists() {
+                (format!("{} --hidden", user_bin.display()), user_bin.display().to_string())
+            } else if let Ok(exe) = std::env::current_exe() {
+                (format!("{} --hidden", exe.display()), exe.display().to_string())
+            } else {
+                ("aura --hidden".to_string(), "aura".to_string())
+            }
         };
 
         let desktop_content = format!(
@@ -212,13 +220,16 @@ impl WallpaperEngine {
             Name=Aura\n\
             GenericName=Live Wallpaper Manager\n\
             Comment=Animated live wallpaper manager for COSMIC Desktop\n\
+            TryExec={}\n\
             Exec={}\n\
             Icon=io.github.antwny.aura\n\
             Terminal=false\n\
             StartupNotify=false\n\
             X-GNOME-Autostart-enabled=true\n\
             X-Cosmic-Autostart-enabled=true\n\
+            X-GNOME-Autostart-Delay=2\n\
             Categories=Utility;DesktopSettings;\n",
+            try_exec,
             exec_cmd
         );
 

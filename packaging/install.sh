@@ -79,6 +79,17 @@ fi
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "${APPS_DIR}" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "${DATA_DIR}/icons/hicolor" 2>/dev/null || true
 
+# If autostart entry exists from a previous session, ensure it points to the installed binary
+AUTOSTART_FILE="${HOME}/.config/autostart/io.github.antwny.aura.desktop"
+if [ -f "${AUTOSTART_FILE}" ]; then
+    sed -i "s|^Exec=.*|Exec=${BIN_DIR}/aura --hidden|" "${AUTOSTART_FILE}"
+    if grep -q "^TryExec=" "${AUTOSTART_FILE}"; then
+        sed -i "s|^TryExec=.*|TryExec=${BIN_DIR}/aura|" "${AUTOSTART_FILE}"
+    else
+        sed -i "/^Exec=/i TryExec=${BIN_DIR}/aura" "${AUTOSTART_FILE}"
+    fi
+fi
+
 # PATH configuration for user install
 if [ "$INSTALL_TYPE" = "user" ]; then
     case ":$PATH:" in

@@ -199,9 +199,6 @@ impl cosmic::Application for AuraApp {
         // Spawn async background thumbnail generation
         let mut tasks = Vec::new();
         if flags.hidden {
-            if let Some(id) = core.main_window_id() {
-                tasks.push(cosmic::iced::window::close(id));
-            }
             core.set_main_window_id(None);
         }
 
@@ -2428,11 +2425,22 @@ impl AuraApp {
 }
 
 pub fn is_heavy_process_cmdline(cmdline: &str) -> bool {
-    const HEAVY_PROCESSES: &[&str] = &["gamescope", "steam_app", "wine64-preloader", "proton", "heroic", "lutris"];
+    const HEAVY_PROCESSES: &[&str] = &[
+        "gamescope",
+        "steam_app",
+        "wine64-preloader",
+        "proton run",
+        "proton waitforexitandrun",
+        "pressure-vessel",
+        "lutris-wrapper",
+    ];
     for proc_name in HEAVY_PROCESSES {
         if cmdline.contains(proc_name) {
             return true;
         }
+    }
+    if cmdline.contains("heroic") && (cmdline.contains("wine") || cmdline.contains("legendary") || cmdline.contains("gog")) {
+        return true;
     }
     false
 }
@@ -2465,10 +2473,12 @@ mod tests {
     fn test_is_heavy_process_cmdline() {
         assert!(is_heavy_process_cmdline("/usr/bin/gamescope -W 1920"));
         assert!(is_heavy_process_cmdline("proton run game.exe"));
-        assert!(is_heavy_process_cmdline("/opt/heroic/heroic"));
+        assert!(is_heavy_process_cmdline("heroic --wine game.exe"));
         assert!(is_heavy_process_cmdline("steam_app_12345"));
         assert!(!is_heavy_process_cmdline("/usr/bin/bash"));
         assert!(!is_heavy_process_cmdline("cosmic-panel"));
+        assert!(!is_heavy_process_cmdline("/usr/bin/protonvpn-app"));
+        assert!(!is_heavy_process_cmdline("/opt/heroic/heroic"));
         assert!(!is_heavy_process_cmdline(""));
     }
 }
