@@ -1,7 +1,8 @@
 use ksni::menu::StandardItem;
 use ksni::{Handle, MenuItem, ToolTip, Tray, TrayMethods};
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
@@ -13,7 +14,7 @@ pub enum TrayAction {
 }
 
 pub struct AuraTray {
-    pub tx: Sender<TrayAction>,
+    pub tx: UnboundedSender<TrayAction>,
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
@@ -112,7 +113,8 @@ impl Tray for AuraTray {
 }
 
 pub struct TrayController {
-    pub rx: Receiver<TrayAction>,
+    #[allow(dead_code)]
+    pub rx: Arc<TokioMutex<UnboundedReceiver<TrayAction>>>,
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
@@ -120,9 +122,17 @@ pub struct TrayController {
     pub handle: Arc<Mutex<Option<Handle<AuraTray>>>>,
 }
 
+static TRAY_RX: std::sync::OnceLock<Arc<TokioMutex<UnboundedReceiver<TrayAction>>>> = std::sync::OnceLock::new();
+
+pub fn get_tray_rx() -> Option<Arc<TokioMutex<UnboundedReceiver<TrayAction>>>> {
+    TRAY_RX.get().cloned()
+}
+
 impl TrayController {
     pub fn new(lang: crate::i18n::Language) -> (Self, AuraTray) {
-        let (tx, rx) = channel();
+        let (tx, rx) = unbounded_channel();
+        let rx = Arc::new(TokioMutex::new(rx));
+        let _ = TRAY_RX.set(rx.clone());
         let current_name = Arc::new(Mutex::new(String::new()));
         let is_paused = Arc::new(Mutex::new(false));
         let has_wallpaper = Arc::new(Mutex::new(false));

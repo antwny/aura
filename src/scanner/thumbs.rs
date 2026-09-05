@@ -68,8 +68,8 @@ mod tests {
 
 static THUMB_SEMAPHORE: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
 
-pub async fn generate_thumbnail(video_path: &Path) -> Option<PathBuf> {
-    let thumb_path = thumb_path_for_video(video_path);
+pub async fn generate_thumbnail(media_path: &Path) -> Option<PathBuf> {
+    let thumb_path = thumb_path_for_video(media_path);
     if thumb_path.exists() {
         return Some(thumb_path);
     }
@@ -85,23 +85,30 @@ pub async fn generate_thumbnail(video_path: &Path) -> Option<PathBuf> {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    let status = Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-ss")
-        .arg("00:00:01")
-        .arg("-i")
-        .arg(video_path)
-        .arg("-an")
-        .arg("-sn")
-        .arg("-vframes")
+    let is_image = media_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        .unwrap_or(false);
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y");
+    if !is_image {
+        cmd.arg("-ss").arg("00:00:01");
+    }
+    cmd.arg("-i").arg(media_path);
+    if !is_image {
+        cmd.arg("-an").arg("-sn");
+    }
+    cmd.arg("-vframes")
         .arg("1")
         .arg("-vf")
         .arg("scale=480:-1")
         .arg(&thumb_path)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await;
+        .stderr(std::process::Stdio::null());
+
+    let status = cmd.status().await;
 
     match status {
         Ok(s) if s.success() && thumb_path.exists() => Some(thumb_path),

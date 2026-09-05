@@ -1,38 +1,45 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub fn wallpapers_online_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
-        if !xdg.is_empty() {
-            PathBuf::from(xdg)
+    static CACHED: OnceLock<PathBuf> = OnceLock::new();
+    CACHED.get_or_init(|| {
+        let base = if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
+            if !xdg.is_empty() {
+                PathBuf::from(xdg)
+            } else {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                PathBuf::from(home).join(".local/share")
+            }
         } else {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
             PathBuf::from(home).join(".local/share")
-        }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".local/share")
-    };
-    let dir = base.join("aura/wallpapers/online");
-    let _ = std::fs::create_dir_all(&dir);
-    dir
+        };
+        let dir = base.join("aura/wallpapers/online");
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }).clone()
 }
 
 pub fn thumbs_online_cache_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
-            PathBuf::from(xdg)
+    static CACHED: OnceLock<PathBuf> = OnceLock::new();
+    CACHED.get_or_init(|| {
+        let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+            if !xdg.is_empty() {
+                PathBuf::from(xdg)
+            } else {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                PathBuf::from(home).join(".cache")
+            }
         } else {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
             PathBuf::from(home).join(".cache")
-        }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".cache")
-    };
-    let dir = base.join("aura/online_thumbs");
-    let _ = std::fs::create_dir_all(&dir);
-    dir
+        };
+        let dir = base.join("aura/online_thumbs");
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }).clone()
 }
 
 pub fn clean_filename(prefix: &str, id: &str, ext: &str) -> String {

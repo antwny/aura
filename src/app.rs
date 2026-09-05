@@ -68,7 +68,7 @@ pub enum Message {
     OpenGitHub,
     OpenYouTube,
     OpenPayPal,
-    TrayPoll,
+    TrayAction(crate::tray::TrayAction),
     ShowMainWindow,
     WindowCloseRequested(cosmic::iced::window::Id),
     WindowClosed(cosmic::iced::window::Id),
@@ -334,17 +334,29 @@ impl cosmic::Application for AuraApp {
         // 1. Drag & Drop subscription via filtered listen_with
         subs.push(cosmic::iced::event::listen_with(handle_window_events));
 
-        // 2. 1-second interval timer for auto-dismissing notifications
-        subs.push(
-            cosmic::iced::time::every(Duration::from_secs(1))
-                .map(|_| Message::TickSecond)
-        );
+        // 2. Auto-dismiss notification timer (runs ONLY while a status notification is visible)
+        if self.status_timer > 0 {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_secs(1))
+                    .map(|_| Message::TickSecond)
+            );
+        }
 
-        // 3. Tray actions listener (every 120ms, non-blocking)
-        subs.push(
-            cosmic::iced::time::every(Duration::from_millis(120))
-                .map(|_| Message::TrayPoll)
-        );
+        // 3. Event-driven Tray actions stream (zero CPU, zero wakeups when idle)
+        fn tray_stream() -> impl cosmic::iced::futures::Stream<Item = Message> {
+            cosmic::iced::stream::channel(10, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| {
+                async move {
+                    use cosmic::iced::futures::SinkExt;
+                    if let Some(rx) = crate::tray::get_tray_rx() {
+                        let mut rx = rx.lock().await;
+                        while let Some(action) = rx.recv().await {
+                            let _ = output.send(Message::TrayAction(action)).await;
+                        }
+                    }
+                }
+            })
+        }
+        subs.push(Subscription::run(tray_stream));
 
         // 3. Playlist auto-rotation
         if self.config.rotation && self.config.interval > 0 {
@@ -403,25 +415,21 @@ impl cosmic::Application for AuraApp {
                 self.status_timer = 0;
             }
 
-            Message::TrayPoll => {
-                while let Ok(action) = self.tray_controller.rx.try_recv() {
-                    match action {
-                        crate::tray::TrayAction::ShowApp => {
-                            return Task::done(cosmic::Action::App(Message::ShowMainWindow));
-                        }
-                        crate::tray::TrayAction::TogglePause => {
-                            return Task::done(cosmic::Action::App(Message::TogglePause));
-                        }
-                        crate::tray::TrayAction::NextWallpaper => {
-                            return Task::done(cosmic::Action::App(Message::NextWallpaper));
-                        }
-                        crate::tray::TrayAction::StopWallpaper => {
-                            return Task::done(cosmic::Action::App(Message::StopWallpaper(None)));
-                        }
-                        crate::tray::TrayAction::QuitApp => {
-                            return Task::done(cosmic::Action::App(Message::QuitApp));
-                        }
-                    }
+            Message::TrayAction(action) => match action {
+                crate::tray::TrayAction::ShowApp => {
+                    return Task::done(cosmic::Action::App(Message::ShowMainWindow));
+                }
+                crate::tray::TrayAction::TogglePause => {
+                    return Task::done(cosmic::Action::App(Message::TogglePause));
+                }
+                crate::tray::TrayAction::NextWallpaper => {
+                    return Task::done(cosmic::Action::App(Message::NextWallpaper));
+                }
+                crate::tray::TrayAction::StopWallpaper => {
+                    return Task::done(cosmic::Action::App(Message::StopWallpaper(None)));
+                }
+                crate::tray::TrayAction::QuitApp => {
+                    return Task::done(cosmic::Action::App(Message::QuitApp));
                 }
             }
 
@@ -1331,11 +1339,23 @@ impl AuraApp {
             .on_input(Message::SearchChanged)
             .width(Length::Fill);
 
-        // Quick category filter counts
-        let count_all = self.videos.len();
-        let count_live = self.videos.iter().filter(|v| v.is_video()).count();
-        let count_static = self.videos.iter().filter(|v| v.is_image()).count();
-        let count_downloaded = self.videos.iter().filter(|v| v.is_downloaded()).count();
+        // Quick category filter counts - single ultra-fast pass
+        let mut count_all = 0;
+        let mut count_live = 0;
+        let mut count_static = 0;
+        let mut count_downloaded = 0;
+
+        for v in &self.videos {
+            count_all += 1;
+            if v.is_video {
+                count_live += 1;
+            } else {
+                count_static += 1;
+            }
+            if v.is_downloaded {
+                count_downloaded += 1;
+            }
+        }
 
         let all_btn = if self.library_filter == LibraryFilter::All {
             widget::button::suggested(format!("{} ({})", self.language.library_filter_all(), count_all))
@@ -1412,26 +1432,33 @@ impl AuraApp {
             );
         }
 
-        let filtered_videos: Vec<VideoItem> = self.videos
+        let search_trimmed = self.search_query.trim();
+        let query_lower = if search_trimmed.is_empty() {
+            None
+        } else {
+            Some(search_trimmed.to_lowercase())
+        };
+
+        // Filter by reference - zero clones of VideoItem!
+        let filtered_videos: Vec<&VideoItem> = self.videos
             .iter()
             .filter(|v| {
                 let matches_filter = match self.library_filter {
                     LibraryFilter::All => true,
-                    LibraryFilter::Live => v.is_video(),
-                    LibraryFilter::Static => v.is_image(),
-                    LibraryFilter::Downloaded => v.is_downloaded(),
+                    LibraryFilter::Live => v.is_video,
+                    LibraryFilter::Static => !v.is_video,
+                    LibraryFilter::Downloaded => v.is_downloaded,
                 };
                 if !matches_filter {
                     return false;
                 }
 
-                if self.search_query.trim().is_empty() {
-                    true
+                if let Some(ref q) = query_lower {
+                    v.name_lower.contains(q)
                 } else {
-                    v.name.to_lowercase().contains(&self.search_query.to_lowercase())
+                    true
                 }
             })
-            .cloned()
             .collect();
 
         if filtered_videos.is_empty() {
@@ -1459,9 +1486,16 @@ impl AuraApp {
             );
         }
 
+        // Precompute active wallpapers HashSet for O(1) card lookups
+        let mut active_paths = std::collections::HashSet::with_capacity(self.config.wallpapers.len() + 1);
+        for path in self.config.wallpapers.values() {
+            active_paths.insert(path.as_str());
+        }
+        if let Some(ref curr) = self.config.current {
+            active_paths.insert(curr.as_str());
+        }
+
         let selected_output = self.selected_output.clone();
-        let active_wallpapers = self.config.wallpapers.clone();
-        let current_wall = self.config.current.clone();
 
         // Responsive reflow grid adapting dynamically to window resize!
         let grid = widget::responsive(move |size| {
@@ -1478,13 +1512,12 @@ impl AuraApp {
                 let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
                 for video in chunk {
                     let path_str = video.path.to_string_lossy();
-                    let is_active = active_wallpapers.values().any(|p| p == &path_str)
-                        || current_wall.as_deref() == Some(&path_str);
+                    let is_active = active_paths.contains(path_str.as_ref());
 
                     let mut card_content = widget::column::with_capacity(5).spacing(8).padding(12);
 
                     if let Some(thumb) = &video.thumb_path {
-                        let img_btn = widget::button::image(thumb.to_string_lossy().to_string())
+                        let img_btn = widget::button::image(thumb.clone())
                             .width(240.0)
                             .selected(is_active)
                             .on_press(Message::ApplyWallpaper {
@@ -1501,8 +1534,8 @@ impl AuraApp {
                         card_content = card_content.push(placeholder);
                     }
 
-                    let title = widget::text::body(video.name.clone()).size(14);
-                    let size_lbl = widget::text::caption(video.size_formatted.clone());
+                    let title = widget::text::body(&video.name).size(14);
+                    let size_lbl = widget::text::caption(&video.size_formatted);
                     card_content = card_content.push(title).push(size_lbl);
 
                     // Standardized action buttons with native COSMIC symbolic icons

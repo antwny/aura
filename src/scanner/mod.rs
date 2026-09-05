@@ -15,30 +15,50 @@ pub fn is_supported_wallpaper_ext(ext: &str) -> bool {
 pub struct VideoItem {
     pub path: PathBuf,
     pub name: String,
+    pub name_lower: String,
     pub size_formatted: String,
     pub thumb_path: Option<PathBuf>,
+    pub is_video: bool,
+    pub is_downloaded: bool,
 }
 
 impl VideoItem {
-    pub fn is_video(&self) -> bool {
-        self.path
+    pub fn new(path: PathBuf, name: String, size_formatted: String, thumb_path: Option<PathBuf>) -> Self {
+        let is_video = path
             .extension()
             .and_then(|e| e.to_str())
             .map(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-            .unwrap_or(false)
-    }
-
-    pub fn is_image(&self) -> bool {
-        self.path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-            .unwrap_or(false)
-    }
-
-    pub fn is_downloaded(&self) -> bool {
+            .unwrap_or(false);
         let online_dir = crate::online::wallpapers_online_dir();
-        self.path.starts_with(&online_dir)
+        let is_downloaded = path.starts_with(&online_dir);
+        let name_lower = name.to_lowercase();
+        Self {
+            path,
+            name,
+            name_lower,
+            size_formatted,
+            thumb_path,
+            is_video,
+            is_downloaded,
+        }
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn is_video(&self) -> bool {
+        self.is_video
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn is_image(&self) -> bool {
+        !self.is_video
+    }
+
+    #[allow(dead_code)]
+    #[inline]
+    pub fn is_downloaded(&self) -> bool {
+        self.is_downloaded
     }
 }
 
@@ -71,23 +91,19 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             let size_formatted = format_file_size(size_bytes);
 
-                            let thumb_path = if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-                                Some(path.to_path_buf())
+                            let potential_thumb = thumbs::thumb_path_for_video(path);
+                            let thumb_path = if potential_thumb.exists() {
+                                Some(potential_thumb)
                             } else {
-                                let potential_thumb = thumbs::thumb_path_for_video(path);
-                                if potential_thumb.exists() {
-                                    Some(potential_thumb)
-                                } else {
-                                    None
-                                }
+                                None
                             };
 
-                            items.push(VideoItem {
-                                path: canonical,
+                            items.push(VideoItem::new(
+                                canonical,
                                 name,
                                 size_formatted,
                                 thumb_path,
-                            });
+                            ));
                         }
                     }
                 }
@@ -105,30 +121,25 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                 let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
                 let size_formatted = format_file_size(size_bytes);
 
-                let is_image = path.extension().and_then(|e| e.to_str()).map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())).unwrap_or(false);
-                let thumb_path = if is_image {
-                    Some(path.to_path_buf())
+                let potential_thumb = thumbs::thumb_path_for_video(path);
+                let thumb_path = if potential_thumb.exists() {
+                    Some(potential_thumb)
                 } else {
-                    let potential_thumb = thumbs::thumb_path_for_video(path);
-                    if potential_thumb.exists() {
-                        Some(potential_thumb)
-                    } else {
-                        None
-                    }
+                    None
                 };
 
-                items.push(VideoItem {
-                    path: canonical,
+                items.push(VideoItem::new(
+                    canonical,
                     name,
                     size_formatted,
                     thumb_path,
-                });
+                ));
             }
         }
     }
 
-    // Sort alphabetically by name
-    items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // Sort alphabetically by name using precomputed name_lower
+    items.sort_by(|a, b| a.name_lower.cmp(&b.name_lower));
     items
 }
 
@@ -184,22 +195,22 @@ mod tests {
 
     #[test]
     fn test_video_item_methods() {
-        let vid = VideoItem {
-            path: PathBuf::from("/home/antwny/Videos/cool.mp4"),
-            name: "cool".into(),
-            size_formatted: "10 MB".into(),
-            thumb_path: None,
-        };
+        let vid = VideoItem::new(
+            PathBuf::from("/home/antwny/Videos/cool.mp4"),
+            "cool".into(),
+            "10 MB".into(),
+            None,
+        );
         assert!(vid.is_video());
         assert!(!vid.is_image());
         assert!(!vid.is_downloaded());
 
-        let img = VideoItem {
-            path: crate::online::wallpapers_online_dir().join("bing_123.jpg"),
-            name: "bing_123".into(),
-            size_formatted: "2 MB".into(),
-            thumb_path: None,
-        };
+        let img = VideoItem::new(
+            crate::online::wallpapers_online_dir().join("bing_123.jpg"),
+            "bing_123".into(),
+            "2 MB".into(),
+            None,
+        );
         assert!(!img.is_video());
         assert!(img.is_image());
         assert!(img.is_downloaded());
