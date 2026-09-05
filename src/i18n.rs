@@ -84,15 +84,15 @@ impl Language {
 
     pub fn header_add_video(&self) -> &'static str {
         match self {
-            Language::Es => "+ Añadir Video",
-            Language::En => "+ Add Video",
+            Language::Es => "Añadir Video",
+            Language::En => "Add Video",
         }
     }
 
     pub fn header_add_folder(&self) -> &'static str {
         match self {
-            Language::Es => "+ Carpeta",
-            Language::En => "+ Folder",
+            Language::Es => "Añadir Carpeta",
+            Language::En => "Add Folder",
         }
     }
 
@@ -366,8 +366,8 @@ impl Language {
 
     pub fn settings_btn_add_folder(&self) -> &'static str {
         match self {
-            Language::Es => "+ Añadir Carpeta",
-            Language::En => "+ Add Folder",
+            Language::Es => "Añadir Carpeta",
+            Language::En => "Add Folder",
         }
     }
 

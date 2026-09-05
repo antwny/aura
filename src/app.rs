@@ -2013,7 +2013,11 @@ impl AuraApp {
                 .spacing(16)
                 .align_y(Alignment::Center)
                 .push(widget::text::title3(self.language.settings_monitored_folders()).width(Length::Fill))
-                .push(widget::button::suggested(self.language.settings_btn_add_folder()).on_press(Message::PickFolder))
+                .push(
+                    widget::button::suggested(self.language.settings_btn_add_folder())
+                        .leading_icon(widget::icon::from_name("folder-symbolic"))
+                        .on_press(Message::PickFolder)
+                )
         );
 
         for dir in &self.config.dirs {
