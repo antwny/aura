@@ -414,6 +414,20 @@ impl Language {
         }
     }
 
+    pub fn about_donation_lbl(&self) -> &'static str {
+        match self {
+            Language::Es => "Donaciones:",
+            Language::En => "Donations:",
+        }
+    }
+
+    pub fn about_donate_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "💖 Donar (PayPal)",
+            Language::En => "💖 Donate (PayPal)",
+        }
+    }
+
     // --- Tray (StatusNotifierItem) ---
     pub fn tray_open(&self) -> &'static str {
         match self {

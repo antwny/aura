@@ -52,6 +52,7 @@ pub enum Message {
     DismissStatus,
     OpenGitHub,
     OpenYouTube,
+    OpenPayPal,
     TrayPoll,
     ShowMainWindow,
     WindowCloseRequested(cosmic::iced::window::Id),
@@ -390,6 +391,10 @@ impl cosmic::Application for AuraApp {
 
             Message::OpenYouTube => {
                 let _ = open::that_detached("https://www.youtube.com/@antwny");
+            }
+
+            Message::OpenPayPal => {
+                let _ = open::that_detached("https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD");
             }
 
             Message::ApplyWallpaper { video_path, output } => {
@@ -1217,7 +1222,7 @@ impl AuraApp {
             .push(widget::text::title3(self.language.about_tagline()))
             .push(widget::text::caption(self.language.about_version_info()));
 
-        let info_card = widget::column::with_capacity(6)
+        let info_card = widget::column::with_capacity(7)
             .spacing(12)
             .padding(20)
             .width(Length::Fixed(580.0))
@@ -1227,6 +1232,12 @@ impl AuraApp {
                     .spacing(20)
                     .push(widget::text::body(self.language.about_developer_lbl()).width(Length::Fixed(140.0)))
                     .push(widget::text::body("Antwny"))
+            )
+            .push(
+                widget::row::with_capacity(2)
+                    .spacing(20)
+                    .push(widget::text::body(self.language.about_donation_lbl()).width(Length::Fixed(140.0)))
+                    .push(widget::text::body("antwnyab@gmail.com"))
             )
             .push(
                 widget::row::with_capacity(2)
@@ -1244,7 +1255,7 @@ impl AuraApp {
                 widget::text::caption(self.language.about_summary_desc())
             );
 
-        let action_buttons = widget::row::with_capacity(2)
+        let action_buttons = widget::row::with_capacity(3)
             .spacing(14)
             .align_y(Alignment::Center)
             .push(
@@ -1254,6 +1265,10 @@ impl AuraApp {
             .push(
                 widget::button::standard(self.language.about_youtube_btn())
                     .on_press(Message::OpenYouTube)
+            )
+            .push(
+                widget::button::standard(self.language.about_donate_btn())
+                    .on_press(Message::OpenPayPal)
             );
 
         col = col.push(logo_widget)

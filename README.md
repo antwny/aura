@@ -11,6 +11,7 @@
 [![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
 [![Performance](https://img.shields.io/badge/Performance-60_FPS_%7C_%3C20ms_Startup-success.svg?style=for-the-badge)](#-performance-benchmarks)
 [![Memory](https://img.shields.io/badge/RAM-%3C25MB-brightgreen.svg?style=for-the-badge)](#-performance-benchmarks)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 
 <p align="center">
@@ -204,6 +205,17 @@ aura
 - **Developer**: [Antwny](https://github.com/antwny)
 - **YouTube Channel**: [@antwny](https://www.youtube.com/@antwny)
 - **Inspiration**: Concept inspired by [Papyrus](https://github.com/PSGtatitos/papyrus); re-engineered from the ground up for modern Rust and COSMIC Desktop.
+
+---
+
+## 💖 Support & Donations
+
+If you find **Aura** useful and wish to support its continued development, optimizations, and new features, you can donate directly via PayPal:
+
+- ☕ **PayPal Direct Donation**: [Donate via PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
+- 📬 **PayPal Account**: `antwnyab@gmail.com`
+
+Every contribution helps sustain independent open-source Linux software engineering!
 
 ---
 

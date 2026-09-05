@@ -48,6 +48,8 @@ install: build
     install -m 644 resources/io.github.antwny.aura.desktop "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
     install -d "${HOME}/.local/share/icons/hicolor/scalable/apps"
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "${HOME}/.local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
+    rm -f "${HOME}/.local/share/icons/hicolor/*/apps/io.github.antwny.aura.png"
+    @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
     install -d "${HOME}/.local/share/metainfo"
     install -m 644 resources/io.github.antwny.aura.metainfo.xml "${HOME}/.local/share/metainfo/io.github.antwny.aura.metainfo.xml"
     @echo "Aura successfully installed to ~/.local"
@@ -60,6 +62,8 @@ install-system: build
     install -m 644 resources/io.github.antwny.aura.desktop "/usr/local/share/applications/io.github.antwny.aura.desktop"
     install -d "/usr/local/share/icons/hicolor/scalable/apps"
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "/usr/local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
+    rm -f "/usr/local/share/icons/hicolor/*/apps/io.github.antwny.aura.png"
+    @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "/usr/local/share/icons/hicolor" 2>/dev/null || true
     install -d "/usr/local/share/metainfo"
     install -m 644 resources/io.github.antwny.aura.metainfo.xml "/usr/local/share/metainfo/io.github.antwny.aura.metainfo.xml"
     @echo "Aura successfully installed to /usr/local"
