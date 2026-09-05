@@ -62,6 +62,35 @@ impl VideoItem {
     }
 }
 
+fn resolve_or_link_thumb(path: &Path) -> Option<PathBuf> {
+    let potential_thumb = thumbs::thumb_path_for_video(path);
+    if potential_thumb.exists() {
+        return Some(potential_thumb);
+    }
+
+    // If it's a downloaded online wallpaper, check if its preloaded online thumbnail exists
+    let online_dir = crate::online::wallpapers_online_dir();
+    if path.starts_with(&online_dir) {
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            let online_thumbs_dir = crate::online::cache::thumbs_online_cache_dir();
+            for ext in &["jpg", "jpeg", "png", "webp"] {
+                let candidate = online_thumbs_dir.join(format!("{}.{}", stem, ext));
+                if candidate.exists() {
+                    if let Some(parent) = potential_thumb.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if std::fs::copy(&candidate, &potential_thumb).is_ok() {
+                        return Some(potential_thumb);
+                    }
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoItem> {
     let mut items = Vec::new();
     let mut seen_paths = std::collections::HashSet::new();
@@ -91,12 +120,7 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             let size_formatted = format_file_size(size_bytes);
 
-                            let potential_thumb = thumbs::thumb_path_for_video(path);
-                            let thumb_path = if potential_thumb.exists() {
-                                Some(potential_thumb)
-                            } else {
-                                None
-                            };
+                            let thumb_path = resolve_or_link_thumb(path);
 
                             items.push(VideoItem::new(
                                 canonical,
@@ -121,12 +145,7 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                 let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
                 let size_formatted = format_file_size(size_bytes);
 
-                let potential_thumb = thumbs::thumb_path_for_video(path);
-                let thumb_path = if potential_thumb.exists() {
-                    Some(potential_thumb)
-                } else {
-                    None
-                };
+                let thumb_path = resolve_or_link_thumb(path);
 
                 items.push(VideoItem::new(
                     canonical,
@@ -214,6 +233,27 @@ mod tests {
         assert!(!img.is_video());
         assert!(img.is_image());
         assert!(img.is_downloaded());
+    }
+
+    #[test]
+    fn test_resolve_or_link_thumb_online() {
+        let online_dir = crate::online::wallpapers_online_dir();
+        let thumbs_dir = crate::online::cache::thumbs_online_cache_dir();
+        let wallpaper_file = online_dir.join("test_online_sample.jpg");
+        let online_thumb = thumbs_dir.join("test_online_sample.jpg");
+
+        // Create a dummy online thumbnail
+        let _ = std::fs::write(&online_thumb, b"dummy-thumb-content");
+
+        let resolved = resolve_or_link_thumb(&wallpaper_file);
+        assert!(resolved.is_some());
+        let p = resolved.unwrap();
+        assert!(p.exists());
+
+        // Clean up test file
+        let _ = std::fs::remove_file(&online_thumb);
+        let potential_thumb = thumbs::thumb_path_for_video(&wallpaper_file);
+        let _ = std::fs::remove_file(&potential_thumb);
     }
 }
 

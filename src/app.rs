@@ -1277,8 +1277,29 @@ impl cosmic::Application for AuraApp {
                 self.status_message = Some(format!("{} ({})", self.language.explore_toast_downloaded(), fname));
                 self.status_timer = 5;
 
+                let mut tasks = Vec::new();
+                if let Some(item) = self.videos.iter().find(|v| v.path == path) {
+                    if item.thumb_path.is_none() {
+                        let vp = path.clone();
+                        tasks.push(Task::perform(
+                            async move { (vp.clone(), generate_thumbnail(&vp).await) },
+                            move |(video_path, t)| {
+                                if let Some(thumb_path) = t {
+                                    cosmic::Action::App(Message::ThumbnailGenerated { video_path, thumb_path })
+                                } else {
+                                    cosmic::Action::None
+                                }
+                            },
+                        ));
+                    }
+                }
+
                 if auto_apply {
-                    return Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path)));
+                    tasks.push(Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path))));
+                }
+
+                if !tasks.is_empty() {
+                    return Task::batch(tasks);
                 }
             }
 

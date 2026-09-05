@@ -155,16 +155,33 @@ pub async fn generate_thumbnail(media_path: &Path) -> Option<PathBuf> {
         .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
         .unwrap_or(false);
 
+    if is_image {
+        let src = media_path.to_path_buf();
+        let dst = thumb_path.clone();
+        let res = tokio::task::spawn_blocking(move || {
+            if let Ok(img) = image::open(&src) {
+                let thumb = img.thumbnail(480, 270);
+                if thumb.save(&dst).is_ok() && dst.exists() {
+                    return Some(dst);
+                }
+            }
+            None
+        }).await.ok().flatten();
+
+        if res.is_some() {
+            return res;
+        }
+    }
+
     let mut cmd = Command::new("ffmpeg");
-    cmd.arg("-y");
-    if !is_image {
-        cmd.arg("-ss").arg("00:00:01");
-    }
-    cmd.arg("-i").arg(media_path);
-    if !is_image {
-        cmd.arg("-an").arg("-sn");
-    }
-    cmd.arg("-vframes")
+    cmd.arg("-y")
+        .arg("-ss")
+        .arg("00:00:01")
+        .arg("-i")
+        .arg(media_path)
+        .arg("-an")
+        .arg("-sn")
+        .arg("-vframes")
         .arg("1")
         .arg("-vf")
         .arg("scale=480:-1")
