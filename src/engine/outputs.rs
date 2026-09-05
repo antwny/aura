@@ -94,7 +94,31 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
         }
     }
 
-    // 3. Absolute fallback to wildcard (All monitors)
+    // 3. Fallback to mpvpaper -d if cosmic-randr and wlr-randr were not available
+    if outputs.is_empty() {
+        if let Ok(output) = Command::new("mpvpaper").arg("-d").output() {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Some(rest) = line.strip_prefix("[*] Output") {
+                        let name = rest.trim_start_matches(':').split_whitespace().next().unwrap_or("");
+                        if !name.is_empty() && name != "found" {
+                            outputs.push(MonitorOutput {
+                                name: name.to_string(),
+                                description: name.to_string(),
+                                resolution: "Native".into(),
+                                width: 1920,
+                                height: 1080,
+                                is_primary: outputs.is_empty(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Absolute fallback to wildcard (All monitors)
     if outputs.is_empty() {
         outputs.push(MonitorOutput {
             name: "*".to_string(),

@@ -28,22 +28,83 @@ fn default_language() -> String {
     crate::i18n::detect_system_language().code().to_string()
 }
 
+fn resolve_xdg_user_dir(name: &str) -> Option<PathBuf> {
+    if let Ok(output) = std::process::Command::new("xdg-user-dir").arg(name).output() {
+        if output.status.success() {
+            let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                let p = PathBuf::from(path_str);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn default_library_dirs() -> Vec<String> {
+    let mut dirs = Vec::new();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+
+    // 1. Online downloaded wallpapers dir (always first)
+    let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
+    dirs.push(online_dir);
+
+    // 2. Localized XDG user directories (Videos, Pictures, Download)
+    if let Some(v) = resolve_xdg_user_dir("VIDEOS") {
+        let s = v.to_string_lossy().to_string();
+        if !dirs.contains(&s) { dirs.push(s); }
+    }
+    if let Some(p) = resolve_xdg_user_dir("PICTURES") {
+        let s = p.to_string_lossy().to_string();
+        if !dirs.contains(&s) { dirs.push(s); }
+        let wall_sub = p.join("Wallpapers");
+        if wall_sub.exists() {
+            let s = wall_sub.to_string_lossy().to_string();
+            if !dirs.contains(&s) { dirs.push(s); }
+        }
+    }
+    if let Some(d) = resolve_xdg_user_dir("DOWNLOAD") {
+        let s = d.to_string_lossy().to_string();
+        if !dirs.contains(&s) { dirs.push(s); }
+    }
+
+    // 3. Fallback standard candidates (multilingual & common paths)
+    let candidates = [
+        format!("{}/Wallpapers/Aura", home),
+        format!("{}/Wallpapers", home),
+        format!("{}/Fondos", home),
+        format!("{}/Vídeos", home),
+        format!("{}/Videos", home),
+        format!("{}/Imágenes", home),
+        format!("{}/Pictures", home),
+        format!("{}/Descargas", home),
+        format!("{}/Downloads", home),
+    ];
+
+    for c in candidates {
+        if std::path::Path::new(&c).exists() && !dirs.contains(&c) {
+            dirs.push(c);
+        }
+    }
+
+    // If only online_dir is found, keep common paths so user sees where to place files
+    if dirs.len() <= 1 {
+        dirs.push(format!("{}/Videos", home));
+        dirs.push(format!("{}/Wallpapers", home));
+        dirs.push(format!("{}/Downloads", home));
+    }
+
+    dirs
+}
+
 impl Default for Config {
     fn default() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        let default_dirs = vec![
-            format!("{}/.local/share/aura/wallpapers/online", home),
-            format!("{}/Wallpapers/Aura", home),
-            format!("{}/Wallpapers/Papyrus", home),
-            format!("{}/Wallpapers", home),
-            format!("{}/Videos", home),
-            format!("{}/Downloads", home),
-        ];
-
         Self {
             current: None,
             wallpapers: HashMap::new(),
-            dirs: default_dirs,
+            dirs: default_library_dirs(),
             custom_videos: Vec::new(),
             output: "*".into(),
             scaling: HashMap::new(),
@@ -64,6 +125,11 @@ impl Default for Config {
 
 impl Config {
     pub fn config_dir() -> PathBuf {
+        if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+            if !xdg.is_empty() {
+                return PathBuf::from(xdg).join("aura");
+            }
+        }
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
         PathBuf::from(home).join(".config").join("aura")
     }
@@ -80,6 +146,15 @@ impl Config {
                     let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
                     if !cfg.dirs.contains(&online_dir) {
                         cfg.dirs.insert(0, online_dir);
+                    }
+                    // If all dirs in config no longer exist, refresh with default library dirs
+                    let has_valid_dir = cfg.dirs.iter().any(|d| std::path::Path::new(d).exists());
+                    if !has_valid_dir {
+                        for d in default_library_dirs() {
+                            if !cfg.dirs.contains(&d) {
+                                cfg.dirs.push(d);
+                            }
+                        }
                     }
                     return cfg;
                 }

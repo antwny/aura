@@ -170,6 +170,7 @@ impl cosmic::Application for AuraApp {
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let config = Config::load();
+        let _ = config.save();
         let language = crate::i18n::Language::from_code(&config.language);
         let nav = Self::build_nav(language, Page::Library);
 
@@ -1117,6 +1118,7 @@ impl cosmic::Application for AuraApp {
                 self.downloading_online_ids.remove(&id);
                 // Rescan library to immediately include this wallpaper in the local catalog
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                let _ = self.config.save();
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.status_message = Some(format!("{} ({})", self.language.explore_toast_downloaded(), fname));
                 self.status_timer = 5;

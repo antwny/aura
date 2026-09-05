@@ -35,7 +35,7 @@ impl WallpaperEngine {
 
         let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
 
-        let child = Command::new("mpvpaper")
+        let child = match Command::new("mpvpaper")
             .arg("-p") // Wayland layer-shell compositor native auto-pause when obscured
             .arg("-o")
             .arg(&opts)
@@ -44,7 +44,13 @@ impl WallpaperEngine {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()?;
+            .spawn() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[Aura Engine] Error al iniciar mpvpaper: {} (output: {}, video: {})", e, output, video_path);
+                    return Err(e);
+                }
+            };
 
         let pid = child.id();
         self.processes.insert(output.to_string(), child);

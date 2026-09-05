@@ -2,8 +2,18 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 pub fn get_cache_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".cache").join("aura").join("thumbs")
+    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        if !xdg.is_empty() {
+            PathBuf::from(xdg)
+        } else {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            PathBuf::from(home).join(".cache")
+        }
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        PathBuf::from(home).join(".cache")
+    };
+    base.join("aura/thumbs")
 }
 
 pub fn thumb_path_for_video(video_path: &Path) -> PathBuf {

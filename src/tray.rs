@@ -175,7 +175,11 @@ impl TrayController {
     pub fn spawn_service(&self, tray: AuraTray) {
         let handle_store = self.handle.clone();
         tokio::spawn(async move {
-            match tray.spawn().await {
+            let is_sandboxed = std::path::Path::new("/.flatpak-info").exists()
+                || std::env::var_os("FLATPAK_ID").is_some()
+                || std::env::var_os("SNAP").is_some();
+            let builder = tray.disable_dbus_name(is_sandboxed);
+            match builder.spawn().await {
                 Ok(handle) => {
                     *handle_store.lock().unwrap() = Some(handle);
                 }
