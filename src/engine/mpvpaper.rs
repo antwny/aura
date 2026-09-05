@@ -190,6 +190,7 @@ impl WallpaperEngine {
     }
 }
 
+#[allow(dead_code)]
 pub fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }

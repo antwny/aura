@@ -170,7 +170,7 @@ impl cosmic::Application for AuraApp {
         &mut self.core
     }
 
-    fn init(core: Core, flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
+    fn init(mut core: Core, flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let config = Config::load();
         let _ = config.save();
         let language = crate::i18n::Language::from_code(&config.language);
@@ -191,6 +191,7 @@ impl cosmic::Application for AuraApp {
             if let Some(id) = core.main_window_id() {
                 tasks.push(cosmic::iced::window::close(id));
             }
+            core.set_main_window_id(None);
         }
 
         for item in &videos {
@@ -299,6 +300,10 @@ impl cosmic::Application for AuraApp {
 
     fn dbus_activation(&mut self, _msg: cosmic::dbus_activation::Message) -> Task<cosmic::Action<Self::Message>> {
         Task::done(cosmic::Action::App(Message::ShowMainWindow))
+    }
+
+    fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
+        self.view()
     }
 
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
