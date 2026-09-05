@@ -112,7 +112,9 @@ fn handle_window_events(
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct AuraFlags;
+pub struct AuraFlags {
+    pub hidden: bool,
+}
 
 impl cosmic::app::CosmicFlags for AuraFlags {
     type SubCommand = String;
@@ -168,7 +170,7 @@ impl cosmic::Application for AuraApp {
         &mut self.core
     }
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
+    fn init(core: Core, flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let config = Config::load();
         let _ = config.save();
         let language = crate::i18n::Language::from_code(&config.language);
@@ -176,11 +178,21 @@ impl cosmic::Application for AuraApp {
 
         let outputs = detect_outputs();
         let selected_output = outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
-        let autostart_active = WallpaperEngine::is_autostart_enabled();
+        let autostart_active = config.autostart || WallpaperEngine::is_autostart_enabled();
+        if autostart_active && !WallpaperEngine::is_autostart_enabled() {
+            let _ = WallpaperEngine::write_autostart();
+        }
+
         let videos = scan_directories(&config.dirs, &config.custom_videos);
 
         // Spawn async background thumbnail generation
         let mut tasks = Vec::new();
+        if flags.hidden {
+            if let Some(id) = core.main_window_id() {
+                tasks.push(cosmic::iced::window::close(id));
+            }
+        }
+
         for item in &videos {
             if item.thumb_path.is_none() {
                 let v_path = item.path.clone();
@@ -220,6 +232,8 @@ impl cosmic::Application for AuraApp {
             }
         }
 
+        let is_window_open = !flags.hidden;
+
         let app = Self {
             core,
             nav,
@@ -236,7 +250,7 @@ impl cosmic::Application for AuraApp {
             status_timer: 0,
             is_paused: false,
             tray_controller,
-            is_window_open: true,
+            is_window_open,
             explore_source: OnlineSource::Bing,
             bing_wallpapers: Vec::new(),
             wallhaven_wallpapers: Vec::new(),
@@ -518,9 +532,6 @@ impl cosmic::Application for AuraApp {
                         }
                     }
 
-                    if self.autostart_active {
-                        let _ = self.engine.write_autostart(&self.config.wallpapers, &self.config.scaling, mute, &hwdec);
-                    }
                 }
             }
 
@@ -554,9 +565,6 @@ impl cosmic::Application for AuraApp {
                 self.status_timer = 5;
                 self.is_paused = false;
                 let _ = self.config.save();
-                if self.autostart_active {
-                    let _ = self.engine.write_autostart(&self.config.wallpapers, &self.config.scaling, self.config.mute, &self.config.hwdec);
-                }
 
                 let current_title = self.config.current.as_ref()
                     .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
@@ -576,13 +584,21 @@ impl cosmic::Application for AuraApp {
 
             Message::ToggleAutostart(active) => {
                 self.autostart_active = active;
+                self.config.autostart = active;
                 if active {
-                    let _ = self.engine.write_autostart(&self.config.wallpapers, &self.config.scaling, self.config.mute, &self.config.hwdec);
-                    self.status_message = Some("Inicio automático activado".into());
+                    let _ = WallpaperEngine::write_autostart();
+                    self.status_message = Some(match self.language {
+                        crate::i18n::Language::Es => "Inicio automático activado".into(),
+                        crate::i18n::Language::En => "Autostart enabled".into(),
+                    });
                 } else {
                     let _ = WallpaperEngine::remove_autostart();
-                    self.status_message = Some("Inicio automático desactivado".into());
+                    self.status_message = Some(match self.language {
+                        crate::i18n::Language::Es => "Inicio automático desactivado".into(),
+                        crate::i18n::Language::En => "Autostart disabled".into(),
+                    });
                 }
+                let _ = self.config.save();
                 self.status_timer = 5;
             }
 

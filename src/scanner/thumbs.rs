@@ -66,8 +66,17 @@ mod tests {
     }
 }
 
+static THUMB_SEMAPHORE: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+
 pub async fn generate_thumbnail(video_path: &Path) -> Option<PathBuf> {
     let thumb_path = thumb_path_for_video(video_path);
+    if thumb_path.exists() {
+        return Some(thumb_path);
+    }
+
+    let sem = THUMB_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(2));
+    let _permit = sem.acquire().await.ok()?;
+
     if thumb_path.exists() {
         return Some(thumb_path);
     }
@@ -82,6 +91,8 @@ pub async fn generate_thumbnail(video_path: &Path) -> Option<PathBuf> {
         .arg("00:00:01")
         .arg("-i")
         .arg(video_path)
+        .arg("-an")
+        .arg("-sn")
         .arg("-vframes")
         .arg("1")
         .arg("-vf")

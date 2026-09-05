@@ -23,6 +23,8 @@ finish-args:
   - --filesystem=xdg-pictures:rw
   - --filesystem=xdg-videos:rw
   - --filesystem=xdg-download:rw
+  # Autostart desktop entry creation on host
+  - --filesystem=xdg-config/autostart:create
   # flathub-linter: skip=finish-args-unnecessary-xdg-config-cosmic-rw-access
   - --filesystem=xdg-config/cosmic:rw
   # COSMIC Desktop auto-theming integration

@@ -20,6 +20,8 @@ pub struct Config {
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
     pub smart_pause: bool,
     pub keep_running_on_close: bool,
+    #[serde(default)]
+    pub autostart: bool,
     #[serde(default = "default_language")]
     pub language: String,
 }
@@ -118,6 +120,7 @@ impl Default for Config {
             hwdec: "auto-safe".into(),
             smart_pause: true,
             keep_running_on_close: true,
+            autostart: false,
             language: default_language(),
         }
     }
@@ -189,6 +192,7 @@ mod tests {
         assert_eq!(cfg.hwdec, "auto-safe");
         assert_eq!(cfg.output, "*");
         assert!(!cfg.dirs.is_empty());
+        assert!(!cfg.autostart);
     }
 
     #[test]

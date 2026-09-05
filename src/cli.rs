@@ -47,7 +47,7 @@ pub fn handle_cli(args: &[String]) -> bool {
             println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
             true
         }
-        "gui" => false, // Explicit GUI request
+        "gui" | "--hidden" | "--daemon" | "-d" => false, // Explicit GUI or background launch
         other => {
             // If passed a video path directly: `aura video.mp4`
             let p = Path::new(other);
@@ -252,6 +252,13 @@ mod tests {
     fn test_handle_cli_gui_flag() {
         let args = vec!["aura".to_string(), "gui".to_string()];
         assert_eq!(handle_cli(&args), false);
+    }
+
+    #[test]
+    fn test_handle_cli_daemon_flag() {
+        assert_eq!(handle_cli(&["aura".into(), "--hidden".into()]), false);
+        assert_eq!(handle_cli(&["aura".into(), "--daemon".into()]), false);
+        assert_eq!(handle_cli(&["aura".into(), "-d".into()]), false);
     }
 
     #[test]

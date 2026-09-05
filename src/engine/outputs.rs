@@ -24,8 +24,12 @@ impl MonitorOutput {
 pub fn detect_outputs() -> Vec<MonitorOutput> {
     let mut outputs = Vec::new();
 
-    // 1. Try cosmic-randr (Official COSMIC Wayland display manager)
-    if let Ok(output) = Command::new("cosmic-randr").arg("list").output() {
+    let is_sandboxed = std::path::Path::new("/.flatpak-info").exists()
+        || std::env::var_os("FLATPAK_ID").is_some();
+
+    // 1. Try cosmic-randr (Official COSMIC Wayland display manager, native only)
+    if !is_sandboxed {
+        if let Ok(output) = Command::new("cosmic-randr").arg("list").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let mut current_name = String::new();
@@ -67,26 +71,27 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                     is_primary: outputs.is_empty(),
                 });
             }
+            }
         }
-    }
 
-    // 2. Fallback to wlr-randr if cosmic-randr had no outputs
-    if outputs.is_empty() {
-        if let Ok(output) = Command::new("wlr-randr").output() {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    if line.contains(" connected") || (line.chars().next().map_or(false, |c| !c.is_whitespace()) && !line.starts_with(" ")) {
-                        let name = line.split_whitespace().next().unwrap_or("");
-                        if !name.is_empty() {
-                            outputs.push(MonitorOutput {
-                                name: name.to_string(),
-                                description: name.to_string(),
-                                resolution: "1920x1080".into(),
-                                width: 1920,
-                                height: 1080,
-                                is_primary: outputs.is_empty(),
-                            });
+        // 2. Fallback to wlr-randr if cosmic-randr had no outputs
+        if outputs.is_empty() {
+            if let Ok(output) = Command::new("wlr-randr").output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if line.contains(" connected") || (line.chars().next().map_or(false, |c| !c.is_whitespace()) && !line.starts_with(" ")) {
+                            let name = line.split_whitespace().next().unwrap_or("");
+                            if !name.is_empty() {
+                                outputs.push(MonitorOutput {
+                                    name: name.to_string(),
+                                    description: name.to_string(),
+                                    resolution: "1920x1080".into(),
+                                    width: 1920,
+                                    height: 1080,
+                                    is_primary: outputs.is_empty(),
+                                });
+                            }
                         }
                     }
                 }
@@ -94,7 +99,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
         }
     }
 
-    // 3. Fallback to mpvpaper -d if cosmic-randr and wlr-randr were not available
+    // 3. Fallback to mpvpaper -d (or primary for sandboxed Flatpak)
     if outputs.is_empty() {
         if let Ok(output) = Command::new("mpvpaper").arg("-d").output() {
             if output.status.success() {
