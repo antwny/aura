@@ -135,8 +135,8 @@ impl Language {
 
     pub fn library_active(&self) -> &'static str {
         match self {
-            Language::Es => "★ Activo",
-            Language::En => "★ Active",
+            Language::Es => "En uso",
+            Language::En => "Active",
         }
     }
 
@@ -144,6 +144,41 @@ impl Language {
         match self {
             Language::Es => "Aplicar",
             Language::En => "Apply",
+        }
+    }
+
+    pub fn library_filter_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Todos",
+            Language::En => "All",
+        }
+    }
+
+    pub fn library_filter_live(&self) -> &'static str {
+        match self {
+            Language::Es => "Animados",
+            Language::En => "Live",
+        }
+    }
+
+    pub fn library_filter_static(&self) -> &'static str {
+        match self {
+            Language::Es => "Estáticos",
+            Language::En => "Static",
+        }
+    }
+
+    pub fn library_filter_downloaded(&self) -> &'static str {
+        match self {
+            Language::Es => "Descargados",
+            Language::En => "Downloaded",
+        }
+    }
+
+    pub fn library_filter_empty(&self) -> &'static str {
+        match self {
+            Language::Es => "No se encontraron fondos en esta categoría o búsqueda",
+            Language::En => "No wallpapers found in this category or search",
         }
     }
 
@@ -818,6 +853,11 @@ mod tests {
             assert!(!lang.explore_sort_top().is_empty());
             assert!(!lang.explore_sort_hot().is_empty());
             assert!(!lang.explore_sort_random().is_empty());
+            assert!(!lang.library_filter_all().is_empty());
+            assert!(!lang.library_filter_live().is_empty());
+            assert!(!lang.library_filter_static().is_empty());
+            assert!(!lang.library_filter_downloaded().is_empty());
+            assert!(!lang.library_filter_empty().is_empty());
         }
     }
 

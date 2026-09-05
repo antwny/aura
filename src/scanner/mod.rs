@@ -19,12 +19,42 @@ pub struct VideoItem {
     pub thumb_path: Option<PathBuf>,
 }
 
+impl VideoItem {
+    pub fn is_video(&self) -> bool {
+        self.path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false)
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false)
+    }
+
+    pub fn is_downloaded(&self) -> bool {
+        let online_dir = crate::online::wallpapers_online_dir();
+        self.path.starts_with(&online_dir)
+    }
+}
+
 pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoItem> {
     let mut items = Vec::new();
     let mut seen_paths = std::collections::HashSet::new();
 
+    // Ensure the online wallpapers dir is always scanned
+    let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
+    let mut all_dirs = dirs.to_vec();
+    if !all_dirs.contains(&online_dir) {
+        all_dirs.insert(0, online_dir);
+    }
+
     // 1. Scan configured directories
-    for dir_str in dirs {
+    for dir_str in &all_dirs {
         let dir = Path::new(dir_str);
         if !dir.exists() {
             continue;
@@ -37,7 +67,7 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                     if is_supported_wallpaper_ext(ext) {
                         let canonical = path.to_path_buf();
                         if seen_paths.insert(canonical.clone()) {
-                            let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
+                            let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Wallpaper".into());
                             let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
                             let size_formatted = format_file_size(size_bytes);
 
@@ -71,7 +101,7 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
         if path.is_file() {
             let canonical = path.to_path_buf();
             if seen_paths.insert(canonical.clone()) {
-                let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
+                let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Wallpaper".into());
                 let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
                 let size_formatted = format_file_size(size_bytes);
 
@@ -151,4 +181,28 @@ mod tests {
         assert!(!is_supported_wallpaper_ext("exe"));
         assert!(!is_supported_wallpaper_ext("txt"));
     }
+
+    #[test]
+    fn test_video_item_methods() {
+        let vid = VideoItem {
+            path: PathBuf::from("/home/antwny/Videos/cool.mp4"),
+            name: "cool".into(),
+            size_formatted: "10 MB".into(),
+            thumb_path: None,
+        };
+        assert!(vid.is_video());
+        assert!(!vid.is_image());
+        assert!(!vid.is_downloaded());
+
+        let img = VideoItem {
+            path: crate::online::wallpapers_online_dir().join("bing_123.jpg"),
+            name: "bing_123".into(),
+            size_formatted: "2 MB".into(),
+            thumb_path: None,
+        };
+        assert!(!img.is_video());
+        assert!(img.is_image());
+        assert!(img.is_downloaded());
+    }
 }
+

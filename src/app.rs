@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
-use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, VIDEO_EXTENSIONS};
+use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
 use crate::theme::apply_cosmic_theme;
 use crate::online::{
     download_to_file, fetch_bing_archive_page, fetch_bing_wallpapers,
@@ -24,10 +24,20 @@ pub enum Page {
     About,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LibraryFilter {
+    #[default]
+    All,
+    Live,
+    Static,
+    Downloaded,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Message {
     SelectPage(nav_bar::Id),
+    SelectLibraryFilter(LibraryFilter),
     SetLanguage(crate::i18n::Language),
     ApplyWallpaper { video_path: PathBuf, output: String },
     StopWallpaper(Option<String>),
@@ -138,6 +148,7 @@ pub struct AuraApp {
     wallhaven_category: String,
     wallhaven_sorting: String,
     wallhaven_search: String,
+    library_filter: LibraryFilter,
 }
 
 impl cosmic::Application for AuraApp {
@@ -228,6 +239,7 @@ impl cosmic::Application for AuraApp {
             wallhaven_category: "110".into(),
             wallhaven_sorting: "toplist".into(),
             wallhaven_search: String::new(),
+            library_filter: LibraryFilter::All,
         };
 
         (app, Task::batch(tasks))
@@ -273,10 +285,12 @@ impl cosmic::Application for AuraApp {
         vec![
             Element::from(
                 widget::button::suggested(self.language.header_add_video())
+                    .leading_icon(widget::icon::from_name("list-add-symbolic"))
                     .on_press(Message::PickVideoFile)
             ),
             Element::from(
                 widget::button::standard(self.language.header_add_folder())
+                    .leading_icon(widget::icon::from_name("folder-symbolic"))
                     .on_press(Message::PickFolder)
             ),
         ]
@@ -806,6 +820,10 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
+            Message::SelectLibraryFilter(filter) => {
+                self.library_filter = filter;
+            }
+
             Message::SelectExploreSource(source) => {
                 self.explore_source = source;
                 let need_fetch = match source {
@@ -1200,19 +1218,58 @@ impl AuraApp {
             .on_input(Message::SearchChanged)
             .width(Length::Fill);
 
-        let filtered_videos: Vec<VideoItem> = self.videos
-            .iter()
-            .filter(|v| {
-                if self.search_query.trim().is_empty() {
-                    true
-                } else {
-                    v.name.to_lowercase().contains(&self.search_query.to_lowercase())
-                }
-            })
-            .cloned()
-            .collect();
+        // Quick category filter counts
+        let count_all = self.videos.len();
+        let count_live = self.videos.iter().filter(|v| v.is_video()).count();
+        let count_static = self.videos.iter().filter(|v| v.is_image()).count();
+        let count_downloaded = self.videos.iter().filter(|v| v.is_downloaded()).count();
 
-        if filtered_videos.is_empty() {
+        let all_btn = if self.library_filter == LibraryFilter::All {
+            widget::button::suggested(format!("{} ({})", self.language.library_filter_all(), count_all))
+        } else {
+            widget::button::standard(format!("{} ({})", self.language.library_filter_all(), count_all))
+        }
+        .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+        .on_press(Message::SelectLibraryFilter(LibraryFilter::All));
+
+        let live_btn = if self.library_filter == LibraryFilter::Live {
+            widget::button::suggested(format!("{} ({})", self.language.library_filter_live(), count_live))
+        } else {
+            widget::button::standard(format!("{} ({})", self.language.library_filter_live(), count_live))
+        }
+        .leading_icon(widget::icon::from_name("video-x-generic-symbolic"))
+        .on_press(Message::SelectLibraryFilter(LibraryFilter::Live));
+
+        let static_btn = if self.library_filter == LibraryFilter::Static {
+            widget::button::suggested(format!("{} ({})", self.language.library_filter_static(), count_static))
+        } else {
+            widget::button::standard(format!("{} ({})", self.language.library_filter_static(), count_static))
+        }
+        .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
+        .on_press(Message::SelectLibraryFilter(LibraryFilter::Static));
+
+        let downloaded_btn = if self.library_filter == LibraryFilter::Downloaded {
+            widget::button::suggested(format!("{} ({})", self.language.library_filter_downloaded(), count_downloaded))
+        } else {
+            widget::button::standard(format!("{} ({})", self.language.library_filter_downloaded(), count_downloaded))
+        }
+        .leading_icon(widget::icon::from_name("folder-download-symbolic"))
+        .on_press(Message::SelectLibraryFilter(LibraryFilter::Downloaded));
+
+        let filter_bar = widget::row::with_capacity(4)
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .push(all_btn)
+            .push(live_btn)
+            .push(static_btn)
+            .push(downloaded_btn);
+
+        let top_section = widget::column::with_capacity(2)
+            .spacing(10)
+            .push(search_bar)
+            .push(filter_bar);
+
+        if self.videos.is_empty() {
             let empty_msg = widget::column::with_capacity(4)
                 .spacing(14)
                 .align_x(Horizontal::Center)
@@ -1221,8 +1278,16 @@ impl AuraApp {
                 .push(
                     widget::row::with_capacity(2)
                         .spacing(12)
-                        .push(widget::button::suggested(self.language.library_btn_add_video()).on_press(Message::PickVideoFile))
-                        .push(widget::button::standard(self.language.library_btn_add_folder()).on_press(Message::PickFolder))
+                        .push(
+                            widget::button::suggested(self.language.library_btn_add_video())
+                                .leading_icon(widget::icon::from_name("list-add-symbolic"))
+                                .on_press(Message::PickVideoFile)
+                        )
+                        .push(
+                            widget::button::standard(self.language.library_btn_add_folder())
+                                .leading_icon(widget::icon::from_name("folder-symbolic"))
+                                .on_press(Message::PickFolder)
+                        )
                 );
 
             return Element::from(
@@ -1234,8 +1299,56 @@ impl AuraApp {
             );
         }
 
+        let filtered_videos: Vec<VideoItem> = self.videos
+            .iter()
+            .filter(|v| {
+                let matches_filter = match self.library_filter {
+                    LibraryFilter::All => true,
+                    LibraryFilter::Live => v.is_video(),
+                    LibraryFilter::Static => v.is_image(),
+                    LibraryFilter::Downloaded => v.is_downloaded(),
+                };
+                if !matches_filter {
+                    return false;
+                }
+
+                if self.search_query.trim().is_empty() {
+                    true
+                } else {
+                    v.name.to_lowercase().contains(&self.search_query.to_lowercase())
+                }
+            })
+            .cloned()
+            .collect();
+
+        if filtered_videos.is_empty() {
+            let empty_filter_msg = widget::container(
+                widget::column::with_capacity(2)
+                    .spacing(14)
+                    .align_x(Horizontal::Center)
+                    .push(widget::text::title3(self.language.library_filter_empty()))
+                    .push(
+                        widget::button::standard(self.language.library_filter_all())
+                            .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                            .on_press(Message::SelectLibraryFilter(LibraryFilter::All))
+                    )
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center);
+
+            return Element::from(
+                widget::column::with_capacity(2)
+                    .spacing(14)
+                    .push(top_section)
+                    .push(empty_filter_msg)
+            );
+        }
+
         let selected_output = self.selected_output.clone();
         let active_wallpapers = self.config.wallpapers.clone();
+        let current_wall = self.config.current.clone();
 
         // Responsive reflow grid adapting dynamically to window resize!
         let grid = widget::responsive(move |size| {
@@ -1251,7 +1364,9 @@ impl AuraApp {
             for chunk in filtered_videos.chunks(cols) {
                 let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
                 for video in chunk {
-                    let is_active = active_wallpapers.values().any(|p| p == &video.path.to_string_lossy());
+                    let path_str = video.path.to_string_lossy();
+                    let is_active = active_wallpapers.values().any(|p| p == &path_str)
+                        || current_wall.as_deref() == Some(&path_str);
 
                     let mut card_content = widget::column::with_capacity(5).spacing(8).padding(12);
 
@@ -1277,10 +1392,13 @@ impl AuraApp {
                     let size_lbl = widget::text::caption(video.size_formatted.clone());
                     card_content = card_content.push(title).push(size_lbl);
 
+                    // Standardized action buttons with native COSMIC symbolic icons
                     let apply_btn = if is_active {
                         widget::button::suggested(self.language.library_active())
+                            .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
                     } else {
                         widget::button::standard(self.language.library_apply())
+                            .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
                     }.on_press(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
                         output: selected_output.clone(),
@@ -1304,7 +1422,7 @@ impl AuraApp {
         Element::from(
             widget::column::with_capacity(2)
                 .spacing(14)
-                .push(search_bar)
+                .push(top_section)
                 .push(scroll)
         )
     }
@@ -1646,17 +1764,40 @@ impl AuraApp {
             .align_y(Alignment::End);
 
         for monitor in &self.outputs {
-            let active_wall = self.config.wallpapers.get(&monitor.name);
-            let active_scaling = self.config.scaling.get(&monitor.name).map(|s| s.as_str()).unwrap_or("fit");
+            let active_wall = self.config.wallpapers.get(&monitor.name)
+                .or_else(|| self.config.wallpapers.get("*"))
+                .or_else(|| self.config.current.as_ref());
+            let active_scaling = self.config.scaling.get(&monitor.name)
+                .or_else(|| self.config.scaling.get("*"))
+                .map(|s| s.as_str())
+                .unwrap_or("fit");
 
             let screen_w = 260.0f32;
 
-            // Screen frame representation
+            // Screen frame representation with image & video thumbnail support
             let screen_display: Element<'_, Message> = if let Some(wall_path) = active_wall {
-                let thumb = crate::scanner::thumbs::thumb_path_for_video(std::path::Path::new(wall_path));
-                if thumb.exists() {
+                let p = std::path::Path::new(wall_path);
+                let is_image = p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                    .unwrap_or(false);
+
+                let display_thumb = if is_image && p.exists() {
+                    Some(p.to_path_buf())
+                } else {
+                    let thumb = crate::scanner::thumbs::thumb_path_for_video(p);
+                    if thumb.exists() {
+                        Some(thumb)
+                    } else if p.exists() && is_image {
+                        Some(p.to_path_buf())
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(thumb_path) = display_thumb {
                     Element::from(
-                        widget::button::image(thumb.to_string_lossy().to_string())
+                        widget::button::image(thumb_path.to_string_lossy().to_string())
                             .width(screen_w)
                             .selected(true)
                     )
@@ -1706,6 +1847,7 @@ impl AuraApp {
                         )
                         .push(
                             widget::button::destructive(self.language.monitors_stop())
+                                .leading_icon(widget::icon::from_name("process-stop-symbolic"))
                                 .on_press(Message::StopWallpaper(Some(monitor.name.clone())))
                         )
                 );

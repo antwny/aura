@@ -76,7 +76,11 @@ impl Config {
         let path = Self::config_file();
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(cfg) = serde_json::from_str::<Config>(&content) {
+                if let Ok(mut cfg) = serde_json::from_str::<Config>(&content) {
+                    let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
+                    if !cfg.dirs.contains(&online_dir) {
+                        cfg.dirs.insert(0, online_dir);
+                    }
                     return cfg;
                 }
             }
