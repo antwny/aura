@@ -7,7 +7,7 @@ struct BingApiResponse {
     images: Option<Vec<BingImage>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct BingImage {
     urlbase: Option<String>,
     copyright: Option<String>,
@@ -59,6 +59,73 @@ pub async fn fetch_bing_wallpapers(client: &reqwest::Client) -> Result<Vec<Onlin
 
     if items.is_empty() {
         return Err("Could not load wallpapers from Bing. Check your internet connection.".into());
+    }
+
+    Ok(items)
+}
+
+#[derive(Debug, Deserialize)]
+struct BingArchiveRoot {
+    data: Option<Vec<BingImage>>,
+}
+
+pub async fn fetch_bing_archive_page(
+    client: &reqwest::Client,
+    page: u32,
+    per_page: usize,
+) -> Result<Vec<OnlineWallpaperItem>, String> {
+    let cache_dir = crate::online::cache::thumbs_online_cache_dir();
+    let archive_cache = cache_dir.join("bing_archive.json");
+
+    let raw_json = if archive_cache.exists() {
+        tokio::fs::read_to_string(&archive_cache)
+            .await
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let raw_json = if raw_json.len() > 1000 {
+        raw_json
+    } else {
+        let archive_url = "https://raw.githubusercontent.com/zkeq/Bing-Wallpaper-Action/main/data/en-US_all.json";
+        let resp = client
+            .get(archive_url)
+            .timeout(Duration::from_secs(15))
+            .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download Bing archive: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Bing archive server returned HTTP {}", resp.status()));
+        }
+
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read archive body: {}", e))?;
+        let _ = tokio::fs::write(&archive_cache, &body).await;
+        body
+    };
+
+    let parsed: BingArchiveRoot = serde_json::from_str(&raw_json)
+        .map_err(|e| format!("Failed to parse Bing archive: {}", e))?;
+
+    let all_images = parsed.data.unwrap_or_default();
+    let start_idx = ((page.saturating_sub(1)) as usize) * per_page;
+    if start_idx >= all_images.len() {
+        return Ok(Vec::new());
+    }
+
+    let end_idx = (start_idx + per_page).min(all_images.len());
+    let slice = &all_images[start_idx..end_idx];
+
+    let mut items = Vec::new();
+    for img in slice.iter().cloned() {
+        if let Some(item) = convert_bing_image(img) {
+            items.push(item);
+        }
     }
 
     Ok(items)
@@ -120,6 +187,28 @@ mod tests {
         assert_eq!(item.source, OnlineSource::Bing);
         assert!(item.full_url.contains("/th?id=OHR.MountFuji_EN-US123_UHD.jpg"));
         assert!(item.thumb_url.contains("480"));
+    }
+
+    #[test]
+    fn test_parse_bing_archive_json() {
+        let json_data = r#"{
+            "Total": 1,
+            "data": [
+                {
+                    "startdate": "20260904",
+                    "urlbase": "/th?id=OHR.TestFuji_EN-US",
+                    "copyright": "Test (© Getty)",
+                    "title": "Fuji Wave",
+                    "hsh": "xyz999"
+                }
+            ]
+        }"#;
+
+        let parsed: BingArchiveRoot = serde_json::from_str(json_data).expect("Should parse Bing archive JSON");
+        assert!(parsed.data.is_some());
+        let list = parsed.data.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].hsh.as_deref(), Some("xyz999"));
     }
 }
 

@@ -22,12 +22,36 @@ struct WallhavenThumbs {
     small: Option<String>,
 }
 
-pub async fn fetch_wallhaven_wallpapers(client: &reqwest::Client) -> Result<Vec<OnlineWallpaperItem>, String> {
-    let url = "https://wallhaven.cc/api/v1/search?categories=110&purity=100&sorting=toplist&topRange=1M&resolutions=1920x1080,2560x1440,3840x2160";
+pub async fn fetch_wallhaven_wallpapers(
+    client: &reqwest::Client,
+    page: u32,
+    query: Option<&str>,
+    category: &str,
+    sorting: &str,
+) -> Result<Vec<OnlineWallpaperItem>, String> {
+    let mut params = vec![
+        ("categories", category.to_string()),
+        ("purity", "100".to_string()),
+        ("sorting", sorting.to_string()),
+        ("page", page.to_string()),
+        ("resolutions", "1920x1080,2560x1440,3840x2160".to_string()),
+    ];
+
+    if sorting == "toplist" {
+        params.push(("topRange", "1M".to_string()));
+    }
+
+    if let Some(q) = query {
+        let trimmed = q.trim();
+        if !trimmed.is_empty() {
+            params.push(("q", trimmed.to_string()));
+        }
+    }
 
     let resp = client
-        .get(url)
-        .timeout(Duration::from_secs(10))
+        .get("https://wallhaven.cc/api/v1/search")
+        .query(&params)
+        .timeout(Duration::from_secs(12))
         .header("User-Agent", "Aura-LiveWallpaper-Client/0.1.0")
         .send()
         .await

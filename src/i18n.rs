@@ -438,57 +438,57 @@ impl Language {
     // --- Explore View (Online Catalog) ---
     pub fn explore_source_bing(&self) -> &'static str {
         match self {
-            Language::Es => "🌅 Bing del Día",
-            Language::En => "🌅 Bing Daily",
+            Language::Es => "Bing del Día (4K)",
+            Language::En => "Bing Daily (4K)",
         }
     }
 
     pub fn explore_source_wallhaven(&self) -> &'static str {
         match self {
-            Language::Es => "🌌 Wallhaven (Top 4K)",
-            Language::En => "🌌 Wallhaven (Top 4K)",
+            Language::Es => "Wallhaven (Top 4K)",
+            Language::En => "Wallhaven (Top 4K)",
         }
     }
 
     pub fn explore_btn_download(&self) -> &'static str {
         match self {
-            Language::Es => "📥 Descargar",
-            Language::En => "📥 Download",
+            Language::Es => "Descargar",
+            Language::En => "Download",
         }
     }
 
     pub fn explore_btn_downloading(&self) -> &'static str {
         match self {
-            Language::Es => "⏳ Descargando...",
-            Language::En => "⏳ Downloading...",
+            Language::Es => "Descargando...",
+            Language::En => "Downloading...",
         }
     }
 
     pub fn explore_btn_apply(&self) -> &'static str {
         match self {
-            Language::Es => "✨ Aplicar",
-            Language::En => "✨ Apply",
+            Language::Es => "Aplicar",
+            Language::En => "Apply",
         }
     }
 
     pub fn explore_badge_active(&self) -> &'static str {
         match self {
-            Language::Es => "✓ En Uso",
-            Language::En => "✓ Active",
+            Language::Es => "En Uso",
+            Language::En => "Active",
         }
     }
 
     pub fn explore_featured_today(&self) -> &'static str {
         match self {
-            Language::Es => "⭐ Foto Destacada de Hoy (4K UHD)",
-            Language::En => "⭐ Daily Featured Photo (4K UHD)",
+            Language::Es => "Foto destacada de hoy en 4K UHD",
+            Language::En => "Daily featured photo in 4K UHD",
         }
     }
 
     pub fn explore_recent_title(&self) -> &'static str {
         match self {
-            Language::Es => "Galería & Archivo Online",
-            Language::En => "Online Gallery & Archive",
+            Language::Es => "Galería y archivo 4K",
+            Language::En => "4K gallery & archive",
         }
     }
 
@@ -508,15 +508,78 @@ impl Language {
 
     pub fn explore_btn_retry(&self) -> &'static str {
         match self {
-            Language::Es => "🔄 Reintentar conexión",
-            Language::En => "🔄 Retry connection",
+            Language::Es => "Reintentar conexión",
+            Language::En => "Retry connection",
         }
     }
 
     pub fn explore_toast_downloaded(&self) -> &'static str {
         match self {
-            Language::Es => "¡Fondo descargado y guardado en tu biblioteca!",
-            Language::En => "Wallpaper downloaded and saved to your library!",
+            Language::Es => "Fondo descargado y guardado en tu biblioteca",
+            Language::En => "Wallpaper downloaded and saved to your library",
+        }
+    }
+
+    pub fn explore_btn_load_more(&self) -> &'static str {
+        match self {
+            Language::Es => "Cargar más fondos",
+            Language::En => "Load more wallpapers",
+        }
+    }
+
+    pub fn explore_btn_loading_more(&self) -> &'static str {
+        match self {
+            Language::Es => "Cargando más fondos...",
+            Language::En => "Loading more wallpapers...",
+        }
+    }
+
+    pub fn explore_search_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar en Wallhaven (ej: anime, cyberpunk, nature)...",
+            Language::En => "Search Wallhaven (e.g. anime, cyberpunk, nature)...",
+        }
+    }
+
+    pub fn explore_cat_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Todos",
+            Language::En => "All",
+        }
+    }
+
+    pub fn explore_cat_anime(&self) -> &'static str {
+        match self {
+            Language::Es => "Anime",
+            Language::En => "Anime",
+        }
+    }
+
+    pub fn explore_cat_general(&self) -> &'static str {
+        match self {
+            Language::Es => "Naturaleza / General",
+            Language::En => "Nature / General",
+        }
+    }
+
+    pub fn explore_sort_top(&self) -> &'static str {
+        match self {
+            Language::Es => "Más Votados",
+            Language::En => "Top Rated",
+        }
+    }
+
+    pub fn explore_sort_hot(&self) -> &'static str {
+        match self {
+            Language::Es => "Tendencias",
+            Language::En => "Hot",
+        }
+    }
+
+    pub fn explore_sort_random(&self) -> &'static str {
+        match self {
+            Language::Es => "Aleatorio",
+            Language::En => "Random",
         }
     }
 
@@ -746,6 +809,15 @@ mod tests {
             assert!(!lang.tray_quit().is_empty());
             assert!(!lang.status_paused().is_empty());
             assert!(!lang.status_resumed().is_empty());
+            assert!(!lang.explore_btn_load_more().is_empty());
+            assert!(!lang.explore_btn_loading_more().is_empty());
+            assert!(!lang.explore_search_placeholder().is_empty());
+            assert!(!lang.explore_cat_all().is_empty());
+            assert!(!lang.explore_cat_anime().is_empty());
+            assert!(!lang.explore_cat_general().is_empty());
+            assert!(!lang.explore_sort_top().is_empty());
+            assert!(!lang.explore_sort_hot().is_empty());
+            assert!(!lang.explore_sort_random().is_empty());
         }
     }
 

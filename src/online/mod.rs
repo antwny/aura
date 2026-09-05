@@ -5,5 +5,5 @@ pub mod wallhaven;
 
 pub use models::{OnlineSource, OnlineWallpaperItem};
 pub use cache::download_to_file;
-pub use bing::fetch_bing_wallpapers;
+pub use bing::{fetch_bing_wallpapers, fetch_bing_archive_page};
 pub use wallhaven::fetch_wallhaven_wallpapers;
