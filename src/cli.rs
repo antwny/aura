@@ -5,63 +5,78 @@ use crate::theme::apply_cosmic_theme;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn handle_cli(args: &[String]) -> bool {
+pub fn is_pure_cli(args: &[String]) -> bool {
     if args.len() <= 1 {
-        return false; // No arguments, launch GUI
+        return false;
+    }
+    matches!(
+        args[1].as_str(),
+        "status" | "help" | "--help" | "-h" | "version" | "--version" | "-v" | "-V"
+    )
+}
+
+pub fn handle_pure_cli(args: &[String]) {
+    if args.len() <= 1 {
+        return;
+    }
+    match args[1].as_str() {
+        "status" => cmd_status(),
+        "help" | "--help" | "-h" => print_help(),
+        "version" | "--version" | "-v" | "-V" => {
+            println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
+        }
+        _ => {}
+    }
+}
+
+pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
+    if args.len() <= 1 {
+        return (false, None, Vec::new());
     }
 
     match args[1].as_str() {
-        "next" => {
-            cmd_next();
-            true
-        }
-        "prev" => {
-            cmd_prev();
-            true
-        }
-        "stop" => {
-            cmd_stop();
-            true
-        }
-        "toggle-pause" | "pause" => {
-            cmd_toggle_pause();
-            true
-        }
+        "gui" => (false, None, Vec::new()),
+        "--hidden" | "--daemon" | "-d" => (true, None, Vec::new()),
+        "next" => (true, Some("next".into()), Vec::new()),
+        "prev" => (true, Some("prev".into()), Vec::new()),
+        "stop" => (true, Some("stop".into()), Vec::new()),
+        "toggle-pause" | "pause" => (true, Some("toggle-pause".into()), Vec::new()),
         "apply" => {
             if args.len() >= 3 {
-                cmd_apply(&args[2]);
+                let target = resolve_path(&args[2]);
+                if !target.exists() {
+                    eprintln!("Error: El archivo '{}' no existe.", target.display());
+                    std::process::exit(1);
+                }
+                (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
             } else {
-                eprintln!("Uso: aura apply <ruta_al_video>");
+                eprintln!("Uso: aura apply <ruta_al_video_o_imagen>");
+                std::process::exit(1);
             }
-            true
         }
-        "status" => {
-            cmd_status();
-            true
-        }
-        "help" | "--help" | "-h" => {
-            print_help();
-            true
-        }
-        "version" | "--version" | "-v" | "-V" => {
-            println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
-            true
-        }
-        "gui" | "--hidden" | "--daemon" | "-d" => false, // Explicit GUI or background launch
         other => {
-            // If passed a video path directly: `aura video.mp4`
             let p = Path::new(other);
             if p.exists() && p.is_file() {
-                cmd_apply(other);
-                true
+                let target = resolve_path(other);
+                (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
             } else {
                 eprintln!("Comando desconocido: '{}'. Ejecuta 'aura help' para ver opciones.", other);
-                true
+                std::process::exit(1);
             }
         }
     }
 }
 
+fn resolve_path(p_str: &str) -> PathBuf {
+    let p = PathBuf::from(p_str);
+    if p.is_relative() {
+        std::env::current_dir().unwrap_or_default().join(&p)
+    } else {
+        p
+    }
+}
+
+#[allow(dead_code)]
 fn cmd_next() {
     let mut config = Config::load();
     let videos = scan_directories(&config.dirs, &config.custom_videos);
@@ -100,6 +115,7 @@ fn cmd_next() {
     }
 }
 
+#[allow(dead_code)]
 fn cmd_prev() {
     let mut config = Config::load();
     let videos = scan_directories(&config.dirs, &config.custom_videos);
@@ -136,6 +152,7 @@ fn cmd_prev() {
     }
 }
 
+#[allow(dead_code)]
 fn cmd_stop() {
     let mut engine = WallpaperEngine::new();
     engine.stop_all();
@@ -146,6 +163,7 @@ fn cmd_stop() {
     println!("⏹ Aura: Fondo animado detenido.");
 }
 
+#[allow(dead_code)]
 fn cmd_toggle_pause() {
     // Check if mpvpaper is running
     let status = Command::new("pkill").args(["-0", "-x", "mpvpaper"]).status();
@@ -163,6 +181,7 @@ fn cmd_toggle_pause() {
     }
 }
 
+#[allow(dead_code)]
 fn cmd_apply(path_arg: &str) {
     let p = PathBuf::from(path_arg);
     let full_path = if p.is_relative() {
@@ -243,45 +262,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_handle_cli_no_args_opens_gui() {
-        let args = vec!["aura".to_string()];
-        assert_eq!(handle_cli(&args), false);
+    fn test_is_pure_cli() {
+        assert_eq!(is_pure_cli(&["aura".into()]), false);
+        assert_eq!(is_pure_cli(&["aura".into(), "gui".into()]), false);
+        assert_eq!(is_pure_cli(&["aura".into(), "--hidden".into()]), false);
+        assert_eq!(is_pure_cli(&["aura".into(), "next".into()]), false);
+        assert_eq!(is_pure_cli(&["aura".into(), "help".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "--help".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "-h".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "version".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "-v".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "status".into()]), true);
     }
 
     #[test]
-    fn test_handle_cli_gui_flag() {
-        let args = vec!["aura".to_string(), "gui".to_string()];
-        assert_eq!(handle_cli(&args), false);
-    }
+    fn test_parse_flags() {
+        let (hidden, action, args) = parse_flags(&["aura".into()]);
+        assert_eq!(hidden, false);
+        assert_eq!(action, None);
+        assert!(args.is_empty());
 
-    #[test]
-    fn test_handle_cli_daemon_flag() {
-        assert_eq!(handle_cli(&["aura".into(), "--hidden".into()]), false);
-        assert_eq!(handle_cli(&["aura".into(), "--daemon".into()]), false);
-        assert_eq!(handle_cli(&["aura".into(), "-d".into()]), false);
-    }
+        let (hidden, action, _) = parse_flags(&["aura".into(), "--hidden".into()]);
+        assert_eq!(hidden, true);
+        assert_eq!(action, None);
 
-    #[test]
-    fn test_handle_cli_help() {
-        let args = vec!["aura".to_string(), "help".to_string()];
-        assert_eq!(handle_cli(&args), true);
+        let (hidden, action, _) = parse_flags(&["aura".into(), "next".into()]);
+        assert_eq!(hidden, true);
+        assert_eq!(action, Some("next".into()));
 
-        let args = vec!["aura".to_string(), "--help".to_string()];
-        assert_eq!(handle_cli(&args), true);
+        let (hidden, action, _) = parse_flags(&["aura".into(), "toggle-pause".into()]);
+        assert_eq!(hidden, true);
+        assert_eq!(action, Some("toggle-pause".into()));
 
-        let args = vec!["aura".to_string(), "-h".to_string()];
-        assert_eq!(handle_cli(&args), true);
-    }
-
-    #[test]
-    fn test_handle_cli_version() {
-        let args = vec!["aura".to_string(), "--version".to_string()];
-        assert_eq!(handle_cli(&args), true);
-
-        let args = vec!["aura".to_string(), "-v".to_string()];
-        assert_eq!(handle_cli(&args), true);
-
-        let args = vec!["aura".to_string(), "version".to_string()];
-        assert_eq!(handle_cli(&args), true);
+        let (hidden, action, _) = parse_flags(&["aura".into(), "stop".into()]);
+        assert_eq!(hidden, true);
+        assert_eq!(action, Some("stop".into()));
     }
 }

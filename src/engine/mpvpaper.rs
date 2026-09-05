@@ -27,11 +27,27 @@ impl WallpaperEngine {
         // Kill existing instance for this specific output first
         self.stop_output(output);
 
+        // Also cleanup external or orphaned mpvpaper processes to prevent multiple instances
+        let _ = Command::new("pkill")
+            .arg("-x")
+            .arg("mpvpaper")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
         let is_image = std::path::Path::new(video_path)
             .extension()
             .and_then(|e| e.to_str())
             .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
             .unwrap_or(false);
+
+        // Pre-scale large static images to screen resolution to prevent 400MB+ RAM and 1.2GB GTT usage
+        let effective_path = if is_image {
+            crate::scanner::thumbs::optimize_wallpaper_image(std::path::Path::new(video_path), 2560, 1440)
+        } else {
+            std::path::PathBuf::from(video_path)
+        };
+        let effective_path_str = effective_path.to_string_lossy().to_string();
 
         let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
 
@@ -40,10 +56,10 @@ impl WallpaperEngine {
             .arg("-o")
             .arg(&opts)
             .arg(output)
-            .arg(video_path)
+            .arg(&effective_path_str)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::null())
             .spawn() {
                 Ok(c) => c,
                 Err(e) => {
@@ -115,9 +131,12 @@ impl WallpaperEngine {
 
     pub fn build_mpv_options(scaling: &str, mute: bool, hwdec: &str, is_image: bool) -> String {
         let mut opts = if is_image {
-            String::from("image-display-duration=inf --pause=yes --no-config --no-audio")
+            String::from("image-display-duration=inf --pause=yes --no-config --no-audio --demuxer-max-bytes=8M --vd-lavc-threads=1")
         } else {
-            let mut o = format!("loop-file=inf --hwdec={} --no-config", hwdec);
+            let mut o = format!(
+                "loop-file=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2",
+                hwdec
+            );
             if mute {
                 o.push_str(" --no-audio");
             }
@@ -204,6 +223,8 @@ mod tests {
         let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, "auto-safe", false);
         assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
         assert!(opts_fit_mute.contains("--no-audio"));
+        assert!(opts_fit_mute.contains("--demuxer-max-bytes=24M"));
+        assert!(opts_fit_mute.contains("--vd-lavc-threads=2"));
         assert!(!opts_fit_mute.contains("--panscan"));
 
         let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, "vaapi", false);
@@ -217,6 +238,8 @@ mod tests {
         let opts_image = WallpaperEngine::build_mpv_options("fill", true, "auto-safe", true);
         assert!(opts_image.contains("image-display-duration=inf"));
         assert!(opts_image.contains("--pause=yes"));
+        assert!(opts_image.contains("--demuxer-max-bytes=8M"));
+        assert!(opts_image.contains("--vd-lavc-threads=1"));
         assert!(opts_image.contains("--panscan=1.0"));
     }
 

@@ -16,6 +16,70 @@ pub fn get_cache_dir() -> PathBuf {
     base.join("aura/thumbs")
 }
 
+pub fn get_scaled_cache_dir() -> PathBuf {
+    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        if !xdg.is_empty() {
+            PathBuf::from(xdg)
+        } else {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+            PathBuf::from(home).join(".cache")
+        }
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        PathBuf::from(home).join(".cache")
+    };
+    base.join("aura/scaled")
+}
+
+pub fn optimize_wallpaper_image(image_path: &Path, max_w: u32, max_h: u32) -> PathBuf {
+    let (orig_w, orig_h) = match image::image_dimensions(image_path) {
+        Ok(dims) => dims,
+        Err(_) => return image_path.to_path_buf(),
+    };
+
+    if orig_w <= max_w && orig_h <= max_h {
+        return image_path.to_path_buf();
+    }
+
+    let cache_dir = get_scaled_cache_dir();
+    let _ = std::fs::create_dir_all(&cache_dir);
+
+    let file_stem = image_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "img".into());
+    let clean_stem: String = file_stem
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .take(50)
+        .collect();
+    let hash = format!("{:016x}", md5_simple(image_path.to_string_lossy().as_bytes()));
+
+    let mtime = std::fs::metadata(image_path)
+        .and_then(|m| m.modified())
+        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+        .unwrap_or(0);
+
+    let cached_path = cache_dir.join(format!("{}_{}_{}_{}x{}.jpg", clean_stem, &hash[..8], mtime, max_w, max_h));
+    if cached_path.exists() {
+        return cached_path;
+    }
+
+    match image::open(image_path) {
+        Ok(img) => {
+            let scaled = img.resize(max_w, max_h, image::imageops::FilterType::Triangle);
+            if scaled.save(&cached_path).is_ok() {
+                return cached_path;
+            }
+        }
+        Err(e) => {
+            eprintln!("[Aura Engine] No se pudo reescalar imagen {}: {}", image_path.display(), e);
+        }
+    }
+
+    image_path.to_path_buf()
+}
+
 pub fn thumb_path_for_video(video_path: &Path) -> PathBuf {
     let cache_dir = get_cache_dir();
     let file_stem = video_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "video".into());

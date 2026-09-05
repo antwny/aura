@@ -35,12 +35,17 @@ fn ensure_wayland_display() {
 fn main() -> cosmic::iced::Result {
     ensure_wayland_display();
     let args: Vec<String> = std::env::args().collect();
-    if cli::handle_cli(&args) {
+    if cli::is_pure_cli(&args) {
+        cli::handle_pure_cli(&args);
         return Ok(());
     }
 
-    let hidden = args.iter().any(|a| a == "--hidden" || a == "--daemon" || a == "-d");
-    let flags = app::AuraFlags { hidden };
+    let (hidden, action, action_args) = cli::parse_flags(&args);
+    let flags = app::AuraFlags {
+        hidden,
+        action,
+        args: action_args,
+    };
 
     let mut settings = cosmic::app::Settings::default()
         .size_limits(

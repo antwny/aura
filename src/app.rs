@@ -73,6 +73,7 @@ pub enum Message {
     WindowCloseRequested(cosmic::iced::window::Id),
     WindowClosed(cosmic::iced::window::Id),
     NextWallpaper,
+    PrevWallpaper,
     QuitApp,
     SelectExploreSource(OnlineSource),
     FetchOnlineWallpapers(OnlineSource),
@@ -114,11 +115,21 @@ fn handle_window_events(
 #[derive(Debug, Clone, Default)]
 pub struct AuraFlags {
     pub hidden: bool,
+    pub action: Option<String>,
+    pub args: Vec<String>,
 }
 
 impl cosmic::app::CosmicFlags for AuraFlags {
     type SubCommand = String;
     type Args = Vec<String>;
+
+    fn action(&self) -> Option<&Self::SubCommand> {
+        self.action.as_ref()
+    }
+
+    fn args(&self) -> Vec<&str> {
+        self.args.iter().map(|s| s.as_str()).collect()
+    }
 }
 
 pub struct AuraApp {
@@ -226,10 +237,37 @@ impl cosmic::Application for AuraApp {
         tray_controller.spawn_service(tray);
 
         let mut engine = WallpaperEngine::new();
-        for (out, path) in &config.wallpapers {
-            let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
-            if std::path::Path::new(path).exists() {
-                let _ = engine.set_wallpaper(out, path, &sc, config.mute, &config.hwdec);
+        let has_initial_action = flags.action.is_some();
+        if !has_initial_action {
+            for (out, path) in &config.wallpapers {
+                let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
+                if std::path::Path::new(path).exists() {
+                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, &config.hwdec);
+                }
+            }
+        }
+
+        if let Some(action) = &flags.action {
+            match action.as_str() {
+                "apply" => {
+                    if let Some(path) = flags.args.first() {
+                        let path_buf = PathBuf::from(path);
+                        tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                            video_path: path_buf,
+                            output: selected_output.clone(),
+                        })));
+                    }
+                }
+                "next" => tasks.push(Task::done(cosmic::Action::App(Message::NextWallpaper))),
+                "prev" => tasks.push(Task::done(cosmic::Action::App(Message::PrevWallpaper))),
+                "stop" => {
+                    engine.stop_all();
+                    std::process::exit(0);
+                }
+                "toggle-pause" | "pause" => {
+                    tasks.push(Task::done(cosmic::Action::App(Message::TogglePause)));
+                }
+                _ => {}
             }
         }
 
@@ -298,8 +336,43 @@ impl cosmic::Application for AuraApp {
         Task::none()
     }
 
-    fn dbus_activation(&mut self, _msg: cosmic::dbus_activation::Message) -> Task<cosmic::Action<Self::Message>> {
-        Task::done(cosmic::Action::App(Message::ShowMainWindow))
+    fn dbus_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<cosmic::Action<Self::Message>> {
+        match msg.msg {
+            cosmic::dbus_activation::Details::Activate => {
+                Task::done(cosmic::Action::App(Message::ShowMainWindow))
+            }
+            cosmic::dbus_activation::Details::ActivateAction { action, args } => {
+                match action.as_str() {
+                    "apply" => {
+                        if let Some(path) = args.first() {
+                            let path_buf = PathBuf::from(path);
+                            Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                                video_path: path_buf,
+                                output: self.selected_output.clone(),
+                            }))
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    "next" => Task::done(cosmic::Action::App(Message::NextWallpaper)),
+                    "prev" => Task::done(cosmic::Action::App(Message::PrevWallpaper)),
+                    "stop" => Task::done(cosmic::Action::App(Message::StopWallpaper(None))),
+                    "toggle-pause" | "pause" => Task::done(cosmic::Action::App(Message::TogglePause)),
+                    _ => Task::none(),
+                }
+            }
+            cosmic::dbus_activation::Details::Open { url } => {
+                if let Some(first) = url.first() {
+                    if let Ok(path) = first.to_file_path() {
+                        return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                            video_path: path,
+                            output: self.selected_output.clone(),
+                        }));
+                    }
+                }
+                Task::none()
+            }
+        }
     }
 
     fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
@@ -484,6 +557,24 @@ impl cosmic::Application for AuraApp {
                     self.config.seq_index = next_idx;
                     let _ = self.config.save();
                     let video = &self.videos[next_idx];
+                    let output = self.selected_output.clone();
+                    return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                        video_path: video.path.clone(),
+                        output,
+                    }));
+                }
+            }
+
+            Message::PrevWallpaper => {
+                if !self.videos.is_empty() {
+                    let prev_idx = if self.config.seq_index == 0 {
+                        self.videos.len() - 1
+                    } else {
+                        self.config.seq_index - 1
+                    };
+                    self.config.seq_index = prev_idx;
+                    let _ = self.config.save();
+                    let video = &self.videos[prev_idx];
                     let output = self.selected_output.clone();
                     return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
