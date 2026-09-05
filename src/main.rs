@@ -42,13 +42,17 @@ fn main() -> cosmic::iced::Result {
     let hidden = args.iter().any(|a| a == "--hidden" || a == "--daemon" || a == "-d");
     let flags = app::AuraFlags { hidden };
 
-    let settings = cosmic::app::Settings::default()
+    let mut settings = cosmic::app::Settings::default()
         .size_limits(
             cosmic::iced::Limits::NONE
                 .min_width(840.0)
                 .min_height(580.0),
         )
         .exit_on_close(false);
+
+    if hidden {
+        settings = settings.no_main_window(true);
+    }
 
     cosmic::app::run_single_instance::<app::AuraApp>(settings, flags)
 }

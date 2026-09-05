@@ -443,9 +443,12 @@ impl cosmic::Application for AuraApp {
                     let (new_id, open_task) = cosmic::iced::window::open(win_settings);
                     self.is_window_open = true;
                     self.core_mut().set_main_window_id(Some(new_id));
-                    return open_task.discard();
+                    return Task::batch([open_task.discard(), cosmic::iced::window::gain_focus(new_id)]);
                 } else if let Some(id) = self.core().main_window_id() {
-                    return cosmic::iced::window::gain_focus(id);
+                    return Task::batch([
+                        cosmic::iced::window::minimize(id, false),
+                        cosmic::iced::window::gain_focus(id),
+                    ]);
                 }
             }
 
