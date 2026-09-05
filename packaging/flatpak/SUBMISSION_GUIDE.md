@@ -70,23 +70,34 @@ git push -u origin add-aura
    ```text
    Add io.github.antwny.aura
    ```
-5. En la descripción del PR, añade un resumen corto:
-   ```markdown
-   ### Application Summary
-   * **Name**: Aura
-   * **App ID**: `io.github.antwny.aura`
-   * **Description**: Animated live wallpaper manager built natively in Rust for System76 COSMIC Desktop.
-   * **License**: GPL-3.0-or-later
-   * **Upstream**: https://github.com/antwny/aura
-   ```
+5. En la descripción del PR, copia y pega este texto exacto:
+
+```markdown
+### Application Summary
+* **Name**: Aura
+* **App ID**: `io.github.antwny.aura`
+* **Description**: Next-generation animated live wallpaper manager built natively in Rust for System76 COSMIC Desktop.
+* **License**: GPL-3.0-or-later
+* **Upstream**: https://github.com/antwny/aura
+
+### Permissions Justification
+* `--filesystem=xdg-run/wayland-*`: Required for Wayland Layer-Shell access to render animated wallpapers directly behind desktop surfaces via `mpvpaper`.
+* `--device=dri`: Required for hardware-accelerated video decoding (VAAPI/Vulkan) and UI rendering (wgpu).
+* `--filesystem=xdg-config/cosmic:rw`: Aura features an automated theming engine that extracts color palettes from active wallpapers and synchronizes accent colors with the COSMIC desktop shell (`~/.config/cosmic`).
+* `--filesystem=xdg-config/autostart:create`: Allows users to toggle "Start at login" from within settings, creating an autostart entry for the headless wallpaper daemon.
+* `--talk-name=com.system76.CosmicSettingsDaemon.*`: D-Bus interface for live color palette and settings synchronization with the COSMIC desktop environment.
+* `--talk-name=org.kde.StatusNotifierWatcher`: Required for system tray indicator integration via `ksni` StatusNotifierItem.
+* `--filesystem=xdg-pictures:rw` / `xdg-videos:rw` / `xdg-download:rw`: Local file scanning and management for user wallpapers.
+* `--share=network`: Downloading wallpapers from curated online catalogs (Bing UHD & Wallhaven).
+```
 
 ---
 
 ## Paso 5: Revisión y Publicación
 
-* El bot de Flathub ejecutará el linter y la compilación de prueba.
-* Si el bot o los revisores sugieren algún ajuste, haz commit directamente en tu rama `add-aura` y haz `git push`.
-* Una vez aprobado y fusionado el PR:
+* El bot de Flathub ejecutará automáticamente el linter y la compilación de prueba en sus servidores.
+* Si los revisores aprueban las justificaciones de permisos (especialmente las extensiones de escritorio COSMIC), fusionarán el Pull Request.
+* Una vez fusionado:
   * Flathub creará automáticamente el repositorio `flathub/io.github.antwny.aura`.
-  * Recibirás una invitación para tener acceso de mantenedor.
-  * En 1–3 horas el paquete estará publicado en Flathub y aparecerá automáticamente en la **COSMIC Store** dentro de la sección **"COSMIC Apps"**.
+  * Recibirás una invitación por correo/notificación de GitHub para ser mantenedor oficial del repositorio de Flathub.
+  * En pocas horas la app se publicará en Flathub y aparecerá automáticamente en la **COSMIC Store** (App Library de Pop!_OS) dentro de la sección **"COSMIC Apps"**.
