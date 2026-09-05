@@ -1,6 +1,6 @@
 [package]
 name = "aura"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 description = "Next-generation animated live wallpaper manager built natively in Rust for Pop!_OS COSMIC Desktop"
 authors = ["Antwny"]

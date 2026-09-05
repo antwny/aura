@@ -101,13 +101,17 @@ aura status            # Print active monitor, wallpaper & GPU stats
 
 <div align="center">
 
-| **Dynamic Live Wallpaper Grid** | **COSMIC Auto-Theming & Toast Notifications** |
+| **Dynamic Live Wallpaper Grid** | **COSMIC Auto-Theming & Active Wallpaper** |
 |:---:|:---:|
 | <img src="docs/screenshots/library_view.png" width="100%" /> | <img src="docs/screenshots/auto_theming.png" width="100%" /> |
 
-| **System Settings & Bilingual Switcher (ES/EN)** | **Official Kinetic A Branding & About View** |
+| **Wallhaven 4K Online Catalog** | **Bing UHD Daily Explorer (Light Mode)** |
 |:---:|:---:|
-| <img src="docs/screenshots/settings_view.png" width="100%" /> | <img src="docs/screenshots/about_view.png" width="100%" /> |
+| <img src="docs/screenshots/wallhaven_catalog.png" width="100%" /> | <img src="docs/screenshots/bing_catalog.png" width="100%" /> |
+
+| **System Settings & Wayland Controls** |
+|:---:|
+| <img src="docs/screenshots/settings_view.png" width="85%" /> |
 
 </div>
 
