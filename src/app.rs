@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
-use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS};
+use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, IMAGE_EXTENSIONS};
 use crate::theme::apply_cosmic_theme;
 use crate::online::{
     download_to_file, fetch_bing_archive_page, fetch_bing_wallpapers,
@@ -212,13 +212,21 @@ impl cosmic::Application for AuraApp {
         tray_controller.update_state(current_title, false, !config.wallpapers.is_empty());
         tray_controller.spawn_service(tray);
 
+        let mut engine = WallpaperEngine::new();
+        for (out, path) in &config.wallpapers {
+            let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
+            if std::path::Path::new(path).exists() {
+                let _ = engine.set_wallpaper(out, path, &sc, config.mute, &config.hwdec);
+            }
+        }
+
         let app = Self {
             core,
             nav,
             active_page: Page::Library,
             config,
             language,
-            engine: WallpaperEngine::new(),
+            engine,
             outputs,
             selected_output,
             videos,
@@ -643,14 +651,16 @@ impl cosmic::Application for AuraApp {
                 self.search_query = q;
             }
 
-            // XDG File Dialog: Pick Video
+            // XDG File Dialog: Pick Video / Image
             Message::PickVideoFile => {
                 let title = self.language.dialog_pick_video();
                 return Task::perform(
                     async move {
                         let file = rfd::AsyncFileDialog::new()
                             .set_title(title)
+                            .add_filter("Supported Media", &["mp4", "webm", "mkv", "avi", "mov", "jpg", "jpeg", "png", "webp"])
                             .add_filter("Videos", &["mp4", "webm", "mkv", "avi", "mov"])
+                            .add_filter("Images", &["jpg", "jpeg", "png", "webp"])
                             .pick_file()
                             .await;
                         file.map(|f| f.path().to_path_buf())
@@ -670,9 +680,18 @@ impl cosmic::Application for AuraApp {
                 self.status_message = Some(self.language.status_video_added(&file_name));
                 self.status_timer = 5;
 
-                // Trigger thumbnail generation and apply immediately
-                let v_path = path.clone();
                 let output = self.selected_output.clone();
+                let is_image = path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                    .unwrap_or(false);
+
+                if is_image {
+                    return Task::done(cosmic::Action::App(Message::ApplyWallpaper { video_path: path, output }));
+                }
+
+                // Trigger thumbnail generation and apply immediately for videos
+                let v_path = path.clone();
                 return Task::perform(
                     async move {
                         let thumb = generate_thumbnail(&v_path).await;
@@ -742,7 +761,7 @@ impl cosmic::Application for AuraApp {
 
                 for p in paths {
                     if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                        if VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                        if crate::scanner::is_supported_wallpaper_ext(ext) {
                             let p_str = p.to_string_lossy().to_string();
                             if !self.config.custom_videos.contains(&p_str) {
                                 self.config.custom_videos.push(p_str);
@@ -759,19 +778,31 @@ impl cosmic::Application for AuraApp {
                     self.status_message = Some(self.language.status_videos_dropped().into());
                     self.status_timer = 5;
 
-                    if let Some(video_to_apply) = apply_last {
+                    if let Some(media_to_apply) = apply_last {
                         let out = self.selected_output.clone();
-                        let vp = video_to_apply.clone();
-                        return Task::perform(
-                            async move { (vp.clone(), generate_thumbnail(&vp).await) },
-                            move |(vp, t)| {
-                                if let Some(thumb_path) = t {
-                                    cosmic::Action::App(Message::ThumbnailReadyAndApply { video_path: vp, thumb_path, output: out })
-                                } else {
-                                    cosmic::Action::App(Message::ApplyWallpaper { video_path: vp, output: out })
-                                }
-                            },
-                        );
+                        let is_img = media_to_apply.extension()
+                            .and_then(|e| e.to_str())
+                            .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                            .unwrap_or(false);
+
+                        if is_img {
+                            return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                                video_path: media_to_apply,
+                                output: out,
+                            }));
+                        } else {
+                            let vp = media_to_apply.clone();
+                            return Task::perform(
+                                async move { (vp.clone(), generate_thumbnail(&vp).await) },
+                                move |(vp, t)| {
+                                    if let Some(thumb_path) = t {
+                                        cosmic::Action::App(Message::ThumbnailReadyAndApply { video_path: vp, thumb_path, output: out })
+                                    } else {
+                                        cosmic::Action::App(Message::ApplyWallpaper { video_path: vp, output: out })
+                                    }
+                                },
+                            );
+                        }
                     }
                 }
             }

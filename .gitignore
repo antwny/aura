@@ -29,4 +29,6 @@ packaging/flatpak/.flatpak-builder/
 packaging/flatpak/builddir/
 packaging/flatpak/repo/
 .flatpak-builder/
+repo/
+builddir/
 

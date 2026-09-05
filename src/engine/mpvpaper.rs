@@ -43,7 +43,7 @@ impl WallpaperEngine {
             .arg(video_path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn() {
                 Ok(c) => c,
                 Err(e) => {

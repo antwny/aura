@@ -8,7 +8,32 @@ mod theme;
 mod tray;
 mod online;
 
+fn ensure_wayland_display() {
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+            for name in &["wayland-1", "wayland-0", "wayland-2"] {
+                let p = std::path::Path::new(&runtime_dir).join(name);
+                if p.exists() {
+                    std::env::set_var("WAYLAND_DISPLAY", name);
+                    return;
+                }
+            }
+            if let Ok(entries) = std::fs::read_dir(&runtime_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let fname = entry.file_name();
+                    let s = fname.to_string_lossy();
+                    if s.starts_with("wayland-") && !s.ends_with(".lock") {
+                        std::env::set_var("WAYLAND_DISPLAY", s.as_ref());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn main() -> cosmic::iced::Result {
+    ensure_wayland_display();
     let args: Vec<String> = std::env::args().collect();
     if cli::handle_cli(&args) {
         return Ok(());
