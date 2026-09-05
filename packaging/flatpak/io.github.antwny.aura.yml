@@ -121,6 +121,6 @@ modules:
     sources:
       - type: git
         url: https://github.com/antwny/aura.git
-        tag: v1.0.0
-        commit: 2c051409d9b13b09a11d1de7682fff1317d0c2d1
+        tag: v1.0.1
+        commit: 7e1e91e747bd638ed5599cdbf89f9635dc83d7c6
       - cargo-sources.json
