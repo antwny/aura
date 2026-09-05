@@ -23,6 +23,28 @@
     </ul>
   </description>
   <launchable type="desktop-id">io.github.antwny.aura.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main library browsing live and static wallpapers</caption>
+      <image type="source">https://raw.githubusercontent.com/antwny/aura/v1.0.0/docs/screenshots/library_view.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Wallhaven 4K online catalog and search filters</caption>
+      <image type="source">https://raw.githubusercontent.com/antwny/aura/v1.0.0/docs/screenshots/wallhaven_catalog.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Bing UHD daily wallpapers in light mode</caption>
+      <image type="source">https://raw.githubusercontent.com/antwny/aura/v1.0.0/docs/screenshots/bing_catalog.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>COSMIC auto-theming accent synchronization with active wallpaper</caption>
+      <image type="source">https://raw.githubusercontent.com/antwny/aura/v1.0.0/docs/screenshots/auto_theming.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>System settings with bilingual interface and Wayland controls</caption>
+      <image type="source">https://raw.githubusercontent.com/antwny/aura/v1.0.0/docs/screenshots/settings_view.png</image>
+    </screenshot>
+  </screenshots>
   <provides>
     <id>com.system76.CosmicApplication</id>
     <binary>aura</binary>
@@ -38,6 +60,11 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.0.0" date="2026-09-05">
+      <description>
+        <p>First official production release on Flathub and COSMIC Store. Features animated live wallpaper playback at 60 FPS, online 4K catalogs (Bing UHD and Wallhaven), COSMIC auto-theming, smart library filters, and Wayland power optimizations.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-09-04">
       <description>
         <p>Aura 0.2.0 introduces online 4K wallpaper catalogs (Bing UHD and Wallhaven), smart library filters (Live, Static, Downloaded), deletion management from UI, CPU optimizations for static images, native Wayland auto-pause, and standard CLI flags.</p>
