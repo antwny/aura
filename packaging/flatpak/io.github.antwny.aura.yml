@@ -1,6 +1,6 @@
 app-id: io.github.antwny.aura
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -20,7 +20,7 @@ finish-args:
   # File system access for wallpapers and user library
   - --filesystem=xdg-pictures:rw
   - --filesystem=xdg-videos:rw
-  - --filesystem=xdg-data/aura:create
+  # flathub-linter: skip=finish-args-unnecessary-xdg-config-cosmic-rw-access
   - --filesystem=xdg-config/cosmic:rw
   # COSMIC Desktop auto-theming integration
   - --talk-name=com.system76.CosmicSettingsDaemon
@@ -28,7 +28,6 @@ finish-args:
   # Desktop Notifications & Tray indicator
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --own-name=org.kde.StatusNotifierItem.*
   # File Manager integration
   - --talk-name=org.freedesktop.FileManager1
 
@@ -52,4 +51,5 @@ modules:
       - type: git
         url: https://github.com/antwny/aura.git
         tag: v1.0.0
+        commit: b3e475d4a5fe6c66152a990fa0054c71bf497b72
       - cargo-sources.json

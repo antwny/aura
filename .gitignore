@@ -23,3 +23,10 @@ scratch/
 
 # Local test media / caches
 local_tests/
+
+# Flatpak build artifacts
+packaging/flatpak/.flatpak-builder/
+packaging/flatpak/builddir/
+packaging/flatpak/repo/
+.flatpak-builder/
+
