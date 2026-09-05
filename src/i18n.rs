@@ -182,6 +182,21 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn library_btn_delete(&self) -> &'static str {
+        match self {
+            Language::Es => "Eliminar",
+            Language::En => "Delete",
+        }
+    }
+
+    pub fn library_deleted_toast(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondo eliminado de la biblioteca",
+            Language::En => "Wallpaper removed from library",
+        }
+    }
+
     // --- Monitors View ---
     pub fn monitors_title(&self) -> &'static str {
         match self {
@@ -618,6 +633,25 @@ impl Language {
         }
     }
 
+    pub fn explore_res_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Resolución: Todas",
+            Language::En => "Resolution: All",
+        }
+    }
+
+    pub fn explore_res_4k(&self) -> &'static str {
+        "4K UHD"
+    }
+
+    pub fn explore_res_2k(&self) -> &'static str {
+        "2K QHD"
+    }
+
+    pub fn explore_res_ultrawide(&self) -> &'static str {
+        "Ultrawide 21:9"
+    }
+
     // --- Tray (StatusNotifierItem) ---
     pub fn tray_open(&self) -> &'static str {
         match self {
@@ -858,6 +892,12 @@ mod tests {
             assert!(!lang.library_filter_static().is_empty());
             assert!(!lang.library_filter_downloaded().is_empty());
             assert!(!lang.library_filter_empty().is_empty());
+            assert!(!lang.library_btn_delete().is_empty());
+            assert!(!lang.library_deleted_toast().is_empty());
+            assert!(!lang.explore_res_all().is_empty());
+            assert!(!lang.explore_res_4k().is_empty());
+            assert!(!lang.explore_res_2k().is_empty());
+            assert!(!lang.explore_res_ultrawide().is_empty());
         }
     }
 

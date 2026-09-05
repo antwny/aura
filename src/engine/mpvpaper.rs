@@ -27,9 +27,16 @@ impl WallpaperEngine {
         // Kill existing instance for this specific output first
         self.stop_output(output);
 
-        let opts = Self::build_mpv_options(scaling, mute, hwdec);
+        let is_image = std::path::Path::new(video_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false);
+
+        let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
 
         let child = Command::new("mpvpaper")
+            .arg("-p") // Wayland layer-shell compositor native auto-pause when obscured
             .arg("-o")
             .arg(&opts)
             .arg(output)
@@ -100,11 +107,16 @@ impl WallpaperEngine {
         self.is_paused = false;
     }
 
-    pub fn build_mpv_options(scaling: &str, mute: bool, hwdec: &str) -> String {
-        let mut opts = format!("loop-file=inf --hwdec={} --no-config", hwdec);
-        if mute {
-            opts.push_str(" --no-audio");
-        }
+    pub fn build_mpv_options(scaling: &str, mute: bool, hwdec: &str, is_image: bool) -> String {
+        let mut opts = if is_image {
+            String::from("image-display-duration=inf --pause=yes --no-config --no-audio")
+        } else {
+            let mut o = format!("loop-file=inf --hwdec={} --no-config", hwdec);
+            if mute {
+                o.push_str(" --no-audio");
+            }
+            o
+        };
 
         match scaling {
             "fill" => opts.push_str(" --panscan=1.0"),
@@ -127,10 +139,15 @@ impl WallpaperEngine {
 
         for (output, path) in wallpapers {
             let sc = scaling.get(output).map(|s| s.as_str()).unwrap_or("fit");
-            let opts = Self::build_mpv_options(sc, mute, hwdec);
+            let is_image = std::path::Path::new(path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                .unwrap_or(false);
+            let opts = Self::build_mpv_options(sc, mute, hwdec, is_image);
 
             script_content.push_str(&format!(
-                "mpvpaper --fork -o {} {} {}\n",
+                "mpvpaper -p --fork -o {} {} {}\n",
                 shell_escape(&opts),
                 shell_escape(output),
                 shell_escape(path)
@@ -190,18 +207,23 @@ mod tests {
 
     #[test]
     fn test_build_mpv_options() {
-        let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, "auto-safe");
+        let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, "auto-safe", false);
         assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
         assert!(opts_fit_mute.contains("--no-audio"));
         assert!(!opts_fit_mute.contains("--panscan"));
 
-        let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, "vaapi");
+        let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, "vaapi", false);
         assert!(opts_fill_sound.contains("--hwdec=vaapi"));
         assert!(!opts_fill_sound.contains("--no-audio"));
         assert!(opts_fill_sound.contains("--panscan=1.0"));
 
-        let opts_stretch = WallpaperEngine::build_mpv_options("stretch", false, "nvdec");
+        let opts_stretch = WallpaperEngine::build_mpv_options("stretch", false, "nvdec", false);
         assert!(opts_stretch.contains("--no-keepaspect"));
+
+        let opts_image = WallpaperEngine::build_mpv_options("fill", true, "auto-safe", true);
+        assert!(opts_image.contains("image-display-duration=inf"));
+        assert!(opts_image.contains("--pause=yes"));
+        assert!(opts_image.contains("--panscan=1.0"));
     }
 
     #[test]

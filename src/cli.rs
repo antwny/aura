@@ -43,6 +43,10 @@ pub fn handle_cli(args: &[String]) -> bool {
             print_help();
             true
         }
+        "version" | "--version" | "-v" | "-V" => {
+            println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
+            true
+        }
         "gui" => false, // Explicit GUI request
         other => {
             // If passed a video path directly: `aura video.mp4`
@@ -229,6 +233,7 @@ fn print_help() {
     println!("  aura toggle-pause     Pausa o reanuda la reproducción (0% GPU al pausar)");
     println!("  aura apply <archivo>  Aplica inmediatamente un archivo de video");
     println!("  aura status           Muestra información del fondo y pantallas");
+    println!("  aura --version, -v    Muestra la versión de Aura");
     println!("  aura help             Muestra esta ayuda");
     println!("\nConsejo para COSMIC: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en Ajustes.");
 }
@@ -258,6 +263,18 @@ mod tests {
         assert_eq!(handle_cli(&args), true);
 
         let args = vec!["aura".to_string(), "-h".to_string()];
+        assert_eq!(handle_cli(&args), true);
+    }
+
+    #[test]
+    fn test_handle_cli_version() {
+        let args = vec!["aura".to_string(), "--version".to_string()];
+        assert_eq!(handle_cli(&args), true);
+
+        let args = vec!["aura".to_string(), "-v".to_string()];
+        assert_eq!(handle_cli(&args), true);
+
+        let args = vec!["aura".to_string(), "version".to_string()];
         assert_eq!(handle_cli(&args), true);
     }
 }

@@ -47,7 +47,7 @@ pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: 
     let response = client
         .get(url)
         .timeout(Duration::from_secs(25))
-        .header("User-Agent", "Aura-LiveWallpaper-Client/0.1.0")
+        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
         .send()
         .await
         .map_err(|e| format!("Network request failed: {}", e))?;

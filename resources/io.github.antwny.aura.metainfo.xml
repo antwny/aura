@@ -38,6 +38,11 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.0" date="2026-09-04">
+      <description>
+        <p>Aura 0.2.0 introduces online 4K wallpaper catalogs (Bing UHD and Wallhaven), smart library filters (Live, Static, Downloaded), deletion management from UI, CPU optimizations for static images, native Wayland auto-pause, and standard CLI flags.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-04">
       <description>
         <p>Initial release of Aura live wallpaper manager for COSMIC Desktop.</p>

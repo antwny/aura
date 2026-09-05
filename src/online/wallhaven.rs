@@ -28,14 +28,30 @@ pub async fn fetch_wallhaven_wallpapers(
     query: Option<&str>,
     category: &str,
     sorting: &str,
+    resolution: &str,
 ) -> Result<Vec<OnlineWallpaperItem>, String> {
     let mut params = vec![
         ("categories", category.to_string()),
         ("purity", "100".to_string()),
         ("sorting", sorting.to_string()),
         ("page", page.to_string()),
-        ("resolutions", "1920x1080,2560x1440,3840x2160".to_string()),
     ];
+
+    match resolution {
+        "4k" => {
+            params.push(("atleast", "3840x2160".to_string()));
+        }
+        "2k" => {
+            params.push(("resolutions", "2560x1440".to_string()));
+        }
+        "ultrawide" => {
+            params.push(("ratios", "21x9,32x9".to_string()));
+            params.push(("atleast", "2560x1080".to_string()));
+        }
+        _ => {
+            params.push(("resolutions", "1920x1080,2560x1440,3840x2160".to_string()));
+        }
+    }
 
     if sorting == "toplist" {
         params.push(("topRange", "1M".to_string()));
@@ -52,7 +68,7 @@ pub async fn fetch_wallhaven_wallpapers(
         .get("https://wallhaven.cc/api/v1/search")
         .query(&params)
         .timeout(Duration::from_secs(12))
-        .header("User-Agent", "Aura-LiveWallpaper-Client/0.1.0")
+        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
         .send()
         .await
         .map_err(|e| format!("Network request to Wallhaven failed: {}", e))?;

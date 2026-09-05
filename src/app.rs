@@ -81,6 +81,7 @@ pub enum Message {
     OnlineMoreWallpapersFetched(Result<(OnlineSource, Vec<OnlineWallpaperItem>), String>),
     SelectWallhavenCategory(String),
     SelectWallhavenSorting(String),
+    SelectWallhavenResolution(String),
     WallhavenSearchChanged(String),
     SubmitWallhavenSearch,
     DownloadOnlineWallpaper { item: OnlineWallpaperItem, auto_apply: bool },
@@ -88,6 +89,7 @@ pub enum Message {
     OnlineWallpaperDownloadFailed { id: String, error: String },
     OnlineThumbLoaded { id: String, path: PathBuf },
     ApplyDownloadedOnlineWallpaper(PathBuf),
+    DeleteWallpaper(PathBuf),
 }
 
 fn handle_window_events(
@@ -147,6 +149,7 @@ pub struct AuraApp {
     wallhaven_page: u32,
     wallhaven_category: String,
     wallhaven_sorting: String,
+    wallhaven_resolution: String,
     wallhaven_search: String,
     library_filter: LibraryFilter,
 }
@@ -238,6 +241,7 @@ impl cosmic::Application for AuraApp {
             wallhaven_page: 1,
             wallhaven_category: "110".into(),
             wallhaven_sorting: "toplist".into(),
+            wallhaven_resolution: "all".into(),
             wallhaven_search: String::new(),
             library_filter: LibraryFilter::All,
         };
@@ -841,6 +845,7 @@ impl cosmic::Application for AuraApp {
                 let client = self.http_client.clone();
                 let cat = self.wallhaven_category.clone();
                 let sort = self.wallhaven_sorting.clone();
+                let res = self.wallhaven_resolution.clone();
                 let search = if self.wallhaven_search.trim().is_empty() {
                     None
                 } else {
@@ -856,7 +861,7 @@ impl cosmic::Application for AuraApp {
                                     .map(|items| (source, items))
                             }
                             OnlineSource::Wallhaven => {
-                                fetch_wallhaven_wallpapers(&client, 1, search.as_deref(), &cat, &sort)
+                                fetch_wallhaven_wallpapers(&client, 1, search.as_deref(), &cat, &sort, &res)
                                     .await
                                     .map(|items| (source, items))
                             }
@@ -941,6 +946,7 @@ impl cosmic::Application for AuraApp {
                         let page = self.wallhaven_page;
                         let cat = self.wallhaven_category.clone();
                         let sort = self.wallhaven_sorting.clone();
+                        let res = self.wallhaven_resolution.clone();
                         let search = if self.wallhaven_search.trim().is_empty() {
                             None
                         } else {
@@ -949,7 +955,7 @@ impl cosmic::Application for AuraApp {
 
                         return Task::perform(
                             async move {
-                                fetch_wallhaven_wallpapers(&client, page, search.as_deref(), &cat, &sort)
+                                fetch_wallhaven_wallpapers(&client, page, search.as_deref(), &cat, &sort, &res)
                                     .await
                                     .map(|items| (source, items))
                             },
@@ -1060,6 +1066,15 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
+            Message::SelectWallhavenResolution(res) => {
+                if self.wallhaven_resolution != res {
+                    self.wallhaven_resolution = res;
+                    self.wallhaven_page = 1;
+                    self.wallhaven_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::Wallhaven)));
+                }
+            }
+
             Message::WallhavenSearchChanged(q) => {
                 self.wallhaven_search = q;
             }
@@ -1123,6 +1138,47 @@ impl cosmic::Application for AuraApp {
                     video_path: path,
                     output,
                 }));
+            }
+
+            Message::DeleteWallpaper(path) => {
+                let path_str = path.to_string_lossy().to_string();
+
+                // 1. If active on any monitor or current, stop it
+                let was_active = self.config.current.as_deref() == Some(&path_str)
+                    || self.config.wallpapers.values().any(|p| p == &path_str);
+
+                if was_active {
+                    let mut outputs_to_stop = Vec::new();
+                    for (out, p) in &self.config.wallpapers {
+                        if p == &path_str {
+                            outputs_to_stop.push(out.clone());
+                        }
+                    }
+                    for out in outputs_to_stop {
+                        self.engine.stop_output(&out);
+                        self.config.wallpapers.remove(&out);
+                    }
+                    if self.config.current.as_deref() == Some(&path_str) {
+                        self.config.current = None;
+                    }
+                }
+
+                // 2. Remove from custom_videos if present
+                self.config.custom_videos.retain(|p| p != &path_str);
+                let _ = self.config.save();
+
+                // 3. If file is in online wallpapers or a file, remove it
+                let online_dir = crate::online::wallpapers_online_dir();
+                if path.starts_with(&online_dir) || path.is_file() {
+                    let _ = std::fs::remove_file(&path);
+                }
+
+                // 4. Rescan library
+                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+
+                let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                self.status_message = Some(format!("{}: {}", self.language.library_deleted_toast(), fname));
+                self.status_timer = 5;
             }
         }
         Task::none()
@@ -1404,7 +1460,16 @@ impl AuraApp {
                         output: selected_output.clone(),
                     });
 
-                    card_content = card_content.push(apply_btn);
+                    let delete_btn = widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
+                        .on_press(Message::DeleteWallpaper(video.path.clone()));
+
+                    let action_row = widget::row::with_capacity(2)
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(apply_btn)
+                        .push(delete_btn);
+
+                    card_content = card_content.push(action_row);
 
                     let card_container = widget::container(card_content)
                         .width(Length::Fixed(card_w));
@@ -1533,7 +1598,41 @@ impl AuraApp {
                     .push(sort_hot)
                     .push(sort_rand);
 
-                header_col = header_col.push(search_input).push(filters_row);
+                // Resolutions / Ratios
+                let wallhaven_res = &self.wallhaven_resolution;
+                let res_all = if wallhaven_res == "all" {
+                    widget::button::suggested(lang.explore_res_all())
+                } else {
+                    widget::button::standard(lang.explore_res_all())
+                }.on_press(Message::SelectWallhavenResolution("all".into()));
+
+                let res_4k = if wallhaven_res == "4k" {
+                    widget::button::suggested(lang.explore_res_4k())
+                } else {
+                    widget::button::standard(lang.explore_res_4k())
+                }.on_press(Message::SelectWallhavenResolution("4k".into()));
+
+                let res_2k = if wallhaven_res == "2k" {
+                    widget::button::suggested(lang.explore_res_2k())
+                } else {
+                    widget::button::standard(lang.explore_res_2k())
+                }.on_press(Message::SelectWallhavenResolution("2k".into()));
+
+                let res_uw = if wallhaven_res == "ultrawide" {
+                    widget::button::suggested(lang.explore_res_ultrawide())
+                } else {
+                    widget::button::standard(lang.explore_res_ultrawide())
+                }.on_press(Message::SelectWallhavenResolution("ultrawide".into()));
+
+                let res_row = widget::row::with_capacity(4)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(res_all)
+                    .push(res_4k)
+                    .push(res_2k)
+                    .push(res_uw);
+
+                header_col = header_col.push(search_input).push(filters_row).push(res_row);
             }
 
             header_col
