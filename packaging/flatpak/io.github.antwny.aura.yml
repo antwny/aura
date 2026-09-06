@@ -23,10 +23,6 @@ finish-args:
   - --filesystem=xdg-pictures:rw
   - --filesystem=xdg-videos:rw
   - --filesystem=xdg-download:rw
-  # Autostart desktop entry creation on host
-  - --filesystem=xdg-config/autostart:create
-  # flathub-linter: skip=finish-args-unnecessary-xdg-config-cosmic-rw-access
-  - --filesystem=xdg-config/cosmic:rw
   # COSMIC Desktop auto-theming integration
   - --talk-name=com.system76.CosmicSettingsDaemon
   - --talk-name=com.system76.CosmicSettingsDaemon.*
@@ -122,5 +118,5 @@ modules:
       - type: git
         url: https://github.com/antwny/aura.git
         tag: v1.0.1
-        commit: 3837e516a39037f0aa4640ed81cc3c4ac1add83e
+        commit: 2a62f1a83317be3ed8624a7d24271b90736cf7be
       - cargo-sources.json
