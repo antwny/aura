@@ -98,7 +98,7 @@ fn cmd_next() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -137,7 +137,7 @@ fn cmd_prev() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -203,7 +203,7 @@ fn cmd_apply(path_arg: &str) {
     let mut engine = WallpaperEngine::new();
     let path_str = full_path.to_string_lossy().to_string();
 
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         if !config.custom_videos.contains(&path_str) {

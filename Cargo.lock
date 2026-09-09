@@ -455,6 +455,7 @@ dependencies = [
  "futures",
  "image",
  "ksni",
+ "libc",
  "libcosmic",
  "open",
  "reqwest",
@@ -463,6 +464,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "walkdir",
+ "zbus",
 ]
 
 [[package]]

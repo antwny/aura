@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
-use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem, IMAGE_EXTENSIONS};
+use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
 use crate::theme::apply_cosmic_theme;
 use crate::online::{
     download_to_file, fetch_bing_archive_page, fetch_bing_wallpapers,
@@ -8,8 +8,8 @@ use crate::online::{
 };
 
 use cosmic::app::Core;
-use cosmic::iced::alignment::{Horizontal, Vertical};
-use cosmic::iced::{Alignment, Length, Subscription, Task};
+use cosmic::iced::alignment::Alignment;
+use cosmic::iced::{Length, Subscription, Task};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
 use std::path::PathBuf;
@@ -39,6 +39,13 @@ pub enum Message {
     SelectPage(nav_bar::Id),
     SelectLibraryFilter(LibraryFilter),
     SetLanguage(crate::i18n::Language),
+    SelectOutput(String),
+    SelectHwdec(String),
+    ToggleRotation(bool),
+    SelectInterval(u64),
+    SelectRotationOrder(String),
+    TogglePauseOnBattery(bool),
+    ChangeVolume(u8),
     ApplyWallpaper { video_path: PathBuf, output: String },
     StopWallpaper(Option<String>),
     TogglePause,
@@ -57,7 +64,10 @@ pub enum Message {
     RotationTick,
     HotplugTick,
     SmartPauseTick,
+    BatteryTick,
     TickSecond,
+    GameModeChanged(bool),
+    BatteryStateChanged(Option<bool>),
     OutputsUpdated(Vec<MonitorOutput>),
     PickVideoFile,
     PickFolder,
@@ -90,6 +100,8 @@ pub enum Message {
     OnlineWallpaperDownloadFailed { id: String, error: String },
     OnlineThumbLoaded { id: String, path: PathBuf },
     ApplyDownloadedOnlineWallpaper(PathBuf),
+    RemoveWallpaperFromLibrary(PathBuf),
+    DeleteDownloadedWallpaper(PathBuf),
     DeleteWallpaper(PathBuf),
 }
 
@@ -133,38 +145,40 @@ impl cosmic::app::CosmicFlags for AuraFlags {
 }
 
 pub struct AuraApp {
-    core: Core,
-    nav: nav_bar::Model,
-    active_page: Page,
-    config: Config,
-    pub language: crate::i18n::Language,
-    engine: WallpaperEngine,
-    outputs: Vec<MonitorOutput>,
-    selected_output: String,
-    videos: Vec<VideoItem>,
-    search_query: String,
-    autostart_active: bool,
-    status_message: Option<String>,
-    status_timer: u8,
-    is_paused: bool,
-    tray_controller: crate::tray::TrayController,
-    is_window_open: bool,
-    explore_source: OnlineSource,
-    bing_wallpapers: Vec<OnlineWallpaperItem>,
-    wallhaven_wallpapers: Vec<OnlineWallpaperItem>,
-    explore_loading: bool,
-    explore_loading_more: bool,
-    explore_error: Option<String>,
-    downloading_online_ids: std::collections::HashSet<String>,
-    online_thumbs: std::collections::HashMap<String, PathBuf>,
-    http_client: reqwest::Client,
-    bing_page: u32,
-    wallhaven_page: u32,
-    wallhaven_category: String,
-    wallhaven_sorting: String,
-    wallhaven_resolution: String,
-    wallhaven_search: String,
-    library_filter: LibraryFilter,
+    pub(crate) core: Core,
+    pub(crate) nav: nav_bar::Model,
+    pub(crate) active_page: Page,
+    pub(crate) config: Config,
+    pub(crate) language: crate::i18n::Language,
+    pub(crate) engine: WallpaperEngine,
+    pub(crate) outputs: Vec<MonitorOutput>,
+    pub(crate) selected_output: String,
+    pub(crate) videos: Vec<VideoItem>,
+    pub(crate) search_query: String,
+    pub(crate) autostart_active: bool,
+    pub(crate) status_message: Option<String>,
+    pub(crate) status_timer: u8,
+    pub(crate) is_paused: bool,
+    pub(crate) is_paused_by_smart: bool,
+    pub(crate) is_paused_by_battery: bool,
+    pub(crate) tray_controller: crate::tray::TrayController,
+    pub(crate) is_window_open: bool,
+    pub(crate) explore_source: OnlineSource,
+    pub(crate) bing_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) wallhaven_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) explore_loading: bool,
+    pub(crate) explore_loading_more: bool,
+    pub(crate) explore_error: Option<String>,
+    pub(crate) downloading_online_ids: std::collections::HashSet<String>,
+    pub(crate) online_thumbs: std::collections::HashMap<String, PathBuf>,
+    pub(crate) http_client: reqwest::Client,
+    pub(crate) bing_page: u32,
+    pub(crate) wallhaven_page: u32,
+    pub(crate) wallhaven_category: String,
+    pub(crate) wallhaven_sorting: String,
+    pub(crate) wallhaven_resolution: String,
+    pub(crate) wallhaven_search: String,
+    pub(crate) library_filter: LibraryFilter,
 }
 
 impl cosmic::Application for AuraApp {
@@ -188,7 +202,12 @@ impl cosmic::Application for AuraApp {
         let nav = Self::build_nav(language, Page::Library);
 
         let outputs = detect_outputs();
-        let selected_output = outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
+        let selected_output = if !config.output.is_empty() {
+            config.output.clone()
+        } else {
+            outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into())
+        };
+
         let autostart_active = config.autostart || WallpaperEngine::is_autostart_enabled();
         if autostart_active && !WallpaperEngine::is_autostart_enabled() {
             let _ = WallpaperEngine::write_autostart();
@@ -239,7 +258,7 @@ impl cosmic::Application for AuraApp {
             for (out, path) in &config.wallpapers {
                 let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
                 if std::path::Path::new(path).exists() {
-                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, &config.hwdec);
+                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec);
                 }
             }
         }
@@ -285,6 +304,8 @@ impl cosmic::Application for AuraApp {
             status_message: None,
             status_timer: 0,
             is_paused: false,
+            is_paused_by_smart: false,
+            is_paused_by_battery: false,
             tray_controller,
             is_window_open,
             explore_source: OnlineSource::Bing,
@@ -401,10 +422,8 @@ impl cosmic::Application for AuraApp {
     fn subscription(&self) -> Subscription<Self::Message> {
         let mut subs = Vec::new();
 
-        // 1. Drag & Drop subscription via filtered listen_with
         subs.push(cosmic::iced::event::listen_with(handle_window_events));
 
-        // 2. Auto-dismiss notification timer (runs ONLY while a status notification is visible)
         if self.status_timer > 0 {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(1))
@@ -412,7 +431,6 @@ impl cosmic::Application for AuraApp {
             );
         }
 
-        // 3. Event-driven Tray actions stream (zero CPU, zero wakeups when idle)
         fn tray_stream() -> impl cosmic::iced::futures::Stream<Item = Message> {
             cosmic::iced::stream::channel(10, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| {
                 async move {
@@ -428,7 +446,6 @@ impl cosmic::Application for AuraApp {
         }
         subs.push(Subscription::run(tray_stream));
 
-        // 3. Playlist auto-rotation
         if self.config.rotation && self.config.interval > 0 {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(self.config.interval * 60))
@@ -436,17 +453,22 @@ impl cosmic::Application for AuraApp {
             );
         }
 
-        // 4. Display hotplug monitor detector (every 5 seconds)
         subs.push(
             cosmic::iced::time::every(Duration::from_secs(5))
                 .map(|_| Message::HotplugTick)
         );
 
-        // 5. Smart Pause: Game & Fullscreen detection (every 3 seconds)
         if self.config.smart_pause && !self.config.wallpapers.is_empty() {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(3))
                     .map(|_| Message::SmartPauseTick)
+            );
+        }
+
+        if self.config.pause_on_battery && !self.config.wallpapers.is_empty() {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_secs(4))
+                    .map(|_| Message::BatteryTick)
             );
         }
 
@@ -467,6 +489,64 @@ impl cosmic::Application for AuraApp {
                         if need_fetch && !self.explore_loading {
                             return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(self.explore_source)));
                         }
+                    }
+                }
+            }
+
+            Message::SelectOutput(out) => {
+                self.selected_output = out.clone();
+                self.config.output = out.clone();
+                let _ = self.config.save();
+                self.status_message = Some(format!("Pantalla seleccionada: {}", out));
+                self.status_timer = 3;
+            }
+
+            Message::SelectHwdec(hwdec) => {
+                self.config.hwdec = hwdec.clone();
+                let _ = self.config.save();
+                for (output, path) in self.config.wallpapers.clone() {
+                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec);
+                }
+                self.status_message = Some(format!("Decodificador GPU: {}", hwdec));
+                self.status_timer = 4;
+            }
+
+            Message::ToggleRotation(active) => {
+                self.config.rotation = active;
+                let _ = self.config.save();
+                self.status_message = Some(if active { "Rotación automática activada".into() } else { "Rotación automática desactivada".into() });
+                self.status_timer = 4;
+            }
+
+            Message::SelectInterval(interval) => {
+                self.config.interval = interval;
+                let _ = self.config.save();
+                self.status_message = Some(format!("Intervalo de rotación: {} min", interval));
+                self.status_timer = 3;
+            }
+
+            Message::SelectRotationOrder(order) => {
+                self.config.order = order.clone();
+                let _ = self.config.save();
+                self.status_message = Some(format!("Orden de rotación: {}", if order == "random" { "Aleatorio" } else { "Secuencial" }));
+                self.status_timer = 3;
+            }
+
+            Message::TogglePauseOnBattery(active) => {
+                self.config.pause_on_battery = active;
+                let _ = self.config.save();
+                self.status_message = Some(if active { "Ahorro de batería activado".into() } else { "Ahorro de batería desactivado".into() });
+                self.status_timer = 4;
+            }
+
+            Message::ChangeVolume(vol) => {
+                self.config.volume = vol;
+                let _ = self.config.save();
+                if !self.config.mute {
+                    for (output, path) in self.config.wallpapers.clone() {
+                        let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                        let _ = self.engine.set_wallpaper(&output, &path, &sc, false, self.config.volume, &self.config.hwdec);
                     }
                 }
             }
@@ -610,10 +690,11 @@ impl cosmic::Application for AuraApp {
             Message::ApplyWallpaper { video_path, output } => {
                 let scaling = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                 let mute = self.config.mute;
+                let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
                 let path_str = video_path.to_string_lossy().to_string();
-                if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, &hwdec) {
+                if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec) {
                     self.config.wallpapers.insert(output.clone(), path_str.clone());
                     self.config.current = Some(path_str.clone());
                     let _ = self.config.save();
@@ -635,7 +716,6 @@ impl cosmic::Application for AuraApp {
                             }
                         }
                     }
-
                 }
             }
 
@@ -680,7 +760,7 @@ impl cosmic::Application for AuraApp {
                 self.config.scaling.insert(output.clone(), scaling.clone());
                 let _ = self.config.save();
                 if let Some(path) = self.config.wallpapers.get(&output).cloned() {
-                    let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, &self.config.hwdec);
+                    let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec);
                     self.status_message = Some(format!("Modo de escala para {} cambiado a '{}'", output, scaling));
                     self.status_timer = 5;
                 }
@@ -731,7 +811,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 for (output, path) in self.config.wallpapers.clone() {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, mute, &self.config.hwdec);
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, mute, self.config.volume, &self.config.hwdec);
                 }
                 self.status_message = Some(if mute { self.language.status_muted().into() } else { self.language.status_unmuted().into() });
                 self.status_timer = 5;
@@ -771,7 +851,6 @@ impl cosmic::Application for AuraApp {
                 self.search_query = q;
             }
 
-            // XDG File Dialog: Pick Video / Image
             Message::PickVideoFile => {
                 let title = self.language.dialog_pick_video();
                 return Task::perform(
@@ -810,7 +889,6 @@ impl cosmic::Application for AuraApp {
                     return Task::done(cosmic::Action::App(Message::ApplyWallpaper { video_path: path, output }));
                 }
 
-                // Trigger thumbnail generation and apply immediately for videos
                 let v_path = path.clone();
                 return Task::perform(
                     async move {
@@ -828,7 +906,6 @@ impl cosmic::Application for AuraApp {
             }
             Message::FileSelected(None) => {}
 
-            // XDG File Dialog: Pick Folder
             Message::PickFolder => {
                 let title = self.language.dialog_pick_folder();
                 return Task::perform(
@@ -853,7 +930,6 @@ impl cosmic::Application for AuraApp {
                 self.status_message = Some(self.language.status_folder_added(&folder_str));
                 self.status_timer = 5;
 
-                // Generate thumbnails for new videos in folder
                 let mut tasks = Vec::new();
                 for item in &self.videos {
                     if item.thumb_path.is_none() {
@@ -874,7 +950,6 @@ impl cosmic::Application for AuraApp {
             }
             Message::FolderSelected(None) => {}
 
-            // Drag & Drop
             Message::FilesDropped(paths) => {
                 let mut added_any = false;
                 let mut apply_last: Option<PathBuf> = None;
@@ -943,20 +1018,54 @@ impl cosmic::Application for AuraApp {
 
             Message::SmartPauseTick => {
                 if self.config.smart_pause && !self.config.wallpapers.is_empty() {
-                    let is_gaming = check_if_fullscreen_game_active();
-                    if is_gaming && !self.is_paused {
-                        self.engine.pause_all();
-                        self.is_paused = true;
-                        self.status_message = Some(self.language.status_game_paused().into());
-                        self.status_timer = 5;
-                    } else if !is_gaming && self.is_paused {
-                        self.engine.resume_all();
-                        self.is_paused = false;
-                        self.status_message = Some(self.language.status_game_resumed().into());
-                        self.status_timer = 5;
-                    }
+                    return Task::perform(
+                        crate::system::check_if_fullscreen_game_active(),
+                        |in_game| cosmic::Action::App(Message::GameModeChanged(in_game)),
+                    );
                 }
             }
+
+            Message::GameModeChanged(in_game) => {
+                if in_game && !self.is_paused {
+                    self.engine.pause_all();
+                    self.is_paused = true;
+                    self.is_paused_by_smart = true;
+                    self.status_message = Some(self.language.status_game_paused().into());
+                    self.status_timer = 5;
+                } else if !in_game && self.is_paused && self.is_paused_by_smart {
+                    self.engine.resume_all();
+                    self.is_paused = false;
+                    self.is_paused_by_smart = false;
+                    self.status_message = Some(self.language.status_game_resumed().into());
+                    self.status_timer = 5;
+                }
+            }
+
+            Message::BatteryTick => {
+                if self.config.pause_on_battery && !self.config.wallpapers.is_empty() {
+                    return Task::perform(
+                        crate::system::check_on_battery(),
+                        |b| cosmic::Action::App(Message::BatteryStateChanged(b)),
+                    );
+                }
+            }
+
+            Message::BatteryStateChanged(Some(on_battery)) => {
+                if on_battery && !self.is_paused && self.config.pause_on_battery {
+                    self.engine.pause_all();
+                    self.is_paused = true;
+                    self.is_paused_by_battery = true;
+                    self.status_message = Some(self.language.status_battery_paused().into());
+                    self.status_timer = 5;
+                } else if !on_battery && self.is_paused && self.is_paused_by_battery {
+                    self.engine.resume_all();
+                    self.is_paused = false;
+                    self.is_paused_by_battery = false;
+                    self.status_message = Some(self.language.status_battery_resumed().into());
+                    self.status_timer = 5;
+                }
+            }
+            Message::BatteryStateChanged(None) => {}
 
             Message::RotationTick => {
                 if !self.videos.is_empty() && self.config.rotation {
@@ -1033,7 +1142,6 @@ impl cosmic::Application for AuraApp {
                         }
                         self.explore_error = None;
 
-                        // Preload thumbnails in background if not already cached
                         let mut thumb_tasks = Vec::new();
                         let client = self.http_client.clone();
                         for item in items {
@@ -1267,7 +1375,6 @@ impl cosmic::Application for AuraApp {
 
             Message::OnlineWallpaperDownloaded { id, path, auto_apply } => {
                 self.downloading_online_ids.remove(&id);
-                // Rescan library to immediately include this wallpaper in the local catalog
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
                 let _ = self.config.save();
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -1314,10 +1421,9 @@ impl cosmic::Application for AuraApp {
                 }));
             }
 
-            Message::DeleteWallpaper(path) => {
+            Message::RemoveWallpaperFromLibrary(path) => {
                 let path_str = path.to_string_lossy().to_string();
 
-                // 1. If active on any monitor or current, stop it
                 let was_active = self.config.current.as_deref() == Some(&path_str)
                     || self.config.wallpapers.values().any(|p| p == &path_str);
 
@@ -1337,22 +1443,57 @@ impl cosmic::Application for AuraApp {
                     }
                 }
 
-                // 2. Remove from custom_videos if present
+                // Remove from custom_videos (does NOT delete user's file from disk!)
                 self.config.custom_videos.retain(|p| p != &path_str);
                 let _ = self.config.save();
+                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
 
-                // 3. If file is in online wallpapers or a file, remove it
+                self.status_message = Some(self.language.library_removed_toast().into());
+                self.status_timer = 4;
+            }
+
+            Message::DeleteDownloadedWallpaper(path) => {
+                let path_str = path.to_string_lossy().to_string();
+
+                let was_active = self.config.current.as_deref() == Some(&path_str)
+                    || self.config.wallpapers.values().any(|p| p == &path_str);
+
+                if was_active {
+                    let mut outputs_to_stop = Vec::new();
+                    for (out, p) in &self.config.wallpapers {
+                        if p == &path_str {
+                            outputs_to_stop.push(out.clone());
+                        }
+                    }
+                    for out in outputs_to_stop {
+                        self.engine.stop_output(&out);
+                        self.config.wallpapers.remove(&out);
+                    }
+                    if self.config.current.as_deref() == Some(&path_str) {
+                        self.config.current = None;
+                    }
+                }
+
+                // Safe check: Only physically delete from disk if located inside the online downloads directory
                 let online_dir = crate::online::wallpapers_online_dir();
-                if path.starts_with(&online_dir) || path.is_file() {
+                if path.starts_with(&online_dir) && path.is_file() {
                     let _ = std::fs::remove_file(&path);
                 }
 
-                // 4. Rescan library
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
 
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.status_message = Some(format!("{}: {}", self.language.library_deleted_toast(), fname));
-                self.status_timer = 5;
+                self.status_timer = 4;
+            }
+
+            Message::DeleteWallpaper(path) => {
+                let online_dir = crate::online::wallpapers_online_dir();
+                if path.starts_with(&online_dir) {
+                    return Task::done(cosmic::Action::App(Message::DeleteDownloadedWallpaper(path)));
+                } else {
+                    return Task::done(cosmic::Action::App(Message::RemoveWallpaperFromLibrary(path)));
+                }
             }
         }
         Task::none()
@@ -1372,7 +1513,6 @@ impl cosmic::Application for AuraApp {
             .width(Length::Fill)
             .height(Length::Fill);
 
-        // Dismissible notification banner (disappears automatically after 5s or clicking ✕)
         if let Some(msg) = &self.status_message {
             let banner = widget::container(
                 widget::row::with_capacity(2)
@@ -1441,1044 +1581,5 @@ impl AuraApp {
         }
 
         nav
-    }
-
-    fn view_library(&self) -> Element<'_, Message> {
-        let search_bar = widget::text_input::search_input(self.language.library_search_placeholder(), &self.search_query)
-            .on_input(Message::SearchChanged)
-            .width(Length::Fill);
-
-        // Quick category filter counts - single ultra-fast pass
-        let mut count_all = 0;
-        let mut count_live = 0;
-        let mut count_static = 0;
-        let mut count_downloaded = 0;
-
-        for v in &self.videos {
-            count_all += 1;
-            if v.is_video {
-                count_live += 1;
-            } else {
-                count_static += 1;
-            }
-            if v.is_downloaded {
-                count_downloaded += 1;
-            }
-        }
-
-        let all_btn = if self.library_filter == LibraryFilter::All {
-            widget::button::suggested(format!("{} ({})", self.language.library_filter_all(), count_all))
-        } else {
-            widget::button::standard(format!("{} ({})", self.language.library_filter_all(), count_all))
-        }
-        .leading_icon(widget::icon::from_name("view-grid-symbolic"))
-        .on_press(Message::SelectLibraryFilter(LibraryFilter::All));
-
-        let live_btn = if self.library_filter == LibraryFilter::Live {
-            widget::button::suggested(format!("{} ({})", self.language.library_filter_live(), count_live))
-        } else {
-            widget::button::standard(format!("{} ({})", self.language.library_filter_live(), count_live))
-        }
-        .leading_icon(widget::icon::from_name("video-x-generic-symbolic"))
-        .on_press(Message::SelectLibraryFilter(LibraryFilter::Live));
-
-        let static_btn = if self.library_filter == LibraryFilter::Static {
-            widget::button::suggested(format!("{} ({})", self.language.library_filter_static(), count_static))
-        } else {
-            widget::button::standard(format!("{} ({})", self.language.library_filter_static(), count_static))
-        }
-        .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
-        .on_press(Message::SelectLibraryFilter(LibraryFilter::Static));
-
-        let downloaded_btn = if self.library_filter == LibraryFilter::Downloaded {
-            widget::button::suggested(format!("{} ({})", self.language.library_filter_downloaded(), count_downloaded))
-        } else {
-            widget::button::standard(format!("{} ({})", self.language.library_filter_downloaded(), count_downloaded))
-        }
-        .leading_icon(widget::icon::from_name("folder-download-symbolic"))
-        .on_press(Message::SelectLibraryFilter(LibraryFilter::Downloaded));
-
-        let filter_bar = widget::row::with_capacity(4)
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .push(all_btn)
-            .push(live_btn)
-            .push(static_btn)
-            .push(downloaded_btn);
-
-        let top_section = widget::column::with_capacity(2)
-            .spacing(10)
-            .push(search_bar)
-            .push(filter_bar);
-
-        if self.videos.is_empty() {
-            let empty_msg = widget::column::with_capacity(4)
-                .spacing(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title2(self.language.library_empty_title()))
-                .push(widget::text::body(self.language.library_empty_desc()))
-                .push(
-                    widget::row::with_capacity(2)
-                        .spacing(12)
-                        .push(
-                            widget::button::suggested(self.language.library_btn_add_video())
-                                .leading_icon(widget::icon::from_name("list-add-symbolic"))
-                                .on_press(Message::PickVideoFile)
-                        )
-                        .push(
-                            widget::button::standard(self.language.library_btn_add_folder())
-                                .leading_icon(widget::icon::from_name("folder-symbolic"))
-                                .on_press(Message::PickFolder)
-                        )
-                );
-
-            return Element::from(
-                widget::container(empty_msg)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_x(Horizontal::Center)
-                    .align_y(Vertical::Center)
-            );
-        }
-
-        let search_trimmed = self.search_query.trim();
-        let query_lower = if search_trimmed.is_empty() {
-            None
-        } else {
-            Some(search_trimmed.to_lowercase())
-        };
-
-        // Filter by reference - zero clones of VideoItem!
-        let filtered_videos: Vec<&VideoItem> = self.videos
-            .iter()
-            .filter(|v| {
-                let matches_filter = match self.library_filter {
-                    LibraryFilter::All => true,
-                    LibraryFilter::Live => v.is_video,
-                    LibraryFilter::Static => !v.is_video,
-                    LibraryFilter::Downloaded => v.is_downloaded,
-                };
-                if !matches_filter {
-                    return false;
-                }
-
-                if let Some(ref q) = query_lower {
-                    v.name_lower.contains(q)
-                } else {
-                    true
-                }
-            })
-            .collect();
-
-        if filtered_videos.is_empty() {
-            let empty_filter_msg = widget::container(
-                widget::column::with_capacity(2)
-                    .spacing(14)
-                    .align_x(Horizontal::Center)
-                    .push(widget::text::title3(self.language.library_filter_empty()))
-                    .push(
-                        widget::button::standard(self.language.library_filter_all())
-                            .leading_icon(widget::icon::from_name("view-grid-symbolic"))
-                            .on_press(Message::SelectLibraryFilter(LibraryFilter::All))
-                    )
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center);
-
-            return Element::from(
-                widget::column::with_capacity(2)
-                    .spacing(14)
-                    .push(top_section)
-                    .push(empty_filter_msg)
-            );
-        }
-
-        // Precompute active wallpapers HashSet for O(1) card lookups
-        let mut active_paths = std::collections::HashSet::with_capacity(self.config.wallpapers.len() + 1);
-        for path in self.config.wallpapers.values() {
-            active_paths.insert(path.as_str());
-        }
-        if let Some(ref curr) = self.config.current {
-            active_paths.insert(curr.as_str());
-        }
-
-        let selected_output = self.selected_output.clone();
-
-        // Responsive reflow grid adapting dynamically to window resize!
-        let grid = widget::responsive(move |size| {
-            let card_w = 264.0f32;
-            let gap = 16.0f32;
-            let available_w = size.width.max(280.0);
-            let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
-
-            let mut cards_column = widget::column::with_capacity(filtered_videos.len() / cols + 1)
-                .spacing(gap)
-                .width(Length::Fill);
-
-            for chunk in filtered_videos.chunks(cols) {
-                let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
-                for video in chunk {
-                    let path_str = video.path.to_string_lossy();
-                    let is_active = active_paths.contains(path_str.as_ref());
-
-                    let mut card_content = widget::column::with_capacity(5).spacing(8).padding(12);
-
-                    if let Some(thumb) = &video.thumb_path {
-                        let img_btn = widget::button::image(thumb.clone())
-                            .width(240.0)
-                            .selected(is_active)
-                            .on_press(Message::ApplyWallpaper {
-                                video_path: video.path.clone(),
-                                output: selected_output.clone(),
-                            });
-                        card_content = card_content.push(img_btn);
-                    } else {
-                        let placeholder = widget::container(widget::text::body(self.language.library_extracting_frame()))
-                            .width(Length::Fixed(240.0))
-                            .height(Length::Fixed(135.0))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center);
-                        card_content = card_content.push(placeholder);
-                    }
-
-                    let title = widget::text::body(&video.name).size(14);
-                    let size_lbl = widget::text::caption(&video.size_formatted);
-                    card_content = card_content.push(title).push(size_lbl);
-
-                    // Standardized action buttons with native COSMIC symbolic icons
-                    let apply_btn = if is_active {
-                        widget::button::suggested(self.language.library_active())
-                            .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
-                    } else {
-                        widget::button::standard(self.language.library_apply())
-                            .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
-                    }.on_press(Message::ApplyWallpaper {
-                        video_path: video.path.clone(),
-                        output: selected_output.clone(),
-                    });
-
-                    let delete_btn = widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
-                        .on_press(Message::DeleteWallpaper(video.path.clone()));
-
-                    let action_row = widget::row::with_capacity(2)
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .push(apply_btn)
-                        .push(delete_btn);
-
-                    card_content = card_content.push(action_row);
-
-                    let card_container = widget::container(card_content)
-                        .width(Length::Fixed(card_w));
-
-                    card_row = card_row.push(card_container);
-                }
-                cards_column = cards_column.push(card_row);
-            }
-
-            Element::from(cards_column)
-        });
-
-        let scroll = widget::scrollable(grid).height(Length::Fill);
-
-        Element::from(
-            widget::column::with_capacity(2)
-                .spacing(14)
-                .push(top_section)
-                .push(scroll)
-        )
-    }
-
-    fn view_explore(&self) -> Element<'_, Message> {
-        let lang = self.language;
-        let active_wallpapers = self.config.wallpapers.clone();
-        let downloading_ids = self.downloading_online_ids.clone();
-        let online_thumbs = self.online_thumbs.clone();
-        let current_source = self.explore_source;
-        let wallhaven_cat = &self.wallhaven_category;
-        let wallhaven_sort = &self.wallhaven_sorting;
-        let wallhaven_search = &self.wallhaven_search;
-        let is_loading_more = self.explore_loading_more;
-
-        let build_header = || {
-            let bing_btn = if current_source == OnlineSource::Bing {
-                widget::button::suggested(lang.explore_source_bing())
-            } else {
-                widget::button::standard(lang.explore_source_bing())
-            }
-            .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Bing));
-
-            let wallhaven_btn = if current_source == OnlineSource::Wallhaven {
-                widget::button::suggested(lang.explore_source_wallhaven())
-            } else {
-                widget::button::standard(lang.explore_source_wallhaven())
-            }
-            .leading_icon(widget::icon::from_name("view-grid-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Wallhaven));
-
-            let reload_btn = widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
-                .on_press(Message::FetchOnlineWallpapers(current_source));
-
-            let top_bar = widget::row::with_capacity(3)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(bing_btn)
-                .push(wallhaven_btn)
-                .push(reload_btn);
-
-            let subtitle = match current_source {
-                OnlineSource::Bing => lang.explore_featured_today(),
-                OnlineSource::Wallhaven => lang.explore_recent_title(),
-            };
-
-            let mut header_col = widget::column::with_capacity(4)
-                .spacing(8)
-                .push(top_bar)
-                .push(widget::text::caption(subtitle));
-
-            if current_source == OnlineSource::Wallhaven {
-                let search_input = widget::text_input::search_input(
-                    lang.explore_search_placeholder(),
-                    wallhaven_search,
-                )
-                .on_input(Message::WallhavenSearchChanged)
-                .on_submit(|_| Message::SubmitWallhavenSearch)
-                .width(Length::Fill);
-
-                // Categories
-                let cat_all = if wallhaven_cat == "110" {
-                    widget::button::suggested(lang.explore_cat_all())
-                } else {
-                    widget::button::standard(lang.explore_cat_all())
-                }.on_press(Message::SelectWallhavenCategory("110".into()));
-
-                let cat_anime = if wallhaven_cat == "010" {
-                    widget::button::suggested(lang.explore_cat_anime())
-                } else {
-                    widget::button::standard(lang.explore_cat_anime())
-                }.on_press(Message::SelectWallhavenCategory("010".into()));
-
-                let cat_gen = if wallhaven_cat == "100" {
-                    widget::button::suggested(lang.explore_cat_general())
-                } else {
-                    widget::button::standard(lang.explore_cat_general())
-                }.on_press(Message::SelectWallhavenCategory("100".into()));
-
-                // Sorting
-                let sort_top = if wallhaven_sort == "toplist" {
-                    widget::button::suggested(lang.explore_sort_top())
-                } else {
-                    widget::button::standard(lang.explore_sort_top())
-                }.on_press(Message::SelectWallhavenSorting("toplist".into()));
-
-                let sort_hot = if wallhaven_sort == "hot" {
-                    widget::button::suggested(lang.explore_sort_hot())
-                } else {
-                    widget::button::standard(lang.explore_sort_hot())
-                }.on_press(Message::SelectWallhavenSorting("hot".into()));
-
-                let sort_rand = if wallhaven_sort == "random" {
-                    widget::button::suggested(lang.explore_sort_random())
-                } else {
-                    widget::button::standard(lang.explore_sort_random())
-                }.on_press(Message::SelectWallhavenSorting("random".into()));
-
-                let filters_row = widget::row::with_capacity(8)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(cat_all)
-                    .push(cat_anime)
-                    .push(cat_gen)
-                    .push(widget::text::caption("|"))
-                    .push(sort_top)
-                    .push(sort_hot)
-                    .push(sort_rand);
-
-                // Resolutions / Ratios
-                let wallhaven_res = &self.wallhaven_resolution;
-                let res_all = if wallhaven_res == "all" {
-                    widget::button::suggested(lang.explore_res_all())
-                } else {
-                    widget::button::standard(lang.explore_res_all())
-                }.on_press(Message::SelectWallhavenResolution("all".into()));
-
-                let res_4k = if wallhaven_res == "4k" {
-                    widget::button::suggested(lang.explore_res_4k())
-                } else {
-                    widget::button::standard(lang.explore_res_4k())
-                }.on_press(Message::SelectWallhavenResolution("4k".into()));
-
-                let res_2k = if wallhaven_res == "2k" {
-                    widget::button::suggested(lang.explore_res_2k())
-                } else {
-                    widget::button::standard(lang.explore_res_2k())
-                }.on_press(Message::SelectWallhavenResolution("2k".into()));
-
-                let res_uw = if wallhaven_res == "ultrawide" {
-                    widget::button::suggested(lang.explore_res_ultrawide())
-                } else {
-                    widget::button::standard(lang.explore_res_ultrawide())
-                }.on_press(Message::SelectWallhavenResolution("ultrawide".into()));
-
-                let res_row = widget::row::with_capacity(4)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(res_all)
-                    .push(res_4k)
-                    .push(res_2k)
-                    .push(res_uw);
-
-                header_col = header_col.push(search_input).push(filters_row).push(res_row);
-            }
-
-            header_col
-        };
-
-        if self.explore_loading {
-            let loading_content = widget::column::with_capacity(3)
-                .spacing(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title2(lang.explore_loading()))
-                .push(widget::text::caption(match current_source {
-                    OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
-                    OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
-                }));
-
-            let loading_view = widget::container(loading_content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center);
-
-            return Element::from(
-                widget::column::with_capacity(2)
-                    .spacing(14)
-                    .push(build_header())
-                    .push(loading_view)
-            );
-        }
-
-        if let Some(err) = &self.explore_error {
-            let error_content = widget::column::with_capacity(3)
-                .spacing(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title3(format!("{} {}", lang.explore_error_prefix(), err)))
-                .push(
-                    widget::button::suggested(lang.explore_btn_retry())
-                        .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
-                        .on_press(Message::FetchOnlineWallpapers(current_source))
-                );
-
-            let error_view = widget::container(error_content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center);
-
-            return Element::from(
-                widget::column::with_capacity(2)
-                    .spacing(14)
-                    .push(build_header())
-                    .push(error_view)
-            );
-        }
-
-        let items: Vec<OnlineWallpaperItem> = match current_source {
-            OnlineSource::Bing => self.bing_wallpapers.clone(),
-            OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
-        };
-
-        if items.is_empty() {
-            let empty_content = widget::column::with_capacity(3)
-                .spacing(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title3(lang.explore_loading()))
-                .push(
-                    widget::button::suggested(lang.explore_btn_retry())
-                        .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
-                        .on_press(Message::FetchOnlineWallpapers(current_source))
-                );
-
-            let empty_view = widget::container(empty_content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center);
-
-            return Element::from(
-                widget::column::with_capacity(2)
-                    .spacing(14)
-                    .push(build_header())
-                    .push(empty_view)
-            );
-        }
-
-        let grid = widget::responsive(move |size| {
-            let card_w = 264.0f32;
-            let gap = 16.0f32;
-            let available_w = size.width.max(280.0);
-            let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
-
-            let mut cards_column = widget::column::with_capacity(items.len() / cols + 1)
-                .spacing(gap)
-                .width(Length::Fill);
-
-            for chunk in items.chunks(cols) {
-                let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
-                for item in chunk {
-                    let is_downloading = downloading_ids.contains(&item.id);
-                    let downloaded_path = item.is_downloaded();
-                    let is_active = if let Some(dp) = &downloaded_path {
-                        active_wallpapers.values().any(|p| p == &dp.to_string_lossy())
-                    } else {
-                        false
-                    };
-
-                    let thumb_path = online_thumbs.get(&item.id).cloned().or_else(|| {
-                        let p = item.local_thumb_path();
-                        if p.exists() { Some(p) } else { None }
-                    });
-
-                    let mut card_content = widget::column::with_capacity(6).spacing(8).padding(12);
-
-                    // Image preview button
-                    if let Some(thumb) = &thumb_path {
-                        let img_press = if let Some(dp) = &downloaded_path {
-                            Message::ApplyDownloadedOnlineWallpaper(dp.clone())
-                        } else {
-                            Message::DownloadOnlineWallpaper {
-                                item: item.clone(),
-                                auto_apply: true,
-                            }
-                        };
-
-                        let img_btn = widget::button::image(thumb.to_string_lossy().to_string())
-                            .width(240.0)
-                            .selected(is_active)
-                            .on_press(img_press);
-                        card_content = card_content.push(img_btn);
-                    } else {
-                        let placeholder = widget::container(widget::text::caption(lang.explore_loading()))
-                            .width(Length::Fixed(240.0))
-                            .height(Length::Fixed(135.0))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center);
-                        card_content = card_content.push(placeholder);
-                    }
-
-                    // Title
-                    let title = widget::text::body(item.title.clone()).size(14);
-                    card_content = card_content.push(title);
-
-                    // Metadata line: Resolution • Author/Date
-                    let meta_text = if let Some(d) = &item.date {
-                        format!("{} • {}", item.resolution, d)
-                    } else if !item.author_or_copyright.is_empty() {
-                        format!("{} • {}", item.resolution, item.author_or_copyright)
-                    } else {
-                        item.resolution.clone()
-                    };
-                    let meta_lbl = widget::text::caption(meta_text);
-                    card_content = card_content.push(meta_lbl);
-
-                    // Morphing Action Button with Native Symbolic Icons (NO EMOJIS)
-                    let action_btn = if is_downloading {
-                        widget::button::standard(lang.explore_btn_downloading())
-                            .leading_icon(widget::icon::from_name("process-working-symbolic"))
-                    } else if is_active {
-                        widget::button::suggested(lang.explore_badge_active())
-                            .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
-                    } else if let Some(dp) = downloaded_path {
-                        widget::button::suggested(lang.explore_btn_apply())
-                            .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
-                            .on_press(Message::ApplyDownloadedOnlineWallpaper(dp))
-                    } else {
-                        widget::button::standard(lang.explore_btn_download())
-                            .leading_icon(widget::icon::from_name("folder-download-symbolic"))
-                            .on_press(Message::DownloadOnlineWallpaper {
-                                item: item.clone(),
-                                auto_apply: false,
-                            })
-                    };
-
-                    card_content = card_content.push(action_btn);
-
-                    let card_container = widget::container(card_content)
-                        .width(Length::Fixed(card_w));
-
-                    card_row = card_row.push(card_container);
-                }
-                cards_column = cards_column.push(card_row);
-            }
-
-            Element::from(cards_column)
-        });
-
-        // Pagination "Load More" Button at Bottom
-        let load_more_btn = if is_loading_more {
-            widget::button::standard(lang.explore_btn_loading_more())
-                .leading_icon(widget::icon::from_name("process-working-symbolic"))
-        } else {
-            widget::button::suggested(lang.explore_btn_load_more())
-                .leading_icon(widget::icon::from_name("go-down-symbolic"))
-                .on_press(Message::LoadMoreOnlineWallpapers)
-        };
-
-        let load_more_row = widget::container(load_more_btn)
-            .width(Length::Fill)
-            .align_x(Horizontal::Center)
-            .padding(16);
-
-        let scroll_content = widget::column::with_capacity(2)
-            .spacing(16)
-            .width(Length::Fill)
-            .push(grid)
-            .push(load_more_row);
-
-        let scroll = widget::scrollable(scroll_content).height(Length::Fill);
-
-        Element::from(
-            widget::column::with_capacity(2)
-                .spacing(14)
-                .push(build_header())
-                .push(scroll)
-        )
-    }
-
-    fn view_monitors(&self) -> Element<'_, Message> {
-        let mut col = widget::column::with_capacity(self.outputs.len() + 3)
-            .spacing(18)
-            .width(Length::Fill);
-
-        col = col.push(widget::text::title2(self.language.monitors_title()));
-        col = col.push(widget::text::body(self.language.monitors_desc()));
-
-        // Horizontal Canvas of Virtual Monitors
-        let mut monitors_canvas = widget::row::with_capacity(self.outputs.len())
-            .spacing(24)
-            .align_y(Alignment::End);
-
-        for monitor in &self.outputs {
-            let active_wall = self.config.wallpapers.get(&monitor.name)
-                .or_else(|| self.config.wallpapers.get("*"))
-                .or_else(|| self.config.current.as_ref());
-            let active_scaling = self.config.scaling.get(&monitor.name)
-                .or_else(|| self.config.scaling.get("*"))
-                .map(|s| s.as_str())
-                .unwrap_or("fit");
-
-            let screen_w = 260.0f32;
-
-            // Screen frame representation with image & video thumbnail support
-            let screen_display: Element<'_, Message> = if let Some(wall_path) = active_wall {
-                let p = std::path::Path::new(wall_path);
-                let is_image = p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-                    .unwrap_or(false);
-
-                let display_thumb = if is_image && p.exists() {
-                    Some(p.to_path_buf())
-                } else {
-                    let thumb = crate::scanner::thumbs::thumb_path_for_video(p);
-                    if thumb.exists() {
-                        Some(thumb)
-                    } else if p.exists() && is_image {
-                        Some(p.to_path_buf())
-                    } else {
-                        None
-                    }
-                };
-
-                if let Some(thumb_path) = display_thumb {
-                    Element::from(
-                        widget::button::image(thumb_path.to_string_lossy().to_string())
-                            .width(screen_w)
-                            .selected(true)
-                    )
-                } else {
-                    Element::from(
-                        widget::button::standard(self.language.monitors_screen_name(&monitor.name))
-                            .width(screen_w)
-                    )
-                }
-            } else {
-                Element::from(
-                    widget::button::standard(self.language.monitors_screen_idle(&monitor.name))
-                        .width(screen_w)
-                )
-            };
-
-            let monitor_card = widget::column::with_capacity(6)
-                .spacing(10)
-                .padding(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title3(format!("{} • {}", monitor.name, monitor.resolution)))
-                .push(screen_display)
-                .push(
-                    widget::row::with_capacity(4)
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .push(
-                            if active_scaling == "fit" {
-                                widget::button::suggested("Fit")
-                            } else {
-                                widget::button::standard("Fit")
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fit".into() })
-                        )
-                        .push(
-                            if active_scaling == "fill" {
-                                widget::button::suggested("Fill")
-                            } else {
-                                widget::button::standard("Fill")
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fill".into() })
-                        )
-                        .push(
-                            if active_scaling == "stretch" {
-                                widget::button::suggested("Stretch")
-                            } else {
-                                widget::button::standard("Stretch")
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "stretch".into() })
-                        )
-                        .push(
-                            widget::button::destructive(self.language.monitors_stop())
-                                .leading_icon(widget::icon::from_name("process-stop-symbolic"))
-                                .on_press(Message::StopWallpaper(Some(monitor.name.clone())))
-                        )
-                );
-
-            monitors_canvas = monitors_canvas.push(widget::container(monitor_card));
-        }
-
-        col = col.push(widget::scrollable(monitors_canvas));
-
-        Element::from(col)
-    }
-
-    fn view_now_playing_bar(&self) -> Element<'_, Message> {
-        let has_wallpapers = !self.config.wallpapers.is_empty();
-
-        let (wall_title, out_label) = if let Some(curr) = &self.config.current {
-            let p = std::path::Path::new(curr);
-            let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| self.language.bar_active_title_default().into());
-            let out = self.config.wallpapers.keys().cloned().collect::<Vec<_>>().join(", ");
-            (name, self.language.bar_display_label(&out))
-        } else {
-            (self.language.bar_idle_title().into(), self.language.bar_idle_desc().into())
-        };
-
-        let play_pause_btn = if self.is_paused {
-            widget::button::suggested(self.language.bar_resume()).on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
-        } else {
-            widget::button::standard(self.language.bar_pause()).on_press_maybe(if has_wallpapers { Some(Message::TogglePause) } else { None })
-        };
-
-        let mute_btn = if self.config.mute {
-            widget::button::standard(self.language.bar_muted()).on_press(Message::ToggleMute(false))
-        } else {
-            widget::button::suggested(self.language.bar_audio_active()).on_press(Message::ToggleMute(true))
-        };
-
-        let stop_btn = widget::button::destructive(self.language.bar_stop())
-            .on_press_maybe(if has_wallpapers { Some(Message::StopWallpaper(None)) } else { None });
-
-        let bar_content = widget::row::with_capacity(3)
-            .spacing(20)
-            .align_y(Alignment::Center)
-            .width(Length::Fill)
-            // Left: Current title
-            .push(
-                widget::column::with_capacity(2)
-                    .spacing(2)
-                    .width(Length::Fill)
-                    .push(widget::text::body(wall_title).size(14))
-                    .push(widget::text::caption(out_label))
-            )
-            // Center: Playback Controls
-            .push(
-                widget::row::with_capacity(3)
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(play_pause_btn)
-                    .push(mute_btn)
-                    .push(stop_btn)
-            )
-            // Right: GPU / HWDEC badge
-            .push(
-                widget::column::with_capacity(2)
-                    .spacing(2)
-                    .align_x(Horizontal::Right)
-                    .push(widget::text::caption(self.language.bar_gpu_accel(&self.config.hwdec)))
-                    .push(widget::text::caption(self.language.bar_wayland_tag()))
-            );
-
-        Element::from(
-            widget::container(bar_content)
-                .padding(12)
-                .width(Length::Fill)
-        )
-    }
-
-    fn view_settings(&self) -> Element<'_, Message> {
-        let mut col = widget::column::with_capacity(5)
-            .spacing(18)
-            .width(Length::Fill);
-
-        col = col.push(widget::text::title2(self.language.settings_title()));
-
-        // Language selection section
-        let lang_section = widget::column::with_capacity(3)
-            .spacing(12)
-            .padding(16)
-            .push(widget::text::title3(self.language.settings_lang_title()))
-            .push(widget::text::caption(self.language.settings_lang_desc()))
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(12)
-                    .push(
-                        if self.language == crate::i18n::Language::Es {
-                            widget::button::suggested("Español")
-                        } else {
-                            widget::button::standard("Español")
-                        }
-                        .on_press(Message::SetLanguage(crate::i18n::Language::Es))
-                    )
-                    .push(
-                        if self.language == crate::i18n::Language::En {
-                            widget::button::suggested("English")
-                        } else {
-                            widget::button::standard("English")
-                        }
-                        .on_press(Message::SetLanguage(crate::i18n::Language::En))
-                    )
-            );
-
-        col = col.push(widget::container(lang_section).width(Length::Fill));
-
-        // General settings (Clean, elegant, emoji-free)
-        let general_section = widget::column::with_capacity(6)
-            .spacing(14)
-            .padding(16)
-            .push(widget::text::title3(self.language.settings_integration_title()))
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.autostart_active).on_toggle(Message::ToggleAutostart))
-                    .push(widget::text::body(self.language.settings_autostart()))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.smart_pause).on_toggle(Message::ToggleSmartPause))
-                    .push(widget::text::body(self.language.settings_smart_pause()))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.keep_running_on_close).on_toggle(Message::ToggleKeepRunningOnClose))
-                    .push(widget::text::body(self.language.settings_keep_running()))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.auto_theme).on_toggle(Message::ToggleAutoTheme))
-                    .push(widget::text::body(self.language.settings_auto_theme()))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.auto_dark).on_toggle(Message::ToggleAutoDark))
-                    .push(widget::text::body(self.language.settings_auto_dark()))
-            );
-
-        col = col.push(widget::container(general_section).width(Length::Fill));
-
-        // Folders section
-        let mut folders_box = widget::column::with_capacity(self.config.dirs.len() + 2)
-            .spacing(12)
-            .padding(16);
-
-        folders_box = folders_box.push(
-            widget::row::with_capacity(2)
-                .spacing(16)
-                .align_y(Alignment::Center)
-                .push(widget::text::title3(self.language.settings_monitored_folders()).width(Length::Fill))
-                .push(
-                    widget::button::suggested(self.language.settings_btn_add_folder())
-                        .leading_icon(widget::icon::from_name("folder-symbolic"))
-                        .on_press(Message::PickFolder)
-                )
-        );
-
-        for dir in &self.config.dirs {
-            let dir_clone = dir.clone();
-            let dir_row = widget::row::with_capacity(2)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(dir).width(Length::Fill))
-                .push(
-                    widget::button::destructive(self.language.settings_btn_delete())
-                        .on_press(Message::RemoveFolder(dir_clone))
-                );
-            folders_box = folders_box.push(dir_row);
-        }
-
-        col = col.push(widget::container(folders_box).width(Length::Fill));
-
-        // Persistence info card (clean, no emojis)
-        let info_card = widget::column::with_capacity(2)
-            .spacing(6)
-            .padding(14)
-            .push(widget::text::title3(self.language.settings_persistence_title()))
-            .push(widget::text::caption(self.language.settings_persistence_desc()));
-
-        col = col.push(widget::container(info_card).width(Length::Fill));
-
-        Element::from(widget::scrollable(col).height(Length::Fill))
-    }
-
-    fn view_about(&self) -> Element<'_, Message> {
-        let mut col = widget::column::with_capacity(6)
-            .spacing(18)
-            .padding(24)
-            .align_x(Horizontal::Center)
-            .width(Length::Fill);
-
-        // Official high-resolution Kinetic A vector logo
-        let logo_widget = widget::icon::from_svg_bytes(
-            include_bytes!("../resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg")
-        )
-        .icon()
-        .size(104);
-
-        let title_box = widget::column::with_capacity(3)
-            .spacing(6)
-            .align_x(Horizontal::Center)
-            .push(widget::text::title1("Aura"))
-            .push(widget::text::title3(self.language.about_tagline()))
-            .push(widget::text::caption(self.language.about_version_info()));
-
-        let info_card = widget::column::with_capacity(7)
-            .spacing(12)
-            .padding(20)
-            .width(Length::Fixed(580.0))
-            .push(widget::text::title3(self.language.about_details_title()))
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .push(widget::text::body(self.language.about_developer_lbl()).width(Length::Fixed(140.0)))
-                    .push(widget::text::body("Antwny"))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .push(widget::text::body(self.language.about_donation_lbl()).width(Length::Fixed(140.0)))
-                    .push(widget::text::body("antwnyab@gmail.com"))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .push(widget::text::body(self.language.about_architecture_lbl()).width(Length::Fixed(140.0)))
-                    .push(widget::text::caption("Rust 1.95 • libcosmic • wgpu • Tokio • mpvpaper"))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .push(widget::text::body(self.language.about_license_lbl()).width(Length::Fixed(140.0)))
-                    .push(widget::text::body("GNU General Public License v3.0 (GPL-3.0)"))
-            )
-            .push(
-                widget::text::caption(self.language.about_summary_desc())
-            );
-
-        let action_buttons = widget::row::with_capacity(3)
-            .spacing(14)
-            .align_y(Alignment::Center)
-            .push(
-                widget::button::suggested(self.language.about_github_btn())
-                    .on_press(Message::OpenGitHub)
-            )
-            .push(
-                widget::button::standard(self.language.about_youtube_btn())
-                    .on_press(Message::OpenYouTube)
-            )
-            .push(
-                widget::button::standard(self.language.about_donate_btn())
-                    .on_press(Message::OpenPayPal)
-            );
-
-        col = col.push(logo_widget)
-            .push(title_box)
-            .push(widget::container(info_card))
-            .push(action_buttons);
-
-        Element::from(widget::scrollable(col).height(Length::Fill))
-    }
-}
-
-pub fn is_heavy_process_cmdline(cmdline: &str) -> bool {
-    const HEAVY_PROCESSES: &[&str] = &[
-        "gamescope",
-        "steam_app",
-        "wine64-preloader",
-        "proton run",
-        "proton waitforexitandrun",
-        "pressure-vessel",
-        "lutris-wrapper",
-    ];
-    for proc_name in HEAVY_PROCESSES {
-        if cmdline.contains(proc_name) {
-            return true;
-        }
-    }
-    if cmdline.contains("heroic") && (cmdline.contains("wine") || cmdline.contains("legendary") || cmdline.contains("gog")) {
-        return true;
-    }
-    false
-}
-
-fn check_if_fullscreen_game_active() -> bool {
-    if let Ok(entries) = std::fs::read_dir("/proc") {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let is_pid = entry
-                .file_name()
-                .to_str()
-                .map_or(false, |s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
-
-            if is_pid {
-                if let Ok(cmdline) = std::fs::read_to_string(entry.path().join("cmdline")) {
-                    if is_heavy_process_cmdline(&cmdline) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_heavy_process_cmdline() {
-        assert!(is_heavy_process_cmdline("/usr/bin/gamescope -W 1920"));
-        assert!(is_heavy_process_cmdline("proton run game.exe"));
-        assert!(is_heavy_process_cmdline("heroic --wine game.exe"));
-        assert!(is_heavy_process_cmdline("steam_app_12345"));
-        assert!(!is_heavy_process_cmdline("/usr/bin/bash"));
-        assert!(!is_heavy_process_cmdline("cosmic-panel"));
-        assert!(!is_heavy_process_cmdline("/usr/bin/protonvpn-app"));
-        assert!(!is_heavy_process_cmdline("/opt/heroic/heroic"));
-        assert!(!is_heavy_process_cmdline(""));
     }
 }

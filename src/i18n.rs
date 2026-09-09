@@ -835,6 +835,141 @@ impl Language {
             Language::En => "Select Folder with Videos",
         }
     }
+
+    #[allow(dead_code)]
+    pub fn library_btn_remove_custom(&self) -> &'static str {
+        match self {
+            Language::Es => "Quitar",
+            Language::En => "Remove",
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn library_btn_delete_download(&self) -> &'static str {
+        match self {
+            Language::Es => "Eliminar",
+            Language::En => "Delete",
+        }
+    }
+
+    pub fn library_removed_toast(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondo quitado de la biblioteca",
+            Language::En => "Wallpaper removed from library",
+        }
+    }
+
+    pub fn library_target_output_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Pantalla destino:",
+            Language::En => "Target Display:",
+        }
+    }
+
+    pub fn monitors_apply_to_this(&self) -> &'static str {
+        match self {
+            Language::Es => "Elegir pantalla",
+            Language::En => "Select display",
+        }
+    }
+
+    pub fn monitors_all_displays(&self) -> &'static str {
+        match self {
+            Language::Es => "Todas las pantallas",
+            Language::En => "All Displays",
+        }
+    }
+
+    pub fn settings_rotation_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación Automática de Fondos",
+            Language::En => "Playlist Auto-Rotation",
+        }
+    }
+
+    pub fn settings_rotation_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Cambia periódicamente de fondo entre los elementos de la biblioteca",
+            Language::En => "Periodically switch wallpapers from your library collection",
+        }
+    }
+
+    pub fn settings_interval_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Intervalo de cambio:",
+            Language::En => "Switch Interval:",
+        }
+    }
+
+    pub fn settings_order_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Orden de reproducción:",
+            Language::En => "Playback Order:",
+        }
+    }
+
+    pub fn settings_order_random(&self) -> &'static str {
+        match self {
+            Language::Es => "Aleatorio",
+            Language::En => "Random",
+        }
+    }
+
+    pub fn settings_order_seq(&self) -> &'static str {
+        match self {
+            Language::Es => "Secuencial",
+            Language::En => "Sequential",
+        }
+    }
+
+    pub fn settings_hwdec_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Aceleración de Hardware (GPU)",
+            Language::En => "Hardware Acceleration (GPU)",
+        }
+    }
+
+    pub fn settings_hwdec_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Configura el decodificador de video para mpv (VA-API / NVDEC)",
+            Language::En => "Configure the video hardware decoder for mpv (VA-API / NVDEC)",
+        }
+    }
+
+    pub fn settings_battery_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Ahorro de Batería en Portátiles",
+            Language::En => "Laptop Battery Saver",
+        }
+    }
+
+    pub fn settings_battery_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Suspende automáticamente la reproducción al usar la batería del portátil",
+            Language::En => "Automatically suspend playback when running on laptop battery",
+        }
+    }
+
+    pub fn status_battery_paused(&self) -> &'static str {
+        match self {
+            Language::Es => "Ahorro de batería: Fondo pausado (0% GPU)",
+            Language::En => "Battery saver: Wallpaper paused (0% GPU)",
+        }
+    }
+
+    pub fn status_battery_resumed(&self) -> &'static str {
+        match self {
+            Language::Es => "Alimentación por CA conectada: Fondo reanudado",
+            Language::En => "AC power connected: Wallpaper resumed",
+        }
+    }
+
+    pub fn bar_volume(&self) -> &'static str {
+        match self {
+            Language::Es => "Volumen",
+            Language::En => "Volume",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -898,6 +1033,25 @@ mod tests {
             assert!(!lang.explore_res_4k().is_empty());
             assert!(!lang.explore_res_2k().is_empty());
             assert!(!lang.explore_res_ultrawide().is_empty());
+            assert!(!lang.library_btn_remove_custom().is_empty());
+            assert!(!lang.library_btn_delete_download().is_empty());
+            assert!(!lang.library_removed_toast().is_empty());
+            assert!(!lang.library_target_output_label().is_empty());
+            assert!(!lang.monitors_apply_to_this().is_empty());
+            assert!(!lang.monitors_all_displays().is_empty());
+            assert!(!lang.settings_rotation_title().is_empty());
+            assert!(!lang.settings_rotation_desc().is_empty());
+            assert!(!lang.settings_interval_label().is_empty());
+            assert!(!lang.settings_order_label().is_empty());
+            assert!(!lang.settings_order_random().is_empty());
+            assert!(!lang.settings_order_seq().is_empty());
+            assert!(!lang.settings_hwdec_title().is_empty());
+            assert!(!lang.settings_hwdec_desc().is_empty());
+            assert!(!lang.settings_battery_title().is_empty());
+            assert!(!lang.settings_battery_desc().is_empty());
+            assert!(!lang.status_battery_paused().is_empty());
+            assert!(!lang.status_battery_resumed().is_empty());
+            assert!(!lang.bar_volume().is_empty());
         }
     }
 

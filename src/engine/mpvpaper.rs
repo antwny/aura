@@ -52,18 +52,17 @@ impl WallpaperEngine {
         video_path: &str,
         scaling: &str,
         mute: bool,
+        volume: u8,
         hwdec: &str,
     ) -> Result<u32, std::io::Error> {
-        // Kill existing instance for this specific output first
-        self.stop_output(output);
-
-        // Also cleanup external or orphaned mpvpaper processes to prevent multiple instances
-        let _ = Command::new("pkill")
-            .arg("-x")
-            .arg("mpvpaper")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        // If applying to all monitors ("*"), stop any specific outputs first
+        if output == "*" {
+            self.stop_all();
+        } else {
+            // Stop wildcard if running, and stop this specific output's previous process
+            self.stop_output("*");
+            self.stop_output(output);
+        }
 
         let is_image = std::path::Path::new(video_path)
             .extension()
@@ -79,12 +78,9 @@ impl WallpaperEngine {
         };
         let effective_path_str = effective_path.to_string_lossy().to_string();
 
-        let opts = Self::build_mpv_options(scaling, mute, hwdec, is_image);
+        let opts = Self::build_mpv_options(scaling, mute, volume, hwdec, is_image);
 
         let child = match Command::new(resolve_mpvpaper_binary())
-            // Note: We do NOT pass "-p" (auto-pause) to mpvpaper because COSMIC compositor (cosmic-comp)
-            // layer-shell events cause mpvpaper to prematurely freeze playback when desktop panels initialize.
-            // Aura natively controls pausing via SIGSTOP/SIGCONT and Smart Pause.
             .arg("-o")
             .arg(&opts)
             .arg(output)
@@ -122,46 +118,43 @@ impl WallpaperEngine {
     }
 
     pub fn pause_all(&mut self) {
-        // Send SIGSTOP to freeze video playback and reduce GPU/CPU load to 0%
+        // Send SIGSTOP to freeze video playback and reduce GPU/CPU load to 0% via POSIX signal
         for (_, child) in &self.processes {
-            let pid = child.id().to_string();
-            let _ = Command::new("kill").args(["-STOP", &pid]).status();
+            let pid = child.id() as i32;
+            unsafe {
+                libc::kill(pid, libc::SIGSTOP);
+            }
         }
-        let _ = Command::new("pkill").args(["-STOP", "-x", "mpvpaper"]).status();
         self.is_paused = true;
     }
 
     pub fn resume_all(&mut self) {
-        // Send SIGCONT to smoothly unfreeze playback
+        // Send SIGCONT to smoothly unfreeze playback via POSIX signal
         for (_, child) in &self.processes {
-            let pid = child.id().to_string();
-            let _ = Command::new("kill").args(["-CONT", &pid]).status();
+            let pid = child.id() as i32;
+            unsafe {
+                libc::kill(pid, libc::SIGCONT);
+            }
         }
-        let _ = Command::new("pkill").args(["-CONT", "-x", "mpvpaper"]).status();
         self.is_paused = false;
     }
 
     pub fn stop_output(&mut self, output: &str) {
         if let Some(mut child) = self.processes.remove(output) {
             let _ = child.kill();
+            let _ = child.wait();
         }
     }
 
     pub fn stop_all(&mut self) {
         for (_, mut child) in self.processes.drain() {
             let _ = child.kill();
+            let _ = child.wait();
         }
-        // Also cleanup external or orphaned mpvpaper processes
-        let _ = Command::new("pkill")
-            .arg("-x")
-            .arg("mpvpaper")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
         self.is_paused = false;
     }
 
-    pub fn build_mpv_options(scaling: &str, mute: bool, hwdec: &str, is_image: bool) -> String {
+    pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, is_image: bool) -> String {
         let mut opts = if is_image {
             String::from("image-display-duration=inf --pause=yes --no-config --no-audio --demuxer-max-bytes=8M --vd-lavc-threads=1")
         } else {
@@ -169,8 +162,10 @@ impl WallpaperEngine {
                 "loop-file=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2",
                 hwdec
             );
-            if mute {
+            if mute || volume == 0 {
                 o.push_str(" --no-audio");
+            } else {
+                o.push_str(&format!(" --volume={}", volume.min(100)));
             }
             o
         };
@@ -261,22 +256,23 @@ mod tests {
 
     #[test]
     fn test_build_mpv_options() {
-        let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, "auto-safe", false);
+        let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, 100, "auto-safe", false);
         assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
         assert!(opts_fit_mute.contains("--no-audio"));
         assert!(opts_fit_mute.contains("--demuxer-max-bytes=24M"));
         assert!(opts_fit_mute.contains("--vd-lavc-threads=2"));
         assert!(!opts_fit_mute.contains("--panscan"));
 
-        let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, "vaapi", false);
+        let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, 80, "vaapi", false);
         assert!(opts_fill_sound.contains("--hwdec=vaapi"));
         assert!(!opts_fill_sound.contains("--no-audio"));
+        assert!(opts_fill_sound.contains("--volume=80"));
         assert!(opts_fill_sound.contains("--panscan=1.0"));
 
-        let opts_stretch = WallpaperEngine::build_mpv_options("stretch", false, "nvdec", false);
+        let opts_stretch = WallpaperEngine::build_mpv_options("stretch", false, 100, "nvdec", false);
         assert!(opts_stretch.contains("--no-keepaspect"));
 
-        let opts_image = WallpaperEngine::build_mpv_options("fill", true, "auto-safe", true);
+        let opts_image = WallpaperEngine::build_mpv_options("fill", true, 100, "auto-safe", true);
         assert!(opts_image.contains("image-display-duration=inf"));
         assert!(opts_image.contains("--pause=yes"));
         assert!(opts_image.contains("--demuxer-max-bytes=8M"));

@@ -7,6 +7,8 @@ mod scanner;
 mod theme;
 mod tray;
 mod online;
+mod system;
+mod ui;
 
 fn ensure_wayland_display() {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {

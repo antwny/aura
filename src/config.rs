@@ -17,13 +17,21 @@ pub struct Config {
     pub order: String,  // "random" | "sequential"
     pub seq_index: usize,
     pub mute: bool,
+    #[serde(default = "default_volume")]
+    pub volume: u8,
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
     pub smart_pause: bool,
+    #[serde(default)]
+    pub pause_on_battery: bool,
     pub keep_running_on_close: bool,
     #[serde(default)]
     pub autostart: bool,
     #[serde(default = "default_language")]
     pub language: String,
+}
+
+fn default_volume() -> u8 {
+    100
 }
 
 fn default_language() -> String {
@@ -117,8 +125,10 @@ impl Default for Config {
             order: "random".into(),
             seq_index: 0,
             mute: true,
+            volume: 100,
             hwdec: "auto-safe".into(),
             smart_pause: true,
+            pause_on_battery: false,
             keep_running_on_close: true,
             autostart: false,
             language: default_language(),
@@ -189,6 +199,8 @@ mod tests {
         assert!(cfg.mute);
         assert!(cfg.smart_pause);
         assert!(cfg.keep_running_on_close);
+        assert_eq!(cfg.volume, 100);
+        assert!(!cfg.pause_on_battery);
         assert_eq!(cfg.hwdec, "auto-safe");
         assert_eq!(cfg.output, "*");
         assert!(!cfg.dirs.is_empty());
