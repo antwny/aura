@@ -17,15 +17,24 @@ finish-args:
   - --filesystem=xdg-run/wayland-2
   # Hardware GPU Acceleration (wgpu / Vulkan / OpenGL)
   - --device=dri
+  # Audio support for video wallpapers and volume control
+  - --socket=pulseaudio
   # Online wallpaper catalogs (Bing UHD & Wallhaven)
   - --share=network
   # File system access for wallpapers and user library
   - --filesystem=xdg-pictures:rw
   - --filesystem=xdg-videos:rw
   - --filesystem=xdg-download:rw
-  # COSMIC Desktop auto-theming integration
+  # COSMIC Desktop auto-theming & autostart integration
   - --talk-name=com.system76.CosmicSettingsDaemon
   - --talk-name=com.system76.CosmicSettingsDaemon.*
+  - --filesystem=xdg-config/cosmic:rw
+  - --filesystem=xdg-config/autostart:create
+  # Battery saver integration via UPower D-Bus
+  - --system-talk-name=org.freedesktop.UPower
+  # Feral GameMode integration (session & system bus)
+  - --talk-name=com.feralinteractive.GameMode
+  - --system-talk-name=com.feralinteractive.GameMode
   # Desktop Notifications & Tray indicator
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
@@ -116,7 +125,6 @@ modules:
       - install -Dm644 LICENSE -t /app/share/licenses/io.github.antwny.aura/
     sources:
       - type: git
-        url: https://github.com/antwny/aura.git
-        tag: v1.0.1
-        commit: 2a62f1a83317be3ed8624a7d24271b90736cf7be
+        url: /home/antwny/aura
+        branch: feature/v1.1-enhancements
       - cargo-sources.json
