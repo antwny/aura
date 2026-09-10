@@ -14,11 +14,19 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 
 <p align="center">
-  <b>Sub-20ms Cold Boots</b> &bull; <b>Zero Python Overhead</b> &bull; <b>Real-Time Palette Sync</b> &bull; <b>Multi-Monitor Wayland Layer-Shell</b>
+  <b>Sub-20ms Cold Boots</b> • <b>Zero Python Overhead</b> • <b>Real-Time Palette Sync</b> • <b>Multi-Monitor Wayland Layer-Shell</b>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/library_view.png" alt="Aura Main Interface" width="92%" />
+  <img src="docs/screenshots/auto_theming.png" alt="Aura Main Interface" width="92%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/bing_catalog.png" alt="Aura Main Interface" width="92%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/wallhaven_catalog.png" alt="Aura Main Interface" width="92%" />
 </p>
 
 ---
@@ -36,61 +44,73 @@ By integrating directly with System76's official `libcosmic` framework (`iced` +
 ## Key Features
 
 ### Native Rust and COSMIC Interface
+
 - **Zero Runtime Overhead**: Fully compiled native binary eliminating interpreter lag and garbage collection pauses.
 - **Fast Startup**: Launches in under 20 milliseconds with immediate system responsiveness.
 - **Authentic COSMIC Design**: Features a responsive card grid, frosted acrylic glass styling, and smooth Wayland compositor integration.
 
 ### Dynamic Desktop Auto-Theming
+
 - **HSV Keyframe Color Extraction**: Analyzes media frames in real time to calculate the primary vibrant accent color.
 - **System Palette Synchronization**: Automatically updates COSMIC theme definitions (`com.system76.CosmicTheme`), matching system buttons, window borders, and active accents to your current wallpaper.
 - **Luminance-Based Theme Switching**: Dynamically adjusts between Dark and Light desktop modes based on weighted luminance analysis ($Y = 0.299R + 0.587G + 0.114B$).
 
 ### Hardware-Accelerated Playback and Smart Pause
+
 - **VA-API and NVDEC Decoding**: Offloads video playback entirely from the CPU to the GPU via `mpvpaper` with `--hwdec=auto-safe`.
 - **Smart Gaming Pause**: Automatically suspends rendering via `SIGSTOP` when full-screen applications or games are active, reducing GPU and CPU usage to 0.0%.
 - **Instant Recovery**: Resumes playback via `SIGCONT` without frame drops or visual tearing when games or windows are unmaximized.
 
 ### Multi-Monitor Topology & Output Selector
+
 - **Target Display Selector Chips**: Select which display to apply wallpapers to directly from the Library header or apply globally (`*`).
 - **True-to-Scale Canvas**: Visual representation of physical monitor layouts, resolutions, and relative positions in the Monitors view.
 - **Aspect Ratio Modes**: Supports `Fit`, `Fill` (dynamic cropping), and `Stretch` independently for each connected display.
 - **Dynamic Hotplug**: Automatically identifies newly connected or disconnected monitors through Wayland display protocols.
 
 ### Multimedia Audio Controls
+
 - **Now Playing Volume Slider**: Bottom playback bar features a dedicated 0-100% volume slider with real-time feedback.
 - **Instant Mute Memory**: Click to silence or restore audio with previous volume level restoration.
 
 ### Floating Toaster Notifications & File Manager Integration
+
 - **Zero Layout-Shift Toasters**: Modern floating notification pills powered by `cosmic::widget::toaster` that hover over the bottom of the interface without shifting cards or layout elements.
 - **User-Accessible Downloads**: Downloaded 4K wallpapers are stored directly in `~/Pictures/Wallpapers/Aura` (or `~/Imágenes/Wallpapers/Aura`), fully visible and organized in COSMIC Files.
 - **Direct File Manager Shortcuts**: One-click folder button in the Library header and on individual wallpaper cards to immediately reveal files in your desktop file manager.
 
 ### Seamless GUI & CLI In-App Updates
+
 - **Automatic Background Check**: Aura checks for new releases on startup in the background with zero startup latency.
 - **Interactive Action Toasts**: Notifies with a floating `[ Actualizar ]` toast whenever a new version is available.
 - **Software Updates View**: "Acerca de" card provides full version status, release notes preview, manual check button, and 1-click update & restart.
 - **Flatpak & Native Awareness**: Automatically detects sandboxed vs native execution, routing Flatpak users to Flathub/COSMIC Store and native users to seamless in-place updates.
 
 ### Power & Battery Optimization
+
 - **Laptop Battery Saver**: Monitors power supply via UPower D-Bus, automatically pausing video wallpapers when running on battery power.
 - **Feral GameMode Integration**: Detects active gaming sessions non-blockingly, suspending wallpaper playback to allocate 100% of GPU compute to your games.
 - **Per-Output Process Isolation**: Each monitor is managed independently via POSIX signals (`SIGSTOP`/`SIGCONT`/`SIGTERM`), preventing global compositor interruptions.
 
 ### Online 4K Wallpaper Catalogs
+
 - **Microsoft Bing Daily UHD**: Access and browse daily curated high-resolution photography with archive pagination.
 - **Wallhaven 4K Collections**: Explore community-rated art and photography filtered by category, resolution, and rating.
 - **Non-Blocking Network Pipeline**: Asynchronous background downloads (`reqwest` + `rustls`) with local caching and one-click auto-apply.
 
 ### System Tray and Single-Instance IPC Daemon
+
 - **StatusNotifierItem Integration**: Integrates directly into the COSMIC top panel status area.
 - **D-Bus Single-Instance Activation**: Terminal and application launcher calls communicate directly with the active daemon instance via D-Bus (`ActivateAction`), preventing duplicate processes.
 - **Tray Context Controls**: Quick-access menu to cycle wallpapers, pause/resume playback, stop rendering, or open the settings interface.
 - **Background Persistence**: Minimizing or closing the window leaves the daemon running unobtrusively in the system tray.
 
 ### Built-in Bilingual Support
+
 - **In-Memory Localization**: Zero-cost, type-safe translations for English and Spanish with automatic system locale detection.
 
 ### Command-Line Interface and Desktop Shortcuts
+
 Control Aura headlessly from scripts or bind commands to global shortcuts in **Settings -> Keyboard -> Custom Shortcuts**:
 
 ```bash
@@ -108,66 +128,17 @@ aura help              # Display help and available options
 
 ---
 
-## Architecture
-
-Aura utilizes an asynchronous, decoupled architecture that separates user interface rendering, filesystem scanning, and Wayland process management:
-
-```mermaid
-flowchart TB
-    subgraph UI ["Presentation Layer (libcosmic / iced / wgpu)"]
-        A[User Input & Settings] --> B[Reactive State Machine]
-        B --> C[60 FPS Wayland Surface Renderer]
-    end
-
-    subgraph Runtime ["Tokio Asynchronous Runtime"]
-        D[Message Dispatcher]
-        E[Thumbnail Worker Pool]
-        F[Directory Scanner]
-        G[Auto-Rotation Engine]
-    end
-
-    subgraph Core ["Compositor & System Engines"]
-        H["mpvpaper Layer-Shell Engine<br/>hwdec=auto-safe"]
-        I["COSMIC Theme Daemon<br/>com.system76.CosmicTheme"]
-        J["System Tray Daemon<br/>ksni / StatusNotifierItem"]
-        K["Display Topology Manager<br/>cosmic-randr / Wayland"]
-    end
-
-    B <-->|Messages & Commands| D
-    D -->|Extract Frames| E
-    D -->|Async Scan| F
-    D -->|Interval Ticks| G
-    D -->|Process Supervision| H
-    D -->|Sync Palette RON| I
-    D -->|State Updates| J
-    D -->|Query Displays| K
-    H -->|Render Surface| L[Wayland Layer-Shell]
-    I -->|Live Accent Update| M[COSMIC Desktop Shell]
-```
-
-### Architectural Breakdown
-
-| Subsystem | Technology | Primary Function |
-| :--- | :--- | :--- |
-| **Presentation** | `libcosmic` / `iced` / `wgpu` | Hardware-accelerated UI, responsive card grid, and reactive message dispatching. |
-| **Worker Engine** | `tokio` / `image` | Non-blocking directory scanning, image pre-scaling, and asynchronous thumbnail generation. |
-| **Compositor Engine** | `mpvpaper` / Wayland Layer-Shell | Per-display process supervision with hardware acceleration, audio controls, and memory-tuned buffers. |
-| **Theme Engine** | HSV & Luminance Analysis | Real-time accent extraction and atomic updates to COSMIC desktop RON configuration. |
-| **Daemon & Tray** | `ksni` / D-Bus | Native StatusNotifierItem panel integration and single-instance IPC command routing. |
-
----
-
 ## Performance Benchmarks
 
 Measured on Pop!_OS 24.04 LTS (AMD Ryzen 5 4500U, Radeon Graphics, Wayland):
 
-| Metric | Aura (Rust + libcosmic) | Legacy Wallpaper Tools (Python / GTK) | Difference |
-| :--- | :---: | :---: | :---: |
-| **Cold Startup Time** | **< 20 ms** | ~1,120 ms | **~56x faster** |
-| **Memory Overhead** | **Minimal native footprint** | ~180 MB - 240 MB | **Significant reduction** |
-| **CPU Usage (Daemon Idle)** | **0.00%** | 3.5% - 8.0% | **Zero idle wakeups** |
-| **GPU Usage When Paused** | **0.4%** (`SIGSTOP`) | 3.0% - 8.0% | **Complete GPU release** |
-| **UI Framerate Under Load** | **Solid 60 FPS** | 24 - 45 FPS | **No frame drops** |
+| Metric                      | Aura (Rust + libcosmic)      | Legacy Wallpaper Tools (Python / GTK) | Difference                |
+|:--------------------------- |:----------------------------:|:-------------------------------------:|:-------------------------:|
+| **Cold Startup Time**       | **< 20 ms**                  | ~1,120 ms                             | **~56x faster**           |
+| **Memory Overhead**         | **Minimal native footprint** | ~180 MB - 240 MB                      | **Significant reduction** |
+| **CPU Usage (Daemon Idle)** | **0.00%**                    | 3.5% - 8.0%                           | **Zero idle wakeups**     |
+| **GPU Usage When Paused**   | **0.4%** (`SIGSTOP`)         | 3.0% - 8.0%                           | **Complete GPU release**  |
+| **UI Framerate Under Load** | **Solid 60 FPS**             | 24 - 45 FPS                           | **No frame drops**        |
 
 ---
 
@@ -202,6 +173,7 @@ cd aura-v1.1.1-x86_64-linux
 The script automatically installs the `aura` binary to `~/.local/bin`, along with its desktop entry, icons, and AppStream metadata to `~/.local/share/`.
 
 To uninstall:
+
 ```bash
 ./uninstall.sh
 ```
