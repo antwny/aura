@@ -54,20 +54,12 @@ impl AuraApp {
                     .spacing(20)
                     .push(widget::text::body(self.language.about_license_lbl()).width(Length::Fixed(140.0)))
                     .push(widget::text::body("GNU General Public License v3.0 (GPL-3.0)"))
-            )
-            .push(
-                widget::text::caption(self.language.about_summary_desc())
             );
 
         // Software Updates Card
         let update_card = {
             let mut u_col = widget::column::with_capacity(4).spacing(10).padding(20).width(Length::Fixed(580.0));
-            let header_row = widget::row::with_capacity(2)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(widget::icon::from_name("system-software-update-symbolic"))
-                .push(widget::text::title3(self.language.about_updates_title()));
-            u_col = u_col.push(header_row);
+            u_col = u_col.push(widget::text::title3(self.language.about_updates_title()));
 
             if crate::online::updater::is_flatpak() {
                 u_col = u_col.push(widget::text::caption(self.language.about_flatpak_managed()));
@@ -97,7 +89,7 @@ impl AuraApp {
                         let row = widget::row::with_capacity(2)
                             .spacing(16)
                             .align_y(Alignment::Center)
-                            .push(widget::text::body(format!("✅ v{} • {}", env!("CARGO_PKG_VERSION"), self.language.about_up_to_date())))
+                            .push(widget::text::body(format!("v{} • {}", env!("CARGO_PKG_VERSION"), self.language.about_up_to_date())))
                             .push(
                                 widget::button::standard(self.language.about_check_updates_btn())
                                     .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
@@ -113,7 +105,6 @@ impl AuraApp {
                                 .on_press(Message::PerformGuiUpdate { download_url: url.clone(), version: latest_tag.clone() })
                         } else {
                             widget::button::standard(self.language.about_github_btn())
-                                .leading_icon(widget::icon::from_name("web-browser-symbolic"))
                                 .on_press(Message::OpenGitHub)
                         };
 
@@ -176,12 +167,10 @@ impl AuraApp {
             .align_y(Alignment::Center)
             .push(
                 widget::button::suggested(self.language.about_github_btn())
-                    .leading_icon(widget::icon::from_name("web-browser-symbolic"))
                     .on_press(Message::OpenGitHub)
             )
             .push(
                 widget::button::standard(self.language.about_youtube_btn())
-                    .leading_icon(widget::icon::from_name("video-x-generic-symbolic"))
                     .on_press(Message::OpenYouTube)
             )
             .push(

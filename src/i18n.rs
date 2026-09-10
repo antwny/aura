@@ -450,6 +450,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn about_summary_desc(&self) -> &'static str {
         match self {
             Language::Es => "Aura fue concebido para transformar la experiencia de fondos de pantalla animados en Linux. Aprovechando el poder nativo de Rust y libcosmic, ofrece un rendimiento fluido de 60 FPS con huella de memoria ultraligera, decodificación completa por GPU y sincronización automática de color.",
@@ -459,15 +460,15 @@ impl Language {
 
     pub fn about_github_btn(&self) -> &'static str {
         match self {
-            Language::Es => "Repositorio en GitHub",
-            Language::En => "GitHub Repository",
+            Language::Es => "Github",
+            Language::En => "Github",
         }
     }
 
     pub fn about_youtube_btn(&self) -> &'static str {
         match self {
-            Language::Es => "Canal de YouTube",
-            Language::En => "YouTube Channel",
+            Language::Es => "YouTube",
+            Language::En => "YouTube",
         }
     }
 
