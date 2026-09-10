@@ -65,6 +65,12 @@ By integrating directly with System76's official `libcosmic` framework (`iced` +
 - **User-Accessible Downloads**: Downloaded 4K wallpapers are stored directly in `~/Pictures/Wallpapers/Aura` (or `~/Imágenes/Wallpapers/Aura`), fully visible and organized in COSMIC Files.
 - **Direct File Manager Shortcuts**: One-click folder button in the Library header and on individual wallpaper cards to immediately reveal files in your desktop file manager.
 
+### Seamless GUI & CLI In-App Updates
+- **Automatic Background Check**: Aura checks for new releases on startup in the background with zero startup latency.
+- **Interactive Action Toasts**: Notifies with a floating `[ Actualizar ]` toast whenever a new version is available.
+- **Software Updates View**: "Acerca de" card provides full version status, release notes preview, manual check button, and 1-click update & restart.
+- **Flatpak & Native Awareness**: Automatically detects sandboxed vs native execution, routing Flatpak users to Flathub/COSMIC Store and native users to seamless in-place updates.
+
 ### Power & Battery Optimization
 - **Laptop Battery Saver**: Monitors power supply via UPower D-Bus, automatically pausing video wallpapers when running on battery power.
 - **Feral GameMode Integration**: Detects active gaming sessions non-blockingly, suspending wallpaper playback to allocate 100% of GPU compute to your games.

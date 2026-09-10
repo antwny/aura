@@ -244,23 +244,6 @@ fn cmd_status() {
     println!("Inicio automático: {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
 }
 
-fn parse_semver(v: &str) -> (u32, u32, u32) {
-    let clean = v.trim_start_matches('v').trim();
-    let parts: Vec<u32> = clean
-        .split('.')
-        .filter_map(|p| p.parse::<u32>().ok())
-        .collect();
-    (
-        parts.get(0).copied().unwrap_or(0),
-        parts.get(1).copied().unwrap_or(0),
-        parts.get(2).copied().unwrap_or(0),
-    )
-}
-
-fn is_newer_version(latest: &str, current: &str) -> bool {
-    parse_semver(latest) > parse_semver(current)
-}
-
 fn cmd_check_update() {
     println!("🔍 Buscando actualizaciones de Aura en GitHub...");
     let rt = match tokio::runtime::Runtime::new() {
@@ -277,36 +260,24 @@ fn cmd_check_update() {
             .build()
             .unwrap_or_default();
 
-        match client.get("https://api.github.com/repos/antwny/aura/releases/latest").send().await {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    if let Ok(json) = resp.json::<serde_json::Value>().await {
-                        let latest_tag = json["tag_name"].as_str().unwrap_or_default();
-                        let current_version = format!("v{}", env!("CARGO_PKG_VERSION"));
-                        let clean_latest = latest_tag.trim_start_matches('v');
-                        let clean_current = current_version.trim_start_matches('v');
+        match crate::online::updater::check_latest_release(&client).await {
+            Ok((latest_tag, notes, _)) => {
+                let current_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+                let clean_latest = latest_tag.trim_start_matches('v');
+                let clean_current = current_version.trim_start_matches('v');
 
-                        if is_newer_version(clean_latest, clean_current) {
-                            println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, latest_tag);
-                            if let Some(body) = json["body"].as_str() {
-                                println!("\nNotas de la versión:\n{}", body);
-                            }
-                            println!("\nPara actualizar automáticamente ejecuta:\n  aura update");
-                        } else {
-                            println!("✅ Tienes la versión más reciente (v{}).", env!("CARGO_PKG_VERSION"));
-                        }
-                    } else {
-                        eprintln!("Error al procesar la respuesta de GitHub.");
+                if crate::online::updater::is_newer_version(clean_latest, clean_current) {
+                    println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, latest_tag);
+                    if !notes.trim().is_empty() {
+                        println!("\nNotas de la versión:\n{}", notes);
                     }
-                } else if resp.status().as_u16() == 404 {
-                    println!("Aún no hay lanzamientos públicos publicados en GitHub Releases.");
-                    println!("Versión instalada: v{}", env!("CARGO_PKG_VERSION"));
+                    println!("\nPara actualizar automáticamente ejecuta:\n  aura update");
                 } else {
-                    eprintln!("GitHub API respondió con código: {}", resp.status());
+                    println!("✅ Tienes la versión más reciente (v{}).", env!("CARGO_PKG_VERSION"));
                 }
             }
             Err(e) => {
-                eprintln!("No se pudo conectar con GitHub: {}", e);
+                eprintln!("Error al buscar actualizaciones: {}", e);
             }
         }
     });
@@ -328,111 +299,41 @@ fn cmd_update() {
             .build()
             .unwrap_or_default();
 
-        let resp = match client.get("https://api.github.com/repos/antwny/aura/releases/latest").send().await {
-            Ok(r) => r,
+        let (latest_tag, _, download_url) = match crate::online::updater::check_latest_release(&client).await {
+            Ok(res) => res,
             Err(e) => {
-                eprintln!("Error al conectar con GitHub: {}", e);
+                eprintln!("No se pudo consultar actualizaciones: {}", e);
                 return;
             }
         };
 
-        if !resp.status().is_success() {
-            eprintln!("No se pudo obtener información del último lanzamiento (código {}).", resp.status());
-            return;
-        }
-
-        let json = match resp.json::<serde_json::Value>().await {
-            Ok(j) => j,
-            Err(e) => {
-                eprintln!("Error al leer respuesta de GitHub: {}", e);
-                return;
-            }
-        };
-
-        let latest_tag = json["tag_name"].as_str().unwrap_or_default();
         let clean_latest = latest_tag.trim_start_matches('v');
         let current_version = env!("CARGO_PKG_VERSION");
 
-        if !is_newer_version(clean_latest, current_version) {
+        if !crate::online::updater::is_newer_version(clean_latest, current_version) {
             println!("✅ Ya tienes la última versión instalada (v{}).", current_version);
             return;
         }
 
+        let url = match download_url {
+            Some(u) => u,
+            None => {
+                println!("No se encontró un archivo precompilado compatible en la versión {}.", latest_tag);
+                println!("Visita https://github.com/antwny/aura/releases para descargar manualmente.");
+                return;
+            }
+        };
+
         println!("Descargando versión {} (actual: v{})...", latest_tag, current_version);
-
-        let assets = json["assets"].as_array();
-        let mut download_url = None;
-        if let Some(assets_list) = assets {
-            for asset in assets_list {
-                let name = asset["name"].as_str().unwrap_or_default();
-                if name.ends_with(".tar.gz") && name.contains("linux") {
-                    download_url = asset["browser_download_url"].as_str().map(|s| s.to_string());
-                    break;
-                }
+        match crate::online::updater::perform_update(&client, &url).await {
+            Ok(dest) => {
+                println!("🎉 ¡Aura actualizada exitosamente a {}!", latest_tag);
+                println!("Ubicación: {}", dest);
+            }
+            Err(e) => {
+                eprintln!("Error al actualizar: {}", e);
             }
         }
-
-        if let Some(url) = download_url {
-            println!("Descargando paquete desde: {}", url);
-            match client.get(&url).send().await {
-                Ok(pkg_resp) => {
-                    if let Ok(bytes) = pkg_resp.bytes().await {
-                        let tmp_tar = std::env::temp_dir().join("aura_update.tar.gz");
-                        let tmp_extract = std::env::temp_dir().join("aura_update_extracted");
-                        let _ = tokio::fs::write(&tmp_tar, &bytes).await;
-                        let _ = tokio::fs::create_dir_all(&tmp_extract).await;
-
-                        let tar_status = Command::new("tar")
-                            .args(["-xzf", &tmp_tar.to_string_lossy(), "-C", &tmp_extract.to_string_lossy()])
-                            .status();
-
-                        if tar_status.is_ok() && tar_status.unwrap().success() {
-                            let mut new_bin = tmp_extract.join("aura");
-                            if !new_bin.exists() {
-                                if let Ok(entries) = std::fs::read_dir(&tmp_extract) {
-                                    for entry in entries.filter_map(|e| e.ok()) {
-                                        let candidate = entry.path().join("aura");
-                                        if candidate.exists() {
-                                            new_bin = candidate;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if new_bin.exists() {
-                                let home = std::env::var("HOME").unwrap_or_default();
-                                let target_bin = PathBuf::from(&home).join(".local/bin/aura");
-                                if let Some(parent) = target_bin.parent() {
-                                    let _ = std::fs::create_dir_all(parent);
-                                }
-                                let tmp_target = target_bin.with_extension("new");
-                                let _ = std::fs::copy(&new_bin, &tmp_target);
-                                #[cfg(unix)]
-                                {
-                                    use std::os::unix::fs::PermissionsExt;
-                                    let _ = std::fs::set_permissions(&tmp_target, std::fs::Permissions::from_mode(0o755));
-                                }
-                                if std::fs::rename(&tmp_target, &target_bin).is_ok() {
-                                    println!("🎉 ¡Aura actualizada exitosamente a {}!", latest_tag);
-                                    println!("Ubicación: {}", target_bin.display());
-                                    let _ = tokio::fs::remove_file(&tmp_tar).await;
-                                    let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error al descargar la actualización: {}", e);
-                    return;
-                }
-            }
-        }
-
-        println!("No se encontró un archivo precompilado compatible en la versión {}.", latest_tag);
-        println!("Visita https://github.com/antwny/aura/releases para descargar manualmente.");
     });
 }
 
@@ -499,6 +400,7 @@ mod tests {
 
     #[test]
     fn test_is_newer_version() {
+        use crate::online::updater::is_newer_version;
         assert_eq!(is_newer_version("1.1.1", "1.1.0"), true);
         assert_eq!(is_newer_version("v1.1.1", "v1.1.0"), true);
         assert_eq!(is_newer_version("1.2.0", "1.1.9"), true);

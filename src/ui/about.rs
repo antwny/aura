@@ -59,25 +59,141 @@ impl AuraApp {
                 widget::text::caption(self.language.about_summary_desc())
             );
 
+        // Software Updates Card
+        let update_card = {
+            let mut u_col = widget::column::with_capacity(4).spacing(10).padding(20).width(Length::Fixed(580.0));
+            let header_row = widget::row::with_capacity(2)
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .push(widget::icon::from_name("system-software-update-symbolic"))
+                .push(widget::text::title3(self.language.about_updates_title()));
+            u_col = u_col.push(header_row);
+
+            if crate::online::updater::is_flatpak() {
+                u_col = u_col.push(widget::text::caption(self.language.about_flatpak_managed()));
+            } else {
+                match &self.update_status {
+                    crate::app::UpdateStatus::Idle => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(16)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::body(format!("v{} • {}", env!("CARGO_PKG_VERSION"), self.language.about_up_to_date())))
+                            .push(
+                                widget::button::standard(self.language.about_check_updates_btn())
+                                    .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
+                                    .on_press(Message::CheckForUpdates { user_initiated: true })
+                            );
+                        u_col = u_col.push(row);
+                    }
+                    crate::app::UpdateStatus::Checking => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(12)
+                            .align_y(Alignment::Center)
+                            .push(widget::icon::from_name("process-working-symbolic"))
+                            .push(widget::text::body(self.language.about_checking_updates()));
+                        u_col = u_col.push(row);
+                    }
+                    crate::app::UpdateStatus::UpToDate => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(16)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::body(format!("✅ v{} • {}", env!("CARGO_PKG_VERSION"), self.language.about_up_to_date())))
+                            .push(
+                                widget::button::standard(self.language.about_check_updates_btn())
+                                    .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
+                                    .on_press(Message::CheckForUpdates { user_initiated: true })
+                            );
+                        u_col = u_col.push(row);
+                    }
+                    crate::app::UpdateStatus::Available { latest_tag, notes, download_url } => {
+                        let badge_text = format!("🚀 {} {} (actual: v{})", self.language.about_update_available(), latest_tag, env!("CARGO_PKG_VERSION"));
+                        let update_btn = if let Some(url) = download_url {
+                            widget::button::suggested(format!("{} {}", self.language.about_update_now_btn(), latest_tag))
+                                .leading_icon(widget::icon::from_name("software-update-available-symbolic"))
+                                .on_press(Message::PerformGuiUpdate { download_url: url.clone(), version: latest_tag.clone() })
+                        } else {
+                            widget::button::standard(self.language.about_github_btn())
+                                .leading_icon(widget::icon::from_name("web-browser-symbolic"))
+                                .on_press(Message::OpenGitHub)
+                        };
+
+                        let content_row = widget::row::with_capacity(2)
+                            .spacing(16)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::body(badge_text))
+                            .push(update_btn);
+
+                        u_col = u_col.push(content_row);
+                        if !notes.trim().is_empty() {
+                            let clean_notes = if notes.len() > 180 {
+                                format!("{}...", &notes[..180])
+                            } else {
+                                notes.clone()
+                            };
+                            u_col = u_col.push(widget::text::caption(clean_notes));
+                        }
+                    }
+                    crate::app::UpdateStatus::Downloading => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(12)
+                            .align_y(Alignment::Center)
+                            .push(widget::icon::from_name("process-working-symbolic"))
+                            .push(widget::text::body(self.language.about_updating()));
+                        u_col = u_col.push(row);
+                    }
+                    crate::app::UpdateStatus::UpdatedSuccess { new_version } => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(16)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::body(format!("🎉 ¡Aura actualizada a {}!", new_version)))
+                            .push(
+                                widget::button::suggested(self.language.about_restart_btn())
+                                    .leading_icon(widget::icon::from_name("system-restart-symbolic"))
+                                    .on_press(Message::RestartApp)
+                            );
+                        u_col = u_col.push(row);
+                    }
+                    crate::app::UpdateStatus::Error(err) => {
+                        let row = widget::row::with_capacity(2)
+                            .spacing(16)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::caption(format!("Error: {}", err)))
+                            .push(
+                                widget::button::standard(self.language.about_check_updates_btn())
+                                    .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
+                                    .on_press(Message::CheckForUpdates { user_initiated: true })
+                            );
+                        u_col = u_col.push(row);
+                    }
+                }
+            }
+
+            widget::container(u_col)
+        };
+
         let action_buttons = widget::row::with_capacity(3)
             .spacing(14)
             .align_y(Alignment::Center)
             .push(
                 widget::button::suggested(self.language.about_github_btn())
+                    .leading_icon(widget::icon::from_name("web-browser-symbolic"))
                     .on_press(Message::OpenGitHub)
             )
             .push(
                 widget::button::standard(self.language.about_youtube_btn())
+                    .leading_icon(widget::icon::from_name("video-x-generic-symbolic"))
                     .on_press(Message::OpenYouTube)
             )
             .push(
                 widget::button::standard(self.language.about_donate_btn())
+                    .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
                     .on_press(Message::OpenPayPal)
             );
 
         col = col.push(logo_widget)
             .push(title_box)
             .push(widget::container(info_card))
+            .push(update_card)
             .push(action_buttons);
 
         Element::from(widget::scrollable(col).height(Length::Fill))

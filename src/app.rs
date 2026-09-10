@@ -105,6 +105,22 @@ pub enum Message {
     CloseToast(cosmic::widget::ToastId),
     OpenWallpapersFolder,
     ShowInFileManager(PathBuf),
+    CheckForUpdates { user_initiated: bool },
+    UpdateCheckResult { result: Result<(String, String, Option<String>), String>, user_initiated: bool },
+    PerformGuiUpdate { download_url: String, version: String },
+    GuiUpdateResult(Result<String, String>),
+    RestartApp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateStatus {
+    Idle,
+    Checking,
+    UpToDate,
+    Available { latest_tag: String, notes: String, download_url: Option<String> },
+    Downloading,
+    UpdatedSuccess { new_version: String },
+    Error(String),
 }
 
 fn handle_window_events(
@@ -182,6 +198,7 @@ pub struct AuraApp {
     pub(crate) wallhaven_resolution: String,
     pub(crate) wallhaven_search: String,
     pub(crate) library_filter: LibraryFilter,
+    pub(crate) update_status: UpdateStatus,
 }
 
 impl AuraApp {
@@ -199,7 +216,7 @@ impl AuraApp {
         action_msg: Message,
     ) -> Task<cosmic::Action<Message>> {
         let toast = cosmic::widget::Toast::new(text)
-            .duration(cosmic::widget::toaster::Duration::Short)
+            .duration(cosmic::widget::toaster::Duration::Long)
             .action(action_label.into(), move |_id| action_msg.clone());
         let task = self.toasts.push(toast);
         task.map(cosmic::Action::App)
@@ -356,7 +373,12 @@ impl cosmic::Application for AuraApp {
             wallhaven_resolution: "all".into(),
             wallhaven_search: String::new(),
             library_filter: LibraryFilter::All,
+            update_status: UpdateStatus::Idle,
         };
+
+        if is_window_open && !crate::online::updater::is_flatpak() {
+            tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
+        }
 
         (app, Task::batch(tasks))
     }
@@ -737,6 +759,99 @@ impl cosmic::Application for AuraApp {
 
             Message::OpenPayPal => {
                 let _ = open::that_detached("https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD");
+            }
+
+            Message::CheckForUpdates { user_initiated } => {
+                self.update_status = UpdateStatus::Checking;
+                let client = self.http_client.clone();
+                return Task::perform(
+                    async move {
+                        crate::online::updater::check_latest_release(&client).await
+                    },
+                    move |res| cosmic::Action::App(Message::UpdateCheckResult { result: res, user_initiated }),
+                );
+            }
+
+            Message::UpdateCheckResult { result, user_initiated } => {
+                match result {
+                    Ok((latest_tag, notes, download_url)) => {
+                        let clean_latest = latest_tag.trim_start_matches('v');
+                        let current_version = env!("CARGO_PKG_VERSION");
+                        if crate::online::updater::is_newer_version(clean_latest, current_version) {
+                            self.update_status = UpdateStatus::Available {
+                                latest_tag: latest_tag.clone(),
+                                notes,
+                                download_url: download_url.clone(),
+                            };
+                            let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
+                            if let Some(url) = download_url {
+                                let action_lbl = self.language.toast_update_available_action();
+                                return self.notify_with_action(
+                                    toast_text,
+                                    action_lbl,
+                                    Message::PerformGuiUpdate { download_url: url, version: latest_tag },
+                                );
+                            } else {
+                                return self.notify_with_action(
+                                    toast_text,
+                                    self.language.about_github_btn(),
+                                    Message::OpenGitHub,
+                                );
+                            }
+                        } else {
+                            self.update_status = UpdateStatus::UpToDate;
+                            if user_initiated {
+                                return self.notify(self.language.about_up_to_date());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.update_status = UpdateStatus::Error(e.clone());
+                        if user_initiated {
+                            return self.notify(format!("Error: {}", e));
+                        }
+                    }
+                }
+            }
+
+            Message::PerformGuiUpdate { download_url, version } => {
+                self.update_status = UpdateStatus::Downloading;
+                let client = self.http_client.clone();
+                let notify_task = self.notify(self.language.about_updating());
+                let update_task = Task::perform(
+                    async move {
+                        match crate::online::updater::perform_update(&client, &download_url).await {
+                            Ok(_) => Ok(version),
+                            Err(e) => Err(e),
+                        }
+                    },
+                    |res| cosmic::Action::App(Message::GuiUpdateResult(res)),
+                );
+                return Task::batch(vec![notify_task, update_task]);
+            }
+
+            Message::GuiUpdateResult(res) => {
+                match res {
+                    Ok(ver) => {
+                        self.update_status = UpdateStatus::UpdatedSuccess { new_version: ver.clone() };
+                        return self.notify_with_action(
+                            format!("🎉 ¡Aura actualizada a {}!", ver),
+                            self.language.toast_restart_action(),
+                            Message::RestartApp,
+                        );
+                    }
+                    Err(e) => {
+                        self.update_status = UpdateStatus::Error(e.clone());
+                        return self.notify(format!("Error al actualizar: {}", e));
+                    }
+                }
+            }
+
+            Message::RestartApp => {
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = std::process::Command::new(exe).spawn();
+                }
+                std::process::exit(0);
             }
 
             Message::ApplyWallpaper { video_path, output } => {

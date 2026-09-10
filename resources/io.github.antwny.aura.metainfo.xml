@@ -60,6 +60,16 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.1.2" date="2026-09-10">
+      <description>
+        <p>Aura 1.1.2 brings in-app updater and UI refinements:</p>
+        <ul>
+          <li>Integrated GUI Software Updates card in About view with instant update check, progress, and one-click atomic update and restart.</li>
+          <li>Startup background update check with non-intrusive floating action toast notification.</li>
+          <li>White monochrome symbolic icons across all external action buttons (GitHub, YouTube, Donate) conforming to COSMIC Human Interface Guidelines.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-09-10">
       <description>
         <p>Aura 1.1.1 maintenance and usability update:</p>

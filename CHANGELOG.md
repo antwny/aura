@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-09-10
+
+### Added
+- **Integrated In-App GUI Updater**:
+  - Automatic background update check on application startup querying GitHub Releases API with zero impact on cold startup times.
+  - Non-intrusive floating action toast notification (`🚀 ¡Nueva versión disponible! [ Actualizar ]`) using `cosmic::widget::toaster`.
+  - Dedicated Software Updates card in the "Acerca de" (About) view showing current status, release notes summary preview, manual "Buscar actualizaciones" button, and one-click atomic update & restart (`[ Actualizar a v1.1.2 ]` -> `[ Reiniciar Aura ]`).
+  - Automatic Flatpak runtime detection directing users to the COSMIC Store / Flathub when running sandboxed.
+- **White Monochrome Symbolic Action Icons**:
+  - Added clean monochrome symbolic icons to external links in the About view (`web-browser-symbolic` for GitHub, `video-x-generic-symbolic` for YouTube, and `emblem-favorite-symbolic` for Donate).
+  - Standardized styling and removed emoji clash to harmonize with Pop!_OS COSMIC design guidelines.
+
 ## [1.1.1] - 2026-09-10
 
 ### Fixed

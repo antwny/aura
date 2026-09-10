@@ -452,8 +452,8 @@ impl Language {
 
     pub fn about_summary_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Aura fue concebido para transformar la experiencia de fondos de pantalla animados en Linux. Aprovechando el poder de Rust y libcosmic, elimina los congelamientos tradicionales y consume menos de 25 MB de memoria RAM con decodificación completa por GPU y sincronización automática de color.",
-            Language::En => "Aura was engineered to redefine animated live wallpapers on Linux. Harnessing native Rust and libcosmic, it eliminates freezes and consumes under 25 MB of RAM with full GPU hardware acceleration and dynamic cosmic color synchronization.",
+            Language::Es => "Aura fue concebido para transformar la experiencia de fondos de pantalla animados en Linux. Aprovechando el poder nativo de Rust y libcosmic, ofrece un rendimiento fluido de 60 FPS con huella de memoria ultraligera, decodificación completa por GPU y sincronización automática de color.",
+            Language::En => "Aura was engineered to redefine animated live wallpapers on Linux. Harnessing native Rust and libcosmic, it delivers smooth 60 FPS playback with minimal memory footprint, full GPU hardware acceleration, and dynamic cosmic color synchronization.",
         }
     }
 
@@ -480,8 +480,85 @@ impl Language {
 
     pub fn about_donate_btn(&self) -> &'static str {
         match self {
-            Language::Es => "💖 Donar (PayPal)",
-            Language::En => "💖 Donate (PayPal)",
+            Language::Es => "Donar (PayPal)",
+            Language::En => "Donate (PayPal)",
+        }
+    }
+
+    pub fn about_updates_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Actualizaciones de Software",
+            Language::En => "Software Updates",
+        }
+    }
+
+    pub fn about_check_updates_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar actualizaciones",
+            Language::En => "Check for updates",
+        }
+    }
+
+    pub fn about_checking_updates(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscando actualizaciones en GitHub...",
+            Language::En => "Checking for updates on GitHub...",
+        }
+    }
+
+    pub fn about_up_to_date(&self) -> &'static str {
+        match self {
+            Language::Es => "Aura está al día con la última versión.",
+            Language::En => "Aura is up to date.",
+        }
+    }
+
+    pub fn about_update_available(&self) -> &'static str {
+        match self {
+            Language::Es => "Nueva versión disponible:",
+            Language::En => "New version available:",
+        }
+    }
+
+    pub fn about_update_now_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "Actualizar a",
+            Language::En => "Update to",
+        }
+    }
+
+    pub fn about_updating(&self) -> &'static str {
+        match self {
+            Language::Es => "Descargando e instalando actualización...",
+            Language::En => "Downloading and installing update...",
+        }
+    }
+
+    pub fn about_restart_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "Reiniciar Aura",
+            Language::En => "Restart Aura",
+        }
+    }
+
+    pub fn about_flatpak_managed(&self) -> &'static str {
+        match self {
+            Language::Es => "Versión Flatpak: las actualizaciones se gestionan automáticamente a través de COSMIC App Store o Flathub.",
+            Language::En => "Flatpak edition: updates are managed via COSMIC App Store or Flathub.",
+        }
+    }
+
+    pub fn toast_update_available_action(&self) -> &'static str {
+        match self {
+            Language::Es => "Actualizar",
+            Language::En => "Update",
+        }
+    }
+
+    pub fn toast_restart_action(&self) -> &'static str {
+        match self {
+            Language::Es => "Reiniciar",
+            Language::En => "Restart",
         }
     }
 
