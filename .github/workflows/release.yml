@@ -1,0 +1,70 @@
+name: Release & Binary Packaging
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release Aura
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev \
+            libwayland-dev \
+            desktop-file-utils \
+            appstream \
+            libmpv-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build Release Binary
+        run: cargo build --release
+
+      - name: Prepare Packaging Tarball
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          PKG_NAME="aura-v${VERSION}-x86_64-linux"
+          mkdir -p "target/package/${PKG_NAME}"
+          cp target/release/aura "target/package/${PKG_NAME}/"
+          cp resources/io.github.antwny.aura.desktop "target/package/${PKG_NAME}/"
+          cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/${PKG_NAME}/"
+          cp resources/io.github.antwny.aura.metainfo.xml "target/package/${PKG_NAME}/"
+          cp LICENSE "target/package/${PKG_NAME}/"
+          if [ -f "packaging/mpvpaper" ]; then
+            cp packaging/mpvpaper "target/package/${PKG_NAME}/"
+          fi
+          cp packaging/install.sh "target/package/${PKG_NAME}/install.sh"
+          cp packaging/uninstall.sh "target/package/${PKG_NAME}/uninstall.sh"
+          chmod +x "target/package/${PKG_NAME}/install.sh"
+          chmod +x "target/package/${PKG_NAME}/uninstall.sh"
+          tar -czf "target/package/${PKG_NAME}.tar.gz" -C "target/package" "${PKG_NAME}"
+          sha256sum "target/package/${PKG_NAME}.tar.gz" | awk '{print $1}' > "target/package/${PKG_NAME}.tar.gz.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz
+            target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz.sha256
+          generate_release_notes: true

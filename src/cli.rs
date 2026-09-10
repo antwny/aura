@@ -11,7 +11,7 @@ pub fn is_pure_cli(args: &[String]) -> bool {
     }
     matches!(
         args[1].as_str(),
-        "status" | "help" | "--help" | "-h" | "version" | "--version" | "-v" | "-V"
+        "status" | "help" | "--help" | "-h" | "version" | "--version" | "-v" | "-V" | "check-update" | "update"
     )
 }
 
@@ -25,6 +25,8 @@ pub fn handle_pure_cli(args: &[String]) {
         "version" | "--version" | "-v" | "-V" => {
             println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
         }
+        "check-update" => cmd_check_update(),
+        "update" => cmd_update(),
         _ => {}
     }
 }
@@ -242,6 +244,181 @@ fn cmd_status() {
     println!("Inicio automático: {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
 }
 
+fn cmd_check_update() {
+    println!("🔍 Buscando actualizaciones de Aura en GitHub...");
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error al inicializar runtime: {}", e);
+            return;
+        }
+    };
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .user_agent("Aura-Updater")
+            .build()
+            .unwrap_or_default();
+
+        match client.get("https://api.github.com/repos/antwny/aura/releases/latest").send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        let latest_tag = json["tag_name"].as_str().unwrap_or_default();
+                        let current_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+                        let clean_latest = latest_tag.trim_start_matches('v');
+                        let clean_current = current_version.trim_start_matches('v');
+
+                        if !clean_latest.is_empty() && clean_latest != clean_current {
+                            println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, latest_tag);
+                            if let Some(body) = json["body"].as_str() {
+                                println!("\nNotas de la versión:\n{}", body);
+                            }
+                            println!("\nPara actualizar automáticamente ejecuta:\n  aura update");
+                        } else {
+                            println!("✅ Tienes la versión más reciente (v{}).", env!("CARGO_PKG_VERSION"));
+                        }
+                    } else {
+                        eprintln!("Error al procesar la respuesta de GitHub.");
+                    }
+                } else if resp.status().as_u16() == 404 {
+                    println!("Aún no hay lanzamientos públicos publicados en GitHub Releases.");
+                    println!("Versión instalada: v{}", env!("CARGO_PKG_VERSION"));
+                } else {
+                    eprintln!("GitHub API respondió con código: {}", resp.status());
+                }
+            }
+            Err(e) => {
+                eprintln!("No se pudo conectar con GitHub: {}", e);
+            }
+        }
+    });
+}
+
+fn cmd_update() {
+    println!("🚀 Comprobando y actualizando Aura...");
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error al inicializar runtime: {}", e);
+            return;
+        }
+    };
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .user_agent("Aura-Updater")
+            .build()
+            .unwrap_or_default();
+
+        let resp = match client.get("https://api.github.com/repos/antwny/aura/releases/latest").send().await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Error al conectar con GitHub: {}", e);
+                return;
+            }
+        };
+
+        if !resp.status().is_success() {
+            eprintln!("No se pudo obtener información del último lanzamiento (código {}).", resp.status());
+            return;
+        }
+
+        let json = match resp.json::<serde_json::Value>().await {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("Error al leer respuesta de GitHub: {}", e);
+                return;
+            }
+        };
+
+        let latest_tag = json["tag_name"].as_str().unwrap_or_default();
+        let clean_latest = latest_tag.trim_start_matches('v');
+        let current_version = env!("CARGO_PKG_VERSION");
+
+        if clean_latest == current_version {
+            println!("✅ Ya tienes la última versión instalada (v{}).", current_version);
+            return;
+        }
+
+        println!("Descargando versión {} (actual: v{})...", latest_tag, current_version);
+
+        let assets = json["assets"].as_array();
+        let mut download_url = None;
+        if let Some(assets_list) = assets {
+            for asset in assets_list {
+                let name = asset["name"].as_str().unwrap_or_default();
+                if name.ends_with(".tar.gz") && name.contains("linux") {
+                    download_url = asset["browser_download_url"].as_str().map(|s| s.to_string());
+                    break;
+                }
+            }
+        }
+
+        if let Some(url) = download_url {
+            println!("Descargando paquete desde: {}", url);
+            match client.get(&url).send().await {
+                Ok(pkg_resp) => {
+                    if let Ok(bytes) = pkg_resp.bytes().await {
+                        let tmp_tar = std::env::temp_dir().join("aura_update.tar.gz");
+                        let tmp_extract = std::env::temp_dir().join("aura_update_extracted");
+                        let _ = tokio::fs::write(&tmp_tar, &bytes).await;
+                        let _ = tokio::fs::create_dir_all(&tmp_extract).await;
+
+                        let tar_status = Command::new("tar")
+                            .args(["-xzf", &tmp_tar.to_string_lossy(), "-C", &tmp_extract.to_string_lossy()])
+                            .status();
+
+                        if tar_status.is_ok() && tar_status.unwrap().success() {
+                            let mut new_bin = tmp_extract.join("aura");
+                            if !new_bin.exists() {
+                                if let Ok(entries) = std::fs::read_dir(&tmp_extract) {
+                                    for entry in entries.filter_map(|e| e.ok()) {
+                                        let candidate = entry.path().join("aura");
+                                        if candidate.exists() {
+                                            new_bin = candidate;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if new_bin.exists() {
+                                let home = std::env::var("HOME").unwrap_or_default();
+                                let target_bin = PathBuf::from(&home).join(".local/bin/aura");
+                                if let Some(parent) = target_bin.parent() {
+                                    let _ = std::fs::create_dir_all(parent);
+                                }
+                                let tmp_target = target_bin.with_extension("new");
+                                let _ = std::fs::copy(&new_bin, &tmp_target);
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    let _ = std::fs::set_permissions(&tmp_target, std::fs::Permissions::from_mode(0o755));
+                                }
+                                if std::fs::rename(&tmp_target, &target_bin).is_ok() {
+                                    println!("🎉 ¡Aura actualizada exitosamente a {}!", latest_tag);
+                                    println!("Ubicación: {}", target_bin.display());
+                                    let _ = tokio::fs::remove_file(&tmp_tar).await;
+                                    let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error al descargar la actualización: {}", e);
+                    return;
+                }
+            }
+        }
+
+        println!("No se encontró un archivo precompilado compatible en la versión {}.", latest_tag);
+        println!("Visita https://github.com/antwny/aura/releases para descargar manualmente.");
+    });
+}
+
 fn print_help() {
     println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC (Pop!_OS)");
     println!("\nUso:");
@@ -252,6 +429,8 @@ fn print_help() {
     println!("  aura toggle-pause     Pausa o reanuda la reproducción (0% GPU al pausar)");
     println!("  aura apply <archivo>  Aplica inmediatamente un archivo de video");
     println!("  aura status           Muestra información del fondo y pantallas");
+    println!("  aura check-update     Comprueba si hay una nueva versión en GitHub");
+    println!("  aura update           Descarga e instala la última actualización");
     println!("  aura --version, -v    Muestra la versión de Aura");
     println!("  aura help             Muestra esta ayuda");
     println!("\nConsejo para COSMIC: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en Ajustes.");
@@ -273,6 +452,8 @@ mod tests {
         assert_eq!(is_pure_cli(&["aura".into(), "version".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "-v".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "status".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "check-update".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "update".into()]), true);
     }
 
     #[test]

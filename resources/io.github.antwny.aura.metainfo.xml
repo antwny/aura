@@ -60,6 +60,22 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.1.0" date="2026-09-10">
+      <description>
+        <p>Aura 1.1.0 brings a major feature and usability update:</p>
+        <ul>
+          <li>Multi-monitor support with per-output target selection and independent wallpaper playback.</li>
+          <li>Audio volume slider (0-100%) and instant mute toggle with level memory.</li>
+          <li>Floating non-intrusive Toaster notifications overlay with zero layout shift.</li>
+          <li>User-accessible wallpapers directory (saved to ~/Pictures/Wallpapers/Aura) and direct File Manager shortcuts.</li>
+          <li>Hardware decoding backend selector (auto-safe, vaapi, nvdec).</li>
+          <li>Automated playlist wallpaper rotation with custom interval and random/sequential modes.</li>
+          <li>Laptop battery saver via UPower D-Bus and non-blocking Feral GameMode pausing.</li>
+          <li>In-app update checking and update CLI command.</li>
+          <li>Enhanced Flatpak sandbox permissions for audio, system bus, and COSMIC theming.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-09-05">
       <description>
         <p>First official production release on Flathub and COSMIC Store. Features animated live wallpaper playback at 60 FPS, online 4K catalogs (Bing UHD and Wallhaven), COSMIC auto-theming, smart library filters, and Wayland power optimizations.</p>

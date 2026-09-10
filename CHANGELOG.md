@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-10
+
+### Added
+- **Multi-Monitor Topology & Output Selector**:
+  - Per-display target output selector chips in Library view (`*` all, or specific monitor).
+  - Direct "Elegir pantalla" (Set as target) button in Monitors canvas.
+  - Per-output child process isolation in `mpvpaper` engine without global `pkill`.
+- **Multimedia Audio Controls**:
+  - Global bottom Now Playing bar volume slider (0-100%) and percentage readout.
+  - Instant audio mute toggle with previous volume level restoration memory.
+  - Engine level `--volume={vol}` dynamic argument generation.
+- **Floating Toaster Notifications (Overlay)**:
+  - Integration with official `cosmic::widget::toaster` floating overlay.
+  - 100% elimination of top banner vertical layout shift (Cumulative Layout Shift = 0).
+  - Interactive toast action buttons (e.g. `[ Ver en archivos ]` upon downloading wallpapers).
+- **User-Accessible Wallpapers Directory**:
+  - Online downloads now save directly to standard user pictures folder (`~/Pictures/Wallpapers/Aura` / `~/Imágenes/Wallpapers/Aura`).
+  - Automatic migration of any legacy wallpapers from hidden `~/.local/share/aura/` or Flatpak data paths.
+  - "Abrir carpeta en el Gestor de Archivos" header button in Library and quick folder shortcut on each wallpaper card.
+- **Advanced Engine & Power Settings**:
+  - Automatic playlist wallpaper rotation with configurable timer (minutes) and order (Random or Sequential).
+  - Hardware-accelerated GPU decoding selector (`auto-safe`, `vaapi`, `nvdec`).
+  - Laptop battery saver automatically pausing wallpapers when unplugged (via UPower D-Bus).
+  - Real-time non-blocking Feral GameMode querying to suspend wallpaper rendering while gaming.
+- **CLI & Auto-Update Subcommands**:
+  - `aura check-update`: Queries GitHub Releases API to verify if a newer version is available.
+  - `aura update`: One-command atomic binary update and desktop database refresh directly from GitHub Releases.
+- **Enhanced Flatpak Manifest**:
+  - Integrated PulseAudio/PipeWire audio socket (`--socket=pulseaudio`).
+  - System bus permissions for UPower (`--system-talk-name=org.freedesktop.UPower`) and GameMode (`com.feralinteractive.GameMode`).
+  - Direct COSMIC theme configuration and autostart filesystem access.
+
+### Changed
+- Refactored monolithic `src/app.rs` into modular UI architecture (`src/ui/library.rs`, `src/ui/monitors.rs`, `src/ui/settings.rs`, `src/ui/bar.rs`, `src/ui/explore.rs`, `src/ui/about.rs`).
+- Replaced dangerous global `pkill -x mpvpaper` with direct POSIX signal management (`libc::kill` with `SIGSTOP`, `SIGCONT`, and `SIGTERM`).
+- Differentiated online download deletion from user-imported video unlinking to guarantee zero accidental user data loss.
+
 ## [1.0.0] - 2026-09-05
 
 ### Added
