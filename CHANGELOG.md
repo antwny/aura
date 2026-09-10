@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-10
+
+### Fixed
+- **Human-Readable Bing Wallpaper Naming**:
+  - Bing wallpapers now retain their descriptive names when downloaded (e.g. `Fields of gold.jpg` instead of `bing_adfdb411e...jpg`), displaying clean titles in Library, File Manager, and Now Playing bar.
+  - Implemented cross-platform title sanitization (`clean_title_filename`) for safe storage across Linux, NTFS, and FAT filesystems.
+- **Automatic Legacy Wallpaper Migration**:
+  - Automatically identifies legacy `bing_<hash>.jpg` files in the user's wallpaper directory and renames them to their human titles using cached metadata archives.
+  - Cleans up obsolete duplicate files from legacy hidden data paths.
+- **Instant Thumbnail Linking**:
+  - Pre-links cached online thumbnails upon download to avoid frame extraction delays when first viewing downloaded wallpapers in Library.
+
 ## [1.1.0] - 2026-09-10
 
 ### Added

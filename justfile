@@ -82,8 +82,8 @@ uninstall:
     @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
     @echo "Aura uninstalled from ~/.local"
 
-# Create release tarball archive (aura-vX.Y.Z-x86_64-linux.tar.gz)
-package version="1.1.0": build
+# Package binary and assets for release
+package version="1.1.1": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"

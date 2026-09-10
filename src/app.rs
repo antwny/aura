@@ -1404,10 +1404,20 @@ impl cosmic::Application for AuraApp {
                 let id = item.id.clone();
                 let url = item.full_url.clone();
                 let dest = item.local_wallpaper_path();
+                let thumb_src = item.local_thumb_path();
                 return Task::perform(
                     async move {
                         match download_to_file(&client, &url, &dest).await {
-                            Ok(p) => Ok((id, p, auto_apply)),
+                            Ok(p) => {
+                                if thumb_src.exists() {
+                                    let target_thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
+                                    if let Some(parent) = target_thumb.parent() {
+                                        let _ = tokio::fs::create_dir_all(parent).await;
+                                    }
+                                    let _ = tokio::fs::copy(&thumb_src, &target_thumb).await;
+                                }
+                                Ok((id, p, auto_apply))
+                            }
                             Err(e) => Err((id, e)),
                         }
                     },

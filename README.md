@@ -188,8 +188,8 @@ Precompiled binary packages are provided on the [GitHub Releases](https://github
 2. Extract the archive and run the installer script:
 
 ```bash
-tar -xzf aura-v1.1.0-x86_64-linux.tar.gz
-cd aura-v1.1.0-x86_64-linux
+tar -xzf aura-v1.1.1-x86_64-linux.tar.gz
+cd aura-v1.1.1-x86_64-linux
 ./install.sh
 ```
 

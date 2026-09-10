@@ -60,6 +60,16 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.1.1" date="2026-09-10">
+      <description>
+        <p>Aura 1.1.1 maintenance and usability update:</p>
+        <ul>
+          <li>Bing wallpapers now retain human-readable titles when downloaded into Library and File Manager instead of cryptic hashes.</li>
+          <li>Automatic migration of legacy Bing wallpaper filenames to clean readable titles.</li>
+          <li>Instant thumbnail pre-linking on download eliminating frame-extraction delay.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-09-10">
       <description>
         <p>Aura 1.1.0 brings a major feature and usability update:</p>

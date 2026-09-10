@@ -244,6 +244,23 @@ fn cmd_status() {
     println!("Inicio automático: {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
 }
 
+fn parse_semver(v: &str) -> (u32, u32, u32) {
+    let clean = v.trim_start_matches('v').trim();
+    let parts: Vec<u32> = clean
+        .split('.')
+        .filter_map(|p| p.parse::<u32>().ok())
+        .collect();
+    (
+        parts.get(0).copied().unwrap_or(0),
+        parts.get(1).copied().unwrap_or(0),
+        parts.get(2).copied().unwrap_or(0),
+    )
+}
+
+fn is_newer_version(latest: &str, current: &str) -> bool {
+    parse_semver(latest) > parse_semver(current)
+}
+
 fn cmd_check_update() {
     println!("🔍 Buscando actualizaciones de Aura en GitHub...");
     let rt = match tokio::runtime::Runtime::new() {
@@ -269,7 +286,7 @@ fn cmd_check_update() {
                         let clean_latest = latest_tag.trim_start_matches('v');
                         let clean_current = current_version.trim_start_matches('v');
 
-                        if !clean_latest.is_empty() && clean_latest != clean_current {
+                        if is_newer_version(clean_latest, clean_current) {
                             println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, latest_tag);
                             if let Some(body) = json["body"].as_str() {
                                 println!("\nNotas de la versión:\n{}", body);
@@ -336,7 +353,7 @@ fn cmd_update() {
         let clean_latest = latest_tag.trim_start_matches('v');
         let current_version = env!("CARGO_PKG_VERSION");
 
-        if clean_latest == current_version {
+        if !is_newer_version(clean_latest, current_version) {
             println!("✅ Ya tienes la última versión instalada (v{}).", current_version);
             return;
         }
@@ -478,5 +495,16 @@ mod tests {
         let (hidden, action, _) = parse_flags(&["aura".into(), "stop".into()]);
         assert_eq!(hidden, true);
         assert_eq!(action, Some("stop".into()));
+    }
+
+    #[test]
+    fn test_is_newer_version() {
+        assert_eq!(is_newer_version("1.1.1", "1.1.0"), true);
+        assert_eq!(is_newer_version("v1.1.1", "v1.1.0"), true);
+        assert_eq!(is_newer_version("1.2.0", "1.1.9"), true);
+        assert_eq!(is_newer_version("2.0.0", "1.99.99"), true);
+        assert_eq!(is_newer_version("1.1.0", "1.1.1"), false);
+        assert_eq!(is_newer_version("1.1.0", "1.1.0"), false);
+        assert_eq!(is_newer_version("v1.1.0", "v1.1.0"), false);
     }
 }

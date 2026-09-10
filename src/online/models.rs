@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::online::cache::{clean_filename, is_downloaded, thumbs_online_cache_dir, wallpapers_online_dir};
+use crate::online::cache::{clean_filename, clean_title_filename, thumbs_online_cache_dir, wallpapers_online_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OnlineSource {
@@ -48,9 +48,26 @@ impl OnlineWallpaperItem {
         }
     }
 
+    pub fn wallpaper_filename(&self) -> String {
+        match self.source {
+            OnlineSource::Bing => {
+                let clean = clean_title_filename(&self.title);
+                if clean == "Bing Wallpaper" {
+                    let short_id = if self.id.len() >= 8 { &self.id[..8] } else { &self.id };
+                    format!("Bing Wallpaper - {}.{}", short_id, self.extension())
+                } else {
+                    format!("{}.{}", clean, self.extension())
+                }
+            }
+            OnlineSource::Wallhaven => {
+                clean_filename(self.source_prefix(), &self.id, self.extension())
+            }
+        }
+    }
+
     pub fn local_wallpaper_path(&self) -> PathBuf {
         let dir = wallpapers_online_dir();
-        dir.join(clean_filename(self.source_prefix(), &self.id, self.extension()))
+        dir.join(self.wallpaper_filename())
     }
 
     pub fn local_thumb_path(&self) -> PathBuf {
@@ -59,7 +76,42 @@ impl OnlineWallpaperItem {
     }
 
     pub fn is_downloaded(&self) -> Option<PathBuf> {
-        is_downloaded(self.source_prefix(), &self.id)
+        let dir = wallpapers_online_dir();
+
+        // 1. Check title-based target path
+        let target = self.local_wallpaper_path();
+        if target.exists() {
+            if let Ok(metadata) = target.metadata() {
+                if metadata.len() > 1024 {
+                    return Some(target);
+                }
+            }
+        }
+
+        // 2. Check legacy paths (e.g. "bing_xyz123.jpg") for backwards compatibility
+        let extensions = ["jpg", "jpeg", "png", "webp"];
+        for ext in &extensions {
+            let legacy = dir.join(clean_filename(self.source_prefix(), &self.id, ext));
+            if legacy.exists() {
+                if let Ok(metadata) = legacy.metadata() {
+                    if metadata.len() > 1024 {
+                        if !target.exists() {
+                            if std::fs::rename(&legacy, &target).is_ok() {
+                                let old_thumb = crate::scanner::thumbs::thumb_path_for_video(&legacy);
+                                let new_thumb = crate::scanner::thumbs::thumb_path_for_video(&target);
+                                if old_thumb.exists() && !new_thumb.exists() {
+                                    let _ = std::fs::rename(&old_thumb, &new_thumb);
+                                }
+                                return Some(target);
+                            }
+                        }
+                        return Some(legacy);
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -83,7 +135,8 @@ mod tests {
         assert_eq!(item.extension(), "png");
         assert_eq!(item.thumb_extension(), "jpg");
         assert_eq!(item.source_prefix(), "bing");
-        assert!(item.local_wallpaper_path().to_string_lossy().ends_with("bing_bing_123.png"));
+        assert_eq!(item.wallpaper_filename(), "Test Image.png");
+        assert!(item.local_wallpaper_path().to_string_lossy().ends_with("Test Image.png"));
         assert!(item.local_thumb_path().to_string_lossy().ends_with("bing_bing_123.jpg"));
     }
 }

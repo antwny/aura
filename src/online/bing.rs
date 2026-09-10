@@ -26,14 +26,18 @@ pub async fn fetch_bing_wallpapers(client: &reqwest::Client) -> Result<Vec<Onlin
     );
 
     let mut items = Vec::new();
+    let cache_dir = crate::online::cache::thumbs_online_cache_dir();
 
     if let Ok(resp) = res1 {
         if resp.status().is_success() {
-            if let Ok(data) = resp.json::<BingApiResponse>().await {
-                if let Some(imgs) = data.images {
-                    for img in imgs {
-                        if let Some(item) = convert_bing_image(img) {
-                            items.push(item);
+            if let Ok(text) = resp.text().await {
+                let _ = tokio::fs::write(cache_dir.join("bing_daily.json"), &text).await;
+                if let Ok(data) = serde_json::from_str::<BingApiResponse>(&text) {
+                    if let Some(imgs) = data.images {
+                        for img in imgs {
+                            if let Some(item) = convert_bing_image(img) {
+                                items.push(item);
+                            }
                         }
                     }
                 }
@@ -138,6 +142,24 @@ fn convert_bing_image(img: BingImage) -> Option<OnlineWallpaperItem> {
     });
 
     let title = img.title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+        if urlbase.contains("OHR.") {
+            let part = urlbase.split("OHR.").nth(1).unwrap_or("");
+            let core = part.split('_').next().unwrap_or(part);
+            if !core.is_empty() {
+                let mut s = String::new();
+                let mut prev_is_lower = false;
+                for c in core.chars() {
+                    if prev_is_lower && c.is_uppercase() {
+                        s.push(' ');
+                    }
+                    prev_is_lower = c.is_lowercase();
+                    s.push(c);
+                }
+                if !s.is_empty() {
+                    return s;
+                }
+            }
+        }
         urlbase.split('.').nth(1).unwrap_or("Bing Wallpaper").replace('_', " ")
     });
 
