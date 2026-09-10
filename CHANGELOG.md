@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-09-10
+
+### Changed
+- **About View UI Refinements & Visual Polish**:
+  - Simplified GitHub and YouTube action buttons with clean, concise labels ("Github", "YouTube") and removed extraneous icons.
+  - Kept PayPal donation button intact with iconic heart glyph.
+  - Removed lengthy license description paragraph beneath GPL-3.0 for a cleaner and more readable details card.
+  - Removed icon box next to the "Actualizaciones de Software" heading to ensure aesthetic harmony with the rest of the application sections.
+  - Streamlined version status typography (`v1.1.3 • Tu versión está al día`), removing the emoji checkmark.
+
 ## [1.1.2] - 2026-09-10
 
 ### Added

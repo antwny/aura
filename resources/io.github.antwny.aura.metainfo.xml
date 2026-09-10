@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.1.3" date="2026-09-10">
+      <description>
+        <p>Aura 1.1.3 UI refinements and visual polish:</p>
+        <ul>
+          <li>Simplified About action buttons with concise labels (Github, YouTube) and uniform layout.</li>
+          <li>Removed license summary block for a cleaner, compact application details card.</li>
+          <li>Eliminated redundant icon box next to Software Updates heading.</li>
+          <li>Streamlined version status typography without emoji checkmark.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.2" date="2026-09-10">
       <description>
         <p>Aura 1.1.2 brings in-app updater and UI refinements:</p>
