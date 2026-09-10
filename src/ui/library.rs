@@ -60,13 +60,18 @@ impl AuraApp {
         .leading_icon(widget::icon::from_name("folder-download-symbolic"))
         .on_press(Message::SelectLibraryFilter(LibraryFilter::Downloaded));
 
-        let filter_bar = widget::row::with_capacity(4)
+        let open_folder_btn = widget::button::standard(self.language.open_in_file_manager())
+            .leading_icon(widget::icon::from_name("folder-open-symbolic"))
+            .on_press(Message::OpenWallpapersFolder);
+
+        let filter_bar = widget::row::with_capacity(5)
             .spacing(8)
             .align_y(Alignment::Center)
             .push(all_btn)
             .push(live_btn)
             .push(static_btn)
-            .push(downloaded_btn);
+            .push(downloaded_btn)
+            .push(open_folder_btn);
 
         let mut top_section = widget::column::with_capacity(3)
             .spacing(10)
@@ -250,10 +255,16 @@ impl AuraApp {
                         output: selected_output.clone(),
                     });
 
-                    let mut action_row = widget::row::with_capacity(2)
+                    let mut action_row = widget::row::with_capacity(3)
                         .spacing(8)
                         .align_y(Alignment::Center)
                         .push(apply_btn);
+
+                    // Show in file manager
+                    action_row = action_row.push(
+                        widget::button::icon(widget::icon::from_name("folder-symbolic"))
+                            .on_press(Message::ShowInFileManager(video.path.clone()))
+                    );
 
                     // Safe delete vs remove: distinguish online download vs user file
                     if video.is_downloaded {

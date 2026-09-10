@@ -8,7 +8,6 @@ use crate::online::{
 };
 
 use cosmic::app::Core;
-use cosmic::iced::alignment::Alignment;
 use cosmic::iced::{Length, Subscription, Task};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
@@ -103,6 +102,9 @@ pub enum Message {
     RemoveWallpaperFromLibrary(PathBuf),
     DeleteDownloadedWallpaper(PathBuf),
     DeleteWallpaper(PathBuf),
+    CloseToast(cosmic::widget::ToastId),
+    OpenWallpapersFolder,
+    ShowInFileManager(PathBuf),
 }
 
 fn handle_window_events(
@@ -158,6 +160,7 @@ pub struct AuraApp {
     pub(crate) autostart_active: bool,
     pub(crate) status_message: Option<String>,
     pub(crate) status_timer: u8,
+    pub(crate) toasts: cosmic::widget::Toasts<Message>,
     pub(crate) is_paused: bool,
     pub(crate) is_paused_by_smart: bool,
     pub(crate) is_paused_by_battery: bool,
@@ -179,6 +182,34 @@ pub struct AuraApp {
     pub(crate) wallhaven_resolution: String,
     pub(crate) wallhaven_search: String,
     pub(crate) library_filter: LibraryFilter,
+}
+
+impl AuraApp {
+    pub(crate) fn notify(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
+        let task = self.toasts.push(
+            cosmic::widget::Toast::new(text).duration(cosmic::widget::toaster::Duration::Short)
+        );
+        task.map(cosmic::Action::App)
+    }
+
+    pub(crate) fn notify_with_action(
+        &mut self,
+        text: impl Into<String>,
+        action_label: impl Into<String>,
+        action_msg: Message,
+    ) -> Task<cosmic::Action<Message>> {
+        let toast = cosmic::widget::Toast::new(text)
+            .duration(cosmic::widget::toaster::Duration::Short)
+            .action(action_label.into(), move |_id| action_msg.clone());
+        let task = self.toasts.push(toast);
+        task.map(cosmic::Action::App)
+    }
+
+    pub(crate) fn set_status(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
+        let msg = text.into();
+        self.status_message = Some(msg.clone());
+        self.notify(msg)
+    }
 }
 
 impl cosmic::Application for AuraApp {
@@ -303,6 +334,7 @@ impl cosmic::Application for AuraApp {
             autostart_active,
             status_message: None,
             status_timer: 0,
+            toasts: cosmic::widget::Toasts::new(Message::CloseToast),
             is_paused: false,
             is_paused_by_smart: false,
             is_paused_by_battery: false,
@@ -497,8 +529,7 @@ impl cosmic::Application for AuraApp {
                 self.selected_output = out.clone();
                 self.config.output = out.clone();
                 let _ = self.config.save();
-                self.status_message = Some(format!("Pantalla seleccionada: {}", out));
-                self.status_timer = 3;
+                return self.set_status(format!("Pantalla seleccionada: {}", out));
             }
 
             Message::SelectHwdec(hwdec) => {
@@ -508,36 +539,31 @@ impl cosmic::Application for AuraApp {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                     let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec);
                 }
-                self.status_message = Some(format!("Decodificador GPU: {}", hwdec));
-                self.status_timer = 4;
+                return self.set_status(format!("Decodificador GPU: {}", hwdec));
             }
 
             Message::ToggleRotation(active) => {
                 self.config.rotation = active;
                 let _ = self.config.save();
-                self.status_message = Some(if active { "Rotación automática activada".into() } else { "Rotación automática desactivada".into() });
-                self.status_timer = 4;
+                return self.set_status(if active { "Rotación automática activada" } else { "Rotación automática desactivada" });
             }
 
             Message::SelectInterval(interval) => {
                 self.config.interval = interval;
                 let _ = self.config.save();
-                self.status_message = Some(format!("Intervalo de rotación: {} min", interval));
-                self.status_timer = 3;
+                return self.set_status(format!("Intervalo de rotación: {} min", interval));
             }
 
             Message::SelectRotationOrder(order) => {
                 self.config.order = order.clone();
                 let _ = self.config.save();
-                self.status_message = Some(format!("Orden de rotación: {}", if order == "random" { "Aleatorio" } else { "Secuencial" }));
-                self.status_timer = 3;
+                return self.set_status(format!("Orden de rotación: {}", if order == "random" { "Aleatorio" } else { "Secuencial" }));
             }
 
             Message::TogglePauseOnBattery(active) => {
                 self.config.pause_on_battery = active;
                 let _ = self.config.save();
-                self.status_message = Some(if active { "Ahorro de batería activado".into() } else { "Ahorro de batería desactivado".into() });
-                self.status_timer = 4;
+                return self.set_status(if active { "Ahorro de batería activado" } else { "Ahorro de batería desactivado" });
             }
 
             Message::ChangeVolume(vol) => {
@@ -548,6 +574,33 @@ impl cosmic::Application for AuraApp {
                         let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                         let _ = self.engine.set_wallpaper(&output, &path, &sc, false, self.config.volume, &self.config.hwdec);
                     }
+                }
+            }
+
+            Message::CloseToast(id) => {
+                self.toasts.remove(id);
+            }
+
+            Message::OpenWallpapersFolder => {
+                let dir = crate::online::wallpapers_online_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                if open::that_detached(&dir).is_ok() {
+                    return self.notify(self.language.toast_folder_opened());
+                } else {
+                    return self.notify(self.language.toast_folder_open_failed());
+                }
+            }
+
+            Message::ShowInFileManager(path) => {
+                let target = if path.is_file() {
+                    path.parent().map(|p| p.to_path_buf()).unwrap_or(path)
+                } else {
+                    path
+                };
+                if open::that_detached(&target).is_ok() {
+                    return self.notify(self.language.toast_folder_opened());
+                } else {
+                    return self.notify(self.language.toast_folder_open_failed());
                 }
             }
 
@@ -666,8 +719,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 self.nav = Self::build_nav(self.language, self.active_page);
                 self.tray_controller.set_language(lang);
-                self.status_message = Some(lang.status_lang_changed().into());
-                self.status_timer = 5;
+                return self.set_status(lang.status_lang_changed());
             }
 
             Message::QuitApp => {
@@ -701,10 +753,7 @@ impl cosmic::Application for AuraApp {
                     self.is_paused = false;
 
                     let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
-                    self.status_message = Some(self.language.status_applied(&output, &file_name));
-                    self.status_timer = 5;
-
-                    self.tray_controller.update_state(file_name, false, true);
+                    self.tray_controller.update_state(file_name.clone(), false, true);
 
                     // COSMIC dynamic accent theme
                     if self.config.auto_theme {
@@ -716,37 +765,35 @@ impl cosmic::Application for AuraApp {
                             }
                         }
                     }
+
+                    return self.set_status(self.language.status_applied(&output, &file_name));
                 }
             }
 
             Message::TogglePause => {
                 let now_paused = self.engine.toggle_pause();
                 self.is_paused = now_paused;
-                self.status_message = Some(if now_paused {
-                    self.language.status_paused().into()
-                } else {
-                    self.language.status_resumed().into()
-                });
-                self.status_timer = 5;
 
                 let current_title = self.config.current.as_ref()
                     .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
                     .unwrap_or_default();
                 self.tray_controller.update_state(current_title, now_paused, !self.config.wallpapers.is_empty());
+
+                let msg = if now_paused { self.language.status_paused() } else { self.language.status_resumed() };
+                return self.set_status(msg);
             }
 
             Message::StopWallpaper(output) => {
-                if let Some(out) = output {
-                    self.engine.stop_output(&out);
-                    self.config.wallpapers.remove(&out);
-                    self.status_message = Some(self.language.status_stopped_output(&out));
+                let msg = if let Some(out) = &output {
+                    self.engine.stop_output(out);
+                    self.config.wallpapers.remove(out);
+                    self.language.status_stopped_output(out)
                 } else {
                     self.engine.stop_all();
                     self.config.wallpapers.clear();
                     self.config.current = None;
-                    self.status_message = Some(self.language.status_stopped_all().into());
-                }
-                self.status_timer = 5;
+                    self.language.status_stopped_all().into()
+                };
                 self.is_paused = false;
                 let _ = self.config.save();
 
@@ -754,6 +801,8 @@ impl cosmic::Application for AuraApp {
                     .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
                     .unwrap_or_default();
                 self.tray_controller.update_state(current_title, false, !self.config.wallpapers.is_empty());
+
+                return self.set_status(msg);
             }
 
             Message::SelectScaling { output, scaling } => {
@@ -1378,10 +1427,14 @@ impl cosmic::Application for AuraApp {
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
                 let _ = self.config.save();
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                self.status_message = Some(format!("{} ({})", self.language.explore_toast_downloaded(), fname));
-                self.status_timer = 5;
+                let msg_text = format!("{}: {}", self.language.explore_toast_downloaded(), fname);
+                let toast_task = self.notify_with_action(
+                    msg_text,
+                    self.language.toast_show_in_files(),
+                    Message::OpenWallpapersFolder,
+                );
 
-                let mut tasks = Vec::new();
+                let mut tasks = vec![toast_task];
                 if let Some(item) = self.videos.iter().find(|v| v.path == path) {
                     if item.thumb_path.is_none() {
                         let vp = path.clone();
@@ -1448,8 +1501,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
 
-                self.status_message = Some(self.language.library_removed_toast().into());
-                self.status_timer = 4;
+                return self.set_status(self.language.library_removed_toast());
             }
 
             Message::DeleteDownloadedWallpaper(path) => {
@@ -1483,8 +1535,7 @@ impl cosmic::Application for AuraApp {
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
 
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                self.status_message = Some(format!("{}: {}", self.language.library_deleted_toast(), fname));
-                self.status_timer = 4;
+                return self.set_status(format!("{}: {}", self.language.library_deleted_toast(), fname));
             }
 
             Message::DeleteWallpaper(path) => {
@@ -1508,38 +1559,22 @@ impl cosmic::Application for AuraApp {
             Page::About => self.view_about(),
         };
 
-        let mut main_col = widget::column::with_capacity(3)
+        let mut main_col = widget::column::with_capacity(2)
             .spacing(12)
             .width(Length::Fill)
             .height(Length::Fill);
-
-        if let Some(msg) = &self.status_message {
-            let banner = widget::container(
-                widget::row::with_capacity(2)
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(widget::text::body(msg).size(13).width(Length::Fill))
-                    .push(
-                        widget::button::standard("✕")
-                            .on_press(Message::DismissStatus)
-                    )
-            )
-            .padding(10)
-            .width(Length::Fill);
-            main_col = main_col.push(banner);
-        }
 
         main_col = main_col.push(content);
 
         // Fixed Global "Now Playing" Bottom Bar
         main_col = main_col.push(self.view_now_playing_bar());
 
-        Element::from(
-            widget::container(main_col)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding(14)
-        )
+        let main_container = widget::container(main_col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(14);
+
+        Element::from(widget::toaster(&self.toasts, main_container))
     }
 }
 

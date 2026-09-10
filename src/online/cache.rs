@@ -2,10 +2,60 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 
+/// Determines the user's standard Pictures / Imágenes directory via XDG or standard paths.
+pub fn user_pictures_dir() -> PathBuf {
+    // 1. Try xdg-user-dir PICTURES
+    if let Ok(output) = std::process::Command::new("xdg-user-dir").arg("PICTURES").output() {
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !s.is_empty() {
+                let p = PathBuf::from(s);
+                if p.is_absolute() {
+                    return p;
+                }
+            }
+        }
+    }
+
+    // 2. Try parsing ~/.config/user-dirs.dirs
+    if let Ok(home) = std::env::var("HOME") {
+        let home_path = PathBuf::from(&home);
+        let user_dirs = home_path.join(".config/user-dirs.dirs");
+        if let Ok(content) = std::fs::read_to_string(user_dirs) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("XDG_PICTURES_DIR=") {
+                    let val = trimmed.trim_start_matches("XDG_PICTURES_DIR=").trim_matches('"');
+                    let expanded = val.replace("$HOME", &home);
+                    return PathBuf::from(expanded);
+                }
+            }
+        }
+
+        // 3. Fallbacks: Spanish 'Imágenes' or English 'Pictures'
+        let p_esp = home_path.join("Imágenes");
+        if p_esp.exists() {
+            return p_esp;
+        }
+        let p_eng = home_path.join("Pictures");
+        if p_eng.exists() {
+            return p_eng;
+        }
+        return home_path.join("Pictures");
+    }
+
+    PathBuf::from("/tmp")
+}
+
 pub fn wallpapers_online_dir() -> PathBuf {
     static CACHED: OnceLock<PathBuf> = OnceLock::new();
     CACHED.get_or_init(|| {
-        let base = if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
+        let pics = user_pictures_dir();
+        let dir = pics.join("Wallpapers/Aura");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // One-time automatic migration of any existing wallpapers from legacy hidden folder
+        let legacy_base = if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
             if !xdg.is_empty() {
                 PathBuf::from(xdg)
             } else {
@@ -16,8 +66,21 @@ pub fn wallpapers_online_dir() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
             PathBuf::from(home).join(".local/share")
         };
-        let dir = base.join("aura/wallpapers/online");
-        let _ = std::fs::create_dir_all(&dir);
+        let legacy_dir = legacy_base.join("aura/wallpapers/online");
+        if legacy_dir.exists() && legacy_dir != dir {
+            if let Ok(entries) = std::fs::read_dir(&legacy_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let src = entry.path();
+                    if src.is_file() {
+                        let dst = dir.join(entry.file_name());
+                        if !dst.exists() {
+                            let _ = std::fs::copy(&src, &dst);
+                        }
+                    }
+                }
+            }
+        }
+
         dir
     }).clone()
 }
@@ -121,7 +184,7 @@ mod tests {
     fn test_directories_non_empty() {
         let wall_dir = wallpapers_online_dir();
         let thumb_dir = thumbs_online_cache_dir();
-        assert!(wall_dir.to_string_lossy().contains("wallpapers/online"));
+        assert!(wall_dir.to_string_lossy().contains("Wallpapers/Aura") || wall_dir.to_string_lossy().contains("aura"));
         assert!(thumb_dir.to_string_lossy().contains("online_thumbs"));
     }
 }

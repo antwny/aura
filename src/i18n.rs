@@ -565,8 +565,36 @@ impl Language {
 
     pub fn explore_toast_downloaded(&self) -> &'static str {
         match self {
-            Language::Es => "Fondo descargado y guardado en tu biblioteca",
-            Language::En => "Wallpaper downloaded and saved to your library",
+            Language::Es => "Fondo descargado con éxito",
+            Language::En => "Wallpaper downloaded successfully",
+        }
+    }
+
+    pub fn open_in_file_manager(&self) -> &'static str {
+        match self {
+            Language::Es => "Abrir carpeta en el Gestor de Archivos",
+            Language::En => "Open folder in File Manager",
+        }
+    }
+
+    pub fn toast_show_in_files(&self) -> &'static str {
+        match self {
+            Language::Es => "Ver en archivos",
+            Language::En => "Show in files",
+        }
+    }
+
+    pub fn toast_folder_opened(&self) -> &'static str {
+        match self {
+            Language::Es => "Carpeta de fondos abierta en el Gestor de Archivos",
+            Language::En => "Wallpapers folder opened in File Manager",
+        }
+    }
+
+    pub fn toast_folder_open_failed(&self) -> &'static str {
+        match self {
+            Language::Es => "No se pudo abrir la carpeta en el Gestor de Archivos",
+            Language::En => "Could not open folder in File Manager",
         }
     }
 
