@@ -83,7 +83,7 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.1.4": build
+package version="1.2.0": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"

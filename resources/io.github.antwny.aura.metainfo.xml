@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.2.0" date="2026-09-11">
+      <description>
+        <p>Aura 1.2.0 introduces COSMIC v2 desktop accent synchronization and DenverCoder1 Minimalistic wallpapers:</p>
+        <ul>
+          <li>Full COSMIC Theme v2 dynamic accent color synchronization adapting system accent, button highlights (WCAG contrast), and dark/light modes to active wallpapers.</li>
+          <li>Atomic file writes triggering instant (~40ms) system-wide theme regeneration across GTK3, GTK4, Qt, and COSMIC apps.</li>
+          <li>Added DenverCoder1 Minimalistic Flat Art wallpaper collection in Explore tab with multi-category filters (Landscape, City, Nature, Anime, etc.).</li>
+          <li>High-performance parallel CDN thumbnail loading and Git LFS resilient image downloads.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.4" date="2026-09-11">
       <description>
         <p>Aura 1.1.4 stability, performance, and usability update:</p>

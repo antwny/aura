@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-11
+
+### Added
+- **COSMIC v2 Dynamic Desktop Accent Color Synchronization**:
+  - Full compatibility with the modern COSMIC Desktop `v2` theming specification (`com.system76.CosmicTheme.Dark/v2`, `Light/v2`, and `Builder/v2`) alongside retrocompatible `v1` fallbacks.
+  - Dynamic extraction of dominant accent colors from active video frames and static wallpapers.
+  - Computes complete component palettes including `hover`, `pressed`, `disabled_border`, and WCAG relative luminance-based text contrast (`on` foreground in solid white or black).
+  - Atomic temporary-file-and-rename writes ensuring instant inotify recognition by `cosmic-settings-daemon` (theme regenerates in ~40ms across GTK3, GTK4, Qt, and COSMIC apps).
+  - Instant theme synchronization when toggling Auto-Theme or Auto-Dark in Settings, and across CLI commands (`aura apply`, `aura next`, `aura prev`).
+- **DenverCoder1 Minimalistic Flat Art Catalog in Explore**:
+  - Added new online wallpaper provider featuring the curated DenverCoder1 Minimalistic collection with multi-category filters (Landscape, City, Nature, Minimalistic, Anime, Abstract, Animals, Misc).
+  - Parallel background thumbnail streaming via high-speed global CDN (`cdn.jsdelivr.net`).
+  - Resilient Git LFS pointer validation with automatic raw fallback to prevent corrupt image downloads.
+
 ## [1.1.4] - 2026-09-11
 
 ### Fixed

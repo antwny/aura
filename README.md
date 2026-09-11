@@ -45,11 +45,11 @@ By integrating directly with System76's official `libcosmic` framework (`iced` +
 ## Key Features
 
 - **Native Rust & COSMIC UI**: Built with `libcosmic` (`iced` + `wgpu`), sub-20ms cold startups, zero runtime overhead, frosted acrylic styling, and seamless Wayland layer-shell integration.
-- **Dynamic Desktop Auto-Theming**: Real-time HSV keyframe color extraction calculating accent colors to automatically synchronize Pop!_OS COSMIC system palettes and dark/light modes.
+- **Dynamic Desktop Auto-Theming**: Real-time HSV keyframe color extraction and COSMIC v2 theme synchronization dynamically adapting desktop accent colors, button highlights (WCAG contrast), and dark/light modes.
 - **Hardware Acceleration & Smart Pause**: VA-API / NVDEC GPU decoding via `mpvpaper` on Wayland layer `bottom`; automatic `SIGSTOP` pause during full-screen apps, games, and battery operation (0% GPU/CPU).
 - **Multi-Monitor Topology & Scaling**: Per-display wallpaper targeting, true-to-scale visual canvas, hotplug detection, and independent `Fit`, `Fill` (zoom crop), and `Stretch` modes with solid black ultrawide letterboxing.
 - **Playlist Auto-Rotation**: Hands-free background rotation with customizable timer intervals and playback order (random or sequential).
-- **Online UHD Catalogs**: Built-in Microsoft Bing Daily UHD and Wallhaven 4K explorers with keyword search, tags, category filters, and non-blocking background downloads.
+- **Online Wallpaper Catalogs**: Wallhaven 4K, Bing Daily UHD, and DenverCoder1 Minimalistic Flat Art collections with category filters, keyword search, tag exploration, and non-blocking background downloads.
 - **Multimedia Audio Controls**: Bottom playback bar with dedicated 0-100% volume slider and instant mute toggle with level memory.
 - **Desktop & File Manager Integration**: Non-shifting floating toast notifications (`cosmic::widget::toaster`), user-accessible wallpaper storage (`~/Pictures/Wallpapers/Aura`), and 1-click reveal in COSMIC Files.
 - **Integrated In-App GUI & CLI Updates**: Background release checks with interactive action toasts, 1-click atomic self-updates in the About view, and automatic Flatpak vs. native package routing.
@@ -113,8 +113,8 @@ Precompiled binary packages are provided on the [GitHub Releases](https://github
 2. Extract the archive and run the installer script:
 
 ```bash
-tar -xzf aura-v1.1.4-x86_64-linux.tar.gz
-cd aura-v1.1.4-x86_64-linux
+tar -xzf aura-v1.2.0-x86_64-linux.tar.gz
+cd aura-v1.2.0-x86_64-linux
 ./install.sh
 ```
 
