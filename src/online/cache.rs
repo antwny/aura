@@ -104,6 +104,19 @@ pub fn thumbs_online_cache_dir() -> PathBuf {
         };
         let dir = base.join("aura/online_thumbs");
         let _ = std::fs::create_dir_all(&dir);
+
+        // One-time cleanup of legacy bloated uncompressed PNG/TMP thumbnails (>400KB)
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                    if name.starts_with("minimal_") && (name.ends_with(".png") || name.ends_with(".tmp")) {
+                        let _ = std::fs::remove_file(p);
+                    }
+                }
+            }
+        }
+
         dir
     }).clone()
 }
@@ -303,6 +316,155 @@ pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: 
     Ok(destination.to_path_buf())
 }
 
+/// Verifies whether raw bytes belong to a valid image format (JPEG, PNG, WEBP, GIF).
+pub fn is_image_data(bytes: &[u8]) -> bool {
+    if bytes.len() < 12 {
+        return false;
+    }
+    // JPEG magic bytes: FF D8 FF
+    if bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+        return true;
+    }
+    // PNG magic bytes: \x89 P N G
+    if &bytes[0..4] == b"\x89PNG" {
+        return true;
+    }
+    // WEBP magic bytes: RIFF .... WEBP
+    if &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return true;
+    }
+    // GIF magic bytes: GIF
+    if &bytes[0..3] == b"GIF" {
+        return true;
+    }
+    false
+}
+
+/// Decodes an image from memory, downscales it to fit within max dimensions, and saves as JPEG.
+pub fn save_downscaled_image(bytes: &[u8], destination: &Path, max_w: u32, max_h: u32) -> Result<PathBuf, String> {
+    if let Some(parent) = destination.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+    let thumb = img.thumbnail(max_w, max_h);
+    let tmp_path = destination.with_extension("tmp.jpg");
+    thumb.save(&tmp_path)
+        .map_err(|e| format!("Failed to encode/save thumbnail: {}", e))?;
+    let _ = std::fs::rename(&tmp_path, destination);
+    Ok(destination.to_path_buf())
+}
+
+/// Downscales an existing on-disk image file in place to reduce storage and RAM footprint.
+pub fn downscale_image_file_in_place(file_path: &Path, max_w: u32, max_h: u32) -> Result<PathBuf, String> {
+    let img = image::open(file_path)
+        .map_err(|e| format!("Failed to open image {}: {}", file_path.display(), e))?;
+    let thumb = img.thumbnail(max_w, max_h);
+    let tmp_path = file_path.with_extension("tmp.jpg");
+    thumb.save(&tmp_path)
+        .map_err(|e| format!("Failed to encode/save downscaled thumbnail: {}", e))?;
+    let _ = std::fs::rename(&tmp_path, file_path);
+    Ok(file_path.to_path_buf())
+}
+
+/// Downloads and caches an online wallpaper thumbnail with concurrency control and multi-tier fallback.
+/// Tier 1: Fast CDN thumbnail (e.g. wsrv.nl or provider thumbnail).
+/// Tier 2: Direct source download with local downscaling.
+pub async fn download_online_thumbnail(
+    client: &reqwest::Client,
+    thumb_url: &str,
+    fallback_full_url: &str,
+    destination: &Path,
+) -> Result<PathBuf, String> {
+    static THUMB_SEMAPHORE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    let sem = THUMB_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(4));
+    let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
+
+    if let Some(parent) = destination.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    // Reuse existing compact thumbnail if valid (<400KB and >500B)
+    if let Ok(meta) = destination.metadata() {
+        if meta.is_file() && meta.len() > 500 && meta.len() <= 400_000 {
+            return Ok(destination.to_path_buf());
+        }
+        // Downscale oversized legacy file in place
+        if meta.is_file() && meta.len() > 400_000 {
+            let dest_clone = destination.to_path_buf();
+            let opt_res = tokio::task::spawn_blocking(move || {
+                downscale_image_file_in_place(&dest_clone, 400, 225)
+            }).await;
+            if let Ok(Ok(path)) = opt_res {
+                return Ok(path);
+            }
+        }
+    }
+
+    // Step 1: Fast CDN Web Thumbnail (timeout 6s)
+    let req_res = client
+        .get(thumb_url)
+        .timeout(Duration::from_secs(6))
+        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
+        .send()
+        .await;
+
+    if let Ok(resp) = req_res {
+        if resp.status().is_success() {
+            if let Ok(bytes) = resp.bytes().await {
+                if is_image_data(&bytes) {
+                    if bytes.len() <= 400_000 {
+                        let tmp_path = destination.with_extension("tmp.jpg");
+                        if tokio::fs::write(&tmp_path, &bytes).await.is_ok() {
+                            if tokio::fs::rename(&tmp_path, destination).await.is_ok() {
+                                return Ok(destination.to_path_buf());
+                            }
+                        }
+                    } else {
+                        let dest_clone = destination.to_path_buf();
+                        let opt_res = tokio::task::spawn_blocking(move || {
+                            save_downscaled_image(&bytes, &dest_clone, 400, 225)
+                        }).await;
+                        if let Ok(Ok(path)) = opt_res {
+                            return Ok(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 2: Fallback to full_url and downscale locally
+    if !fallback_full_url.is_empty() && fallback_full_url != thumb_url {
+        let full_resp = client
+            .get(fallback_full_url)
+            .timeout(Duration::from_secs(20))
+            .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
+            .send()
+            .await
+            .map_err(|e| format!("Fallback download failed: {}", e))?;
+
+        if full_resp.status().is_success() {
+            let bytes = full_resp
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read fallback bytes: {}", e))?;
+
+            if is_image_data(&bytes) {
+                let dest_clone = destination.to_path_buf();
+                let opt_res = tokio::task::spawn_blocking(move || {
+                    save_downscaled_image(&bytes, &dest_clone, 400, 225)
+                }).await;
+                if let Ok(Ok(path)) = opt_res {
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    Err(format!("Could not acquire valid thumbnail for {}", destination.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +493,21 @@ mod tests {
         let thumb_dir = thumbs_online_cache_dir();
         assert!(wall_dir.to_string_lossy().contains("Wallpapers/Aura") || wall_dir.to_string_lossy().contains("aura"));
         assert!(thumb_dir.to_string_lossy().contains("online_thumbs"));
+    }
+
+    #[test]
+    fn test_is_image_data() {
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert!(is_image_data(&jpeg));
+
+        let png = [0x89, b'P', b'N', b'G', 0, 0, 0, 0, 0, 0, 0, 0];
+        assert!(is_image_data(&png));
+
+        let webp = [b'R', b'I', b'F', b'F', 0, 0, 0, 0, b'W', b'E', b'B', b'P'];
+        assert!(is_image_data(&webp));
+
+        let invalid = b"<html>404 Not Found</html>";
+        assert!(!is_image_data(invalid));
     }
 }
 

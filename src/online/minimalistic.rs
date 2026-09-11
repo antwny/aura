@@ -150,7 +150,10 @@ pub fn parse_minimalistic_json(json_str: &str) -> Result<Vec<OnlineWallpaperItem
         };
 
         let full_url = entry.download_url.clone();
-        let thumb_url = entry.download_url;
+        let thumb_url = format!(
+            "https://wsrv.nl/?url={}&w=400&h=225&fit=cover&output=jpg&q=80",
+            entry.download_url
+        );
 
         items.push(OnlineWallpaperItem {
             id: format!("minimal_{}", entry.name.replace('.', "_")),

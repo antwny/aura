@@ -33,12 +33,17 @@ impl OnlineWallpaperItem {
     }
 
     pub fn thumb_extension(&self) -> &str {
-        if self.thumb_url.ends_with(".png") {
-            "png"
-        } else if self.thumb_url.ends_with(".webp") {
-            "webp"
-        } else {
-            "jpg"
+        match self.source {
+            OnlineSource::Minimalistic => "jpg",
+            _ => {
+                if self.thumb_url.contains(".png") {
+                    "png"
+                } else if self.thumb_url.contains(".webp") {
+                    "webp"
+                } else {
+                    "jpg"
+                }
+            }
         }
     }
 
