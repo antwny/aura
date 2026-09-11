@@ -578,6 +578,27 @@ impl Language {
         }
     }
 
+    pub fn explore_source_minimalistic(&self) -> &'static str {
+        match self {
+            Language::Es => "Minimalista",
+            Language::En => "Minimalist",
+        }
+    }
+
+    pub fn explore_minimalistic_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Colección curada de 300+ fondos de naturaleza digital y arte plano",
+            Language::En => "Curated collection of 300+ digital nature & flat art wallpapers",
+        }
+    }
+
+    pub fn explore_search_minimal_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar por título o artista...",
+            Language::En => "Search by title or artist...",
+        }
+    }
+
     pub fn explore_btn_download(&self) -> &'static str {
         match self {
             Language::Es => "Descargar",
@@ -1226,6 +1247,9 @@ mod tests {
             assert!(!lang.explore_sort_top().is_empty());
             assert!(!lang.explore_sort_hot().is_empty());
             assert!(!lang.explore_sort_random().is_empty());
+            assert!(!lang.explore_source_minimalistic().is_empty());
+            assert!(!lang.explore_minimalistic_subtitle().is_empty());
+            assert!(!lang.explore_search_minimal_placeholder().is_empty());
             assert!(!lang.library_filter_all().is_empty());
             assert!(!lang.library_filter_live().is_empty());
             assert!(!lang.library_filter_static().is_empty());

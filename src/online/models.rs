@@ -6,6 +6,7 @@ use crate::online::cache::{clean_filename, clean_title_filename, thumbs_online_c
 pub enum OnlineSource {
     Bing,
     Wallhaven,
+    Minimalistic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +46,7 @@ impl OnlineWallpaperItem {
         match self.source {
             OnlineSource::Bing => "bing",
             OnlineSource::Wallhaven => "wallhaven",
+            OnlineSource::Minimalistic => "minimal",
         }
     }
 
@@ -61,6 +63,15 @@ impl OnlineWallpaperItem {
             }
             OnlineSource::Wallhaven => {
                 clean_filename(self.source_prefix(), &self.id, self.extension())
+            }
+            OnlineSource::Minimalistic => {
+                let clean_title = clean_title_filename(&self.title);
+                let clean_author = clean_title_filename(&self.author_or_copyright);
+                if !clean_author.is_empty() && clean_author != "Minimalist" {
+                    format!("{} - {}.{}", clean_author, clean_title, self.extension())
+                } else {
+                    format!("{}.{}", clean_title, self.extension())
+                }
             }
         }
     }
@@ -138,6 +149,20 @@ mod tests {
         assert_eq!(item.wallpaper_filename(), "Test Image.png");
         assert!(item.local_wallpaper_path().to_string_lossy().ends_with("Test Image.png"));
         assert!(item.local_thumb_path().to_string_lossy().ends_with("bing_bing_123.jpg"));
+
+        let minimal_item = OnlineWallpaperItem {
+            id: "minimal_alena-aenami-clouds_jpg".into(),
+            title: "Clouds".into(),
+            author_or_copyright: "Alena Aenami".into(),
+            thumb_url: "https://raw.githubusercontent.com/test.jpg".into(),
+            full_url: "https://raw.githubusercontent.com/test.jpg".into(),
+            resolution: "2K QHD".into(),
+            source: OnlineSource::Minimalistic,
+            date: None,
+        };
+
+        assert_eq!(minimal_item.source_prefix(), "minimal");
+        assert_eq!(minimal_item.wallpaper_filename(), "Alena Aenami - Clouds.jpg");
     }
 }
 

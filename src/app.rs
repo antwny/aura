@@ -4,7 +4,7 @@ use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
 use crate::theme::apply_cosmic_theme;
 use crate::online::{
     download_to_file, fetch_bing_archive_page, fetch_bing_wallpapers,
-    fetch_wallhaven_wallpapers, OnlineSource, OnlineWallpaperItem,
+    fetch_wallhaven_wallpapers, fetch_minimalistic_wallpapers, OnlineSource, OnlineWallpaperItem,
 };
 
 use cosmic::app::Core;
@@ -94,6 +94,7 @@ pub enum Message {
     SelectWallhavenResolution(String),
     WallhavenSearchChanged(String),
     SubmitWallhavenSearch,
+    MinimalisticSearchChanged(String),
     DownloadOnlineWallpaper { item: OnlineWallpaperItem, auto_apply: bool },
     OnlineWallpaperDownloaded { id: String, path: PathBuf, auto_apply: bool },
     OnlineWallpaperDownloadFailed { id: String, error: String },
@@ -185,6 +186,10 @@ pub struct AuraApp {
     pub(crate) explore_source: OnlineSource,
     pub(crate) bing_wallpapers: Vec<OnlineWallpaperItem>,
     pub(crate) wallhaven_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) minimalistic_all_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) minimalistic_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) minimalistic_search: String,
+    pub(crate) minimalistic_page: usize,
     pub(crate) explore_loading: bool,
     pub(crate) explore_loading_more: bool,
     pub(crate) explore_error: Option<String>,
@@ -226,6 +231,27 @@ impl AuraApp {
         let msg = text.into();
         self.status_message = Some(msg.clone());
         self.notify(msg)
+    }
+
+    pub(crate) fn apply_minimalistic_filter(&mut self) -> Vec<OnlineWallpaperItem> {
+        let query = self.minimalistic_search.trim().to_lowercase();
+        let filtered: Vec<OnlineWallpaperItem> = if query.is_empty() {
+            self.minimalistic_all_wallpapers.clone()
+        } else {
+            self.minimalistic_all_wallpapers
+                .iter()
+                .filter(|item| {
+                    item.title.to_lowercase().contains(&query)
+                        || item.author_or_copyright.to_lowercase().contains(&query)
+                })
+                .cloned()
+                .collect()
+        };
+
+        let count_to_take = (self.minimalistic_page * 24).max(24);
+        let paged: Vec<OnlineWallpaperItem> = filtered.into_iter().take(count_to_take).collect();
+        self.minimalistic_wallpapers = paged.clone();
+        paged
     }
 }
 
@@ -360,6 +386,10 @@ impl cosmic::Application for AuraApp {
             explore_source: OnlineSource::Bing,
             bing_wallpapers: Vec::new(),
             wallhaven_wallpapers: Vec::new(),
+            minimalistic_all_wallpapers: Vec::new(),
+            minimalistic_wallpapers: Vec::new(),
+            minimalistic_search: String::new(),
+            minimalistic_page: 1,
             explore_loading: false,
             explore_loading_more: false,
             explore_error: None,
@@ -399,6 +429,7 @@ impl cosmic::Application for AuraApp {
                 let need_fetch = match self.explore_source {
                     OnlineSource::Bing => self.bing_wallpapers.is_empty(),
                     OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                    OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),
                 };
                 if need_fetch && !self.explore_loading {
                     return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(self.explore_source)));
@@ -539,6 +570,7 @@ impl cosmic::Application for AuraApp {
                         let need_fetch = match self.explore_source {
                             OnlineSource::Bing => self.bing_wallpapers.is_empty(),
                             OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                            OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),
                         };
                         if need_fetch && !self.explore_loading {
                             return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(self.explore_source)));
@@ -1258,6 +1290,7 @@ impl cosmic::Application for AuraApp {
                 let need_fetch = match source {
                     OnlineSource::Bing => self.bing_wallpapers.is_empty(),
                     OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
+                    OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),
                 };
                 if need_fetch && !self.explore_loading {
                     return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(source)));
@@ -1290,6 +1323,11 @@ impl cosmic::Application for AuraApp {
                                     .await
                                     .map(|items| (source, items))
                             }
+                            OnlineSource::Minimalistic => {
+                                fetch_minimalistic_wallpapers(&client)
+                                    .await
+                                    .map(|items| (source, items))
+                            }
                         }
                     },
                     |res| cosmic::Action::App(Message::OnlineWallpapersFetched(res)),
@@ -1300,15 +1338,26 @@ impl cosmic::Application for AuraApp {
                 self.explore_loading = false;
                 match result {
                     Ok((source, items)) => {
-                        match source {
-                            OnlineSource::Bing => self.bing_wallpapers = items.clone(),
-                            OnlineSource::Wallhaven => self.wallhaven_wallpapers = items.clone(),
-                        }
+                        let items_to_thumb = match source {
+                            OnlineSource::Bing => {
+                                self.bing_wallpapers = items.clone();
+                                items
+                            }
+                            OnlineSource::Wallhaven => {
+                                self.wallhaven_wallpapers = items.clone();
+                                items
+                            }
+                            OnlineSource::Minimalistic => {
+                                self.minimalistic_all_wallpapers = items;
+                                self.minimalistic_page = 1;
+                                self.apply_minimalistic_filter()
+                            }
+                        };
                         self.explore_error = None;
 
                         let mut thumb_tasks = Vec::new();
                         let client = self.http_client.clone();
-                        for item in items {
+                        for item in items_to_thumb {
                             let thumb_dest = item.local_thumb_path();
                             if thumb_dest.exists() {
                                 self.online_thumbs.insert(item.id.clone(), thumb_dest);
@@ -1386,6 +1435,42 @@ impl cosmic::Application for AuraApp {
                             |res| cosmic::Action::App(Message::OnlineMoreWallpapersFetched(res)),
                         );
                     }
+                    OnlineSource::Minimalistic => {
+                        self.explore_loading_more = false;
+                        self.minimalistic_page += 1;
+                        let paged = self.apply_minimalistic_filter();
+                        let mut thumb_tasks = Vec::new();
+                        let client = self.http_client.clone();
+                        for item in paged {
+                            let thumb_dest = item.local_thumb_path();
+                            if thumb_dest.exists() {
+                                self.online_thumbs.insert(item.id.clone(), thumb_dest);
+                            } else {
+                                let c = client.clone();
+                                let id = item.id.clone();
+                                let url = item.thumb_url.clone();
+                                thumb_tasks.push(Task::perform(
+                                    async move {
+                                        if let Ok(path) = download_to_file(&c, &url, &thumb_dest).await {
+                                            Some((id, path))
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                    |res| {
+                                        if let Some((id, path)) = res {
+                                            cosmic::Action::App(Message::OnlineThumbLoaded { id, path })
+                                        } else {
+                                            cosmic::Action::None
+                                        }
+                                    },
+                                ));
+                            }
+                        }
+                        if !thumb_tasks.is_empty() {
+                            return Task::batch(thumb_tasks);
+                        }
+                    }
                 }
             }
 
@@ -1459,6 +1544,7 @@ impl cosmic::Application for AuraApp {
                                     }
                                 }
                             }
+                            OnlineSource::Minimalistic => {}
                         }
 
                         if !thumb_tasks.is_empty() {
@@ -1509,6 +1595,43 @@ impl cosmic::Application for AuraApp {
                 return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::Wallhaven)));
             }
 
+            Message::MinimalisticSearchChanged(q) => {
+                self.minimalistic_search = q;
+                self.minimalistic_page = 1;
+                let paged = self.apply_minimalistic_filter();
+                let mut thumb_tasks = Vec::new();
+                let client = self.http_client.clone();
+                for item in paged {
+                    let thumb_dest = item.local_thumb_path();
+                    if thumb_dest.exists() {
+                        self.online_thumbs.insert(item.id.clone(), thumb_dest);
+                    } else {
+                        let c = client.clone();
+                        let id = item.id.clone();
+                        let url = item.thumb_url.clone();
+                        thumb_tasks.push(Task::perform(
+                            async move {
+                                if let Ok(path) = download_to_file(&c, &url, &thumb_dest).await {
+                                    Some((id, path))
+                                } else {
+                                    None
+                                }
+                            },
+                            |res| {
+                                if let Some((id, path)) = res {
+                                    cosmic::Action::App(Message::OnlineThumbLoaded { id, path })
+                                } else {
+                                    cosmic::Action::None
+                                }
+                            },
+                        ));
+                    }
+                }
+                if !thumb_tasks.is_empty() {
+                    return Task::batch(thumb_tasks);
+                }
+            }
+
             Message::OnlineThumbLoaded { id, path } => {
                 self.online_thumbs.insert(id, path);
             }
@@ -1522,6 +1645,23 @@ impl cosmic::Application for AuraApp {
                 let thumb_src = item.local_thumb_path();
                 return Task::perform(
                     async move {
+                        if thumb_src.exists() && item.source == OnlineSource::Minimalistic {
+                            if let Ok(meta) = thumb_src.metadata() {
+                                if meta.len() > 1024 {
+                                    if let Some(parent) = dest.parent() {
+                                        let _ = tokio::fs::create_dir_all(parent).await;
+                                    }
+                                    if tokio::fs::copy(&thumb_src, &dest).await.is_ok() {
+                                        let target_thumb = crate::scanner::thumbs::thumb_path_for_video(&dest);
+                                        if let Some(parent) = target_thumb.parent() {
+                                            let _ = tokio::fs::create_dir_all(parent).await;
+                                        }
+                                        let _ = tokio::fs::copy(&thumb_src, &target_thumb).await;
+                                        return Ok((id, dest, auto_apply));
+                                    }
+                                }
+                            }
+                        }
                         match download_to_file(&client, &url, &dest).await {
                             Ok(p) => {
                                 if thumb_src.exists() {

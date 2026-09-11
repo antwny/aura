@@ -34,19 +34,29 @@ impl AuraApp {
             .leading_icon(widget::icon::from_name("view-grid-symbolic"))
             .on_press(Message::SelectExploreSource(OnlineSource::Wallhaven));
 
+            let minimal_btn = if current_source == OnlineSource::Minimalistic {
+                widget::button::suggested(lang.explore_source_minimalistic())
+            } else {
+                widget::button::standard(lang.explore_source_minimalistic())
+            }
+            .leading_icon(widget::icon::from_name("applications-graphics-symbolic"))
+            .on_press(Message::SelectExploreSource(OnlineSource::Minimalistic));
+
             let reload_btn = widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
                 .on_press(Message::FetchOnlineWallpapers(current_source));
 
-            let top_bar = widget::row::with_capacity(3)
+            let top_bar = widget::row::with_capacity(4)
                 .spacing(12)
                 .align_y(Alignment::Center)
                 .push(bing_btn)
                 .push(wallhaven_btn)
+                .push(minimal_btn)
                 .push(reload_btn);
 
             let subtitle = match current_source {
                 OnlineSource::Bing => lang.explore_featured_today(),
                 OnlineSource::Wallhaven => lang.explore_recent_title(),
+                OnlineSource::Minimalistic => lang.explore_minimalistic_subtitle(),
             };
 
             let mut header_col = widget::column::with_capacity(4)
@@ -149,6 +159,17 @@ impl AuraApp {
                 header_col = header_col.push(search_input).push(filters_row).push(res_row);
             }
 
+            if current_source == OnlineSource::Minimalistic {
+                let search_input = widget::text_input::search_input(
+                    lang.explore_search_minimal_placeholder(),
+                    &self.minimalistic_search,
+                )
+                .on_input(Message::MinimalisticSearchChanged)
+                .width(Length::Fill);
+
+                header_col = header_col.push(search_input);
+            }
+
             header_col
         };
 
@@ -160,6 +181,7 @@ impl AuraApp {
                 .push(widget::text::caption(match current_source {
                     OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
                     OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
+                    OnlineSource::Minimalistic => "Minimalistic Flat Art & Nature Collection",
                 }));
 
             let loading_view = widget::container(loading_content)
@@ -204,6 +226,7 @@ impl AuraApp {
         let items: Vec<OnlineWallpaperItem> = match current_source {
             OnlineSource::Bing => self.bing_wallpapers.clone(),
             OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
+            OnlineSource::Minimalistic => self.minimalistic_wallpapers.clone(),
         };
 
         if items.is_empty() {
@@ -333,25 +356,47 @@ impl AuraApp {
         });
 
         // Pagination "Load More" Button at Bottom
-        let load_more_btn = if is_loading_more {
-            widget::button::standard(lang.explore_btn_loading_more())
-                .leading_icon(widget::icon::from_name("process-working-symbolic"))
-        } else {
-            widget::button::suggested(lang.explore_btn_load_more())
-                .leading_icon(widget::icon::from_name("go-down-symbolic"))
-                .on_press(Message::LoadMoreOnlineWallpapers)
+        let has_more = match current_source {
+            OnlineSource::Bing | OnlineSource::Wallhaven => true,
+            OnlineSource::Minimalistic => {
+                let total_matching = if self.minimalistic_search.trim().is_empty() {
+                    self.minimalistic_all_wallpapers.len()
+                } else {
+                    let q = self.minimalistic_search.trim().to_lowercase();
+                    self.minimalistic_all_wallpapers
+                        .iter()
+                        .filter(|item| {
+                            item.title.to_lowercase().contains(&q)
+                                || item.author_or_copyright.to_lowercase().contains(&q)
+                        })
+                        .count()
+                };
+                self.minimalistic_wallpapers.len() < total_matching
+            }
         };
 
-        let load_more_row = widget::container(load_more_btn)
-            .width(Length::Fill)
-            .align_x(Horizontal::Center)
-            .padding(16);
-
-        let scroll_content = widget::column::with_capacity(2)
+        let mut scroll_content = widget::column::with_capacity(2)
             .spacing(16)
             .width(Length::Fill)
-            .push(grid)
-            .push(load_more_row);
+            .push(grid);
+
+        if has_more {
+            let load_more_btn = if is_loading_more {
+                widget::button::standard(lang.explore_btn_loading_more())
+                    .leading_icon(widget::icon::from_name("process-working-symbolic"))
+            } else {
+                widget::button::suggested(lang.explore_btn_load_more())
+                    .leading_icon(widget::icon::from_name("go-down-symbolic"))
+                    .on_press(Message::LoadMoreOnlineWallpapers)
+            };
+
+            let load_more_row = widget::container(load_more_btn)
+                .width(Length::Fill)
+                .align_x(Horizontal::Center)
+                .padding(16);
+
+            scroll_content = scroll_content.push(load_more_row);
+        }
 
         let scroll = widget::scrollable(scroll_content).height(Length::Fill);
 
