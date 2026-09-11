@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configured mpv with `--background-color=#000000` so pillarboxed videos render solid black margins rather than leaking the desktop wallpaper on ultrawide monitors.
 - **Auto-Rotation i18n Translations**:
   - Translated the playlist auto-rotation toggle and status notification messages for both English and Spanish.
+- **Displays Tab Localization**:
+  - Fixed untranslated "Destino activo" string displaying in Spanish when English is selected.
+  - Fully localized scaling mode buttons ("Fit" / "Ajustar", "Fill" / "Rellenar", "Stretch" / "Estirar") and monitor status toasts.
 
 ### Changed
 - **Optimized Library Header Button**:

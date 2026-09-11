@@ -69,6 +69,7 @@
           <li>Added solid black background for letterboxed videos, eliminating desktop wallpaper bleed-through on ultrawide monitors.</li>
           <li>Optimized Library header button text to concise labels (Open folder / Abrir carpeta).</li>
           <li>Fixed i18n translation for the auto-rotation toggle and status notifications.</li>
+          <li>Fixed Displays tab localization for active target button, scaling modes, and status toasts in English.</li>
         </ul>
       </description>
     </release>

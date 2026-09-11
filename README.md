@@ -6,6 +6,7 @@
 
 ### Next-generation animated live wallpaper manager built natively in Rust for Pop!_OS COSMIC Desktop.
 
+[![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-DEA584.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![COSMIC](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=pop!_os&logoColor=white)](https://github.com/pop-os/libcosmic)
 [![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
@@ -43,71 +44,17 @@ By integrating directly with System76's official `libcosmic` framework (`iced` +
 
 ## Key Features
 
-### Native Rust and COSMIC Interface
-
-- **Zero Runtime Overhead**: Fully compiled native binary eliminating interpreter lag and garbage collection pauses.
-- **Fast Startup**: Launches in under 20 milliseconds with immediate system responsiveness.
-- **Authentic COSMIC Design**: Features a responsive card grid, frosted acrylic glass styling, and smooth Wayland compositor integration.
-
-### Dynamic Desktop Auto-Theming
-
-- **HSV Keyframe Color Extraction**: Analyzes media frames in real time to calculate the primary vibrant accent color.
-- **System Palette Synchronization**: Automatically updates COSMIC theme definitions (`com.system76.CosmicTheme`), matching system buttons, window borders, and active accents to your current wallpaper.
-- **Luminance-Based Theme Switching**: Dynamically adjusts between Dark and Light desktop modes based on weighted luminance analysis ($Y = 0.299R + 0.587G + 0.114B$).
-
-### Hardware-Accelerated Playback and Smart Pause
-
-- **VA-API and NVDEC Decoding**: Offloads video playback entirely from the CPU to the GPU via `mpvpaper` with `--hwdec=auto-safe`.
-- **Smart Gaming Pause**: Automatically suspends rendering via `SIGSTOP` when full-screen applications or games are active, reducing GPU and CPU usage to 0.0%.
-- **Instant Recovery**: Resumes playback via `SIGCONT` without frame drops or visual tearing when games or windows are unmaximized.
-
-### Multi-Monitor Topology & Output Selector
-
-- **Target Display Selector Chips**: Select which display to apply wallpapers to directly from the Library header or apply globally (`*`).
-- **True-to-Scale Canvas**: Visual representation of physical monitor layouts, resolutions, and relative positions in the Monitors view.
-- **Aspect Ratio Modes**: Supports `Fit`, `Fill` (dynamic cropping), and `Stretch` independently for each connected display.
-- **Dynamic Hotplug**: Automatically identifies newly connected or disconnected monitors through Wayland display protocols.
-
-### Multimedia Audio Controls
-
-- **Now Playing Volume Slider**: Bottom playback bar features a dedicated 0-100% volume slider with real-time feedback.
-- **Instant Mute Memory**: Click to silence or restore audio with previous volume level restoration.
-
-### Floating Toaster Notifications & File Manager Integration
-
-- **Zero Layout-Shift Toasters**: Modern floating notification pills powered by `cosmic::widget::toaster` that hover over the bottom of the interface without shifting cards or layout elements.
-- **User-Accessible Downloads**: Downloaded 4K wallpapers are stored directly in `~/Pictures/Wallpapers/Aura` (or `~/Imágenes/Wallpapers/Aura`), fully visible and organized in COSMIC Files.
-- **Direct File Manager Shortcuts**: One-click folder button in the Library header and on individual wallpaper cards to immediately reveal files in your desktop file manager.
-
-### Seamless GUI & CLI In-App Updates
-
-- **Automatic Background Check**: Aura checks for new releases on startup in the background with zero startup latency.
-- **Interactive Action Toasts**: Notifies with a floating `[ Actualizar ]` toast whenever a new version is available.
-- **Software Updates View**: "Acerca de" card provides full version status, release notes preview, manual check button, and 1-click update & restart.
-- **Flatpak & Native Awareness**: Automatically detects sandboxed vs native execution, routing Flatpak users to Flathub/COSMIC Store and native users to seamless in-place updates.
-
-### Power & Battery Optimization
-
-- **Laptop Battery Saver**: Monitors power supply via UPower D-Bus, automatically pausing video wallpapers when running on battery power.
-- **Feral GameMode Integration**: Detects active gaming sessions non-blockingly, suspending wallpaper playback to allocate 100% of GPU compute to your games.
-- **Per-Output Process Isolation**: Each monitor is managed independently via POSIX signals (`SIGSTOP`/`SIGCONT`/`SIGTERM`), preventing global compositor interruptions.
-
-### Online 4K Wallpaper Catalogs
-
-- **Microsoft Bing Daily UHD**: Access and browse daily curated high-resolution photography with archive pagination.
-- **Wallhaven 4K Collections**: Explore community-rated art and photography filtered by category, resolution, and rating.
-- **Non-Blocking Network Pipeline**: Asynchronous background downloads (`reqwest` + `rustls`) with local caching and one-click auto-apply.
-
-### System Tray and Single-Instance IPC Daemon
-
-- **StatusNotifierItem Integration**: Integrates directly into the COSMIC top panel status area.
-- **D-Bus Single-Instance Activation**: Terminal and application launcher calls communicate directly with the active daemon instance via D-Bus (`ActivateAction`), preventing duplicate processes.
-- **Tray Context Controls**: Quick-access menu to cycle wallpapers, pause/resume playback, stop rendering, or open the settings interface.
-- **Background Persistence**: Minimizing or closing the window leaves the daemon running unobtrusively in the system tray.
-
-### Built-in Bilingual Support
-
-- **In-Memory Localization**: Zero-cost, type-safe translations for English and Spanish with automatic system locale detection.
+- **Native Rust & COSMIC UI**: Built with `libcosmic` (`iced` + `wgpu`), sub-20ms cold startups, zero runtime overhead, frosted acrylic styling, and seamless Wayland layer-shell integration.
+- **Dynamic Desktop Auto-Theming**: Real-time HSV keyframe color extraction calculating accent colors to automatically synchronize Pop!_OS COSMIC system palettes and dark/light modes.
+- **Hardware Acceleration & Smart Pause**: VA-API / NVDEC GPU decoding via `mpvpaper` on Wayland layer `bottom`; automatic `SIGSTOP` pause during full-screen apps, games, and battery operation (0% GPU/CPU).
+- **Multi-Monitor Topology & Scaling**: Per-display wallpaper targeting, true-to-scale visual canvas, hotplug detection, and independent `Fit`, `Fill` (zoom crop), and `Stretch` modes with solid black ultrawide letterboxing.
+- **Playlist Auto-Rotation**: Hands-free background rotation with customizable timer intervals and playback order (random or sequential).
+- **Online UHD Catalogs**: Built-in Microsoft Bing Daily UHD and Wallhaven 4K explorers with keyword search, tags, category filters, and non-blocking background downloads.
+- **Multimedia Audio Controls**: Bottom playback bar with dedicated 0-100% volume slider and instant mute toggle with level memory.
+- **Desktop & File Manager Integration**: Non-shifting floating toast notifications (`cosmic::widget::toaster`), user-accessible wallpaper storage (`~/Pictures/Wallpapers/Aura`), and 1-click reveal in COSMIC Files.
+- **Integrated In-App GUI & CLI Updates**: Background release checks with interactive action toasts, 1-click atomic self-updates in the About view, and automatic Flatpak vs. native package routing.
+- **Tray Menu & Headless CLI**: StatusNotifierItem tray menu for playback controls, D-Bus single-instance activation, and full CLI control for global shortcuts.
+- **Bilingual (ES / EN)**: Zero-cost, type-safe in-memory localization with automatic system locale detection.
 
 ### Command-Line Interface and Desktop Shortcuts
 
@@ -122,6 +69,7 @@ aura stop              # Stop active wallpaper playback
 aura status            # Display current configuration, monitor, and engine status
 aura check-update      # Check GitHub Releases for newer versions
 aura update            # Atomically update Aura to the latest release
+aura --daemon          # Run in background as daemon without opening GUI
 aura --version         # Print version information
 aura help              # Display help and available options
 ```
@@ -165,8 +113,8 @@ Precompiled binary packages are provided on the [GitHub Releases](https://github
 2. Extract the archive and run the installer script:
 
 ```bash
-tar -xzf aura-v1.1.1-x86_64-linux.tar.gz
-cd aura-v1.1.1-x86_64-linux
+tar -xzf aura-v1.1.4-x86_64-linux.tar.gz
+cd aura-v1.1.4-x86_64-linux
 ./install.sh
 ```
 
