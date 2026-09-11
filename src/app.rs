@@ -551,7 +551,7 @@ impl cosmic::Application for AuraApp {
                 self.selected_output = out.clone();
                 self.config.output = out.clone();
                 let _ = self.config.save();
-                return self.set_status(format!("Pantalla seleccionada: {}", out));
+                return self.set_status(self.language.status_output_selected(&out));
             }
 
             Message::SelectHwdec(hwdec) => {
@@ -561,7 +561,7 @@ impl cosmic::Application for AuraApp {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                     let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec);
                 }
-                return self.set_status(format!("Decodificador GPU: {}", hwdec));
+                return self.set_status(self.language.status_hwdec_selected(&hwdec));
             }
 
             Message::ToggleRotation(active) => {
@@ -574,19 +574,19 @@ impl cosmic::Application for AuraApp {
             Message::SelectInterval(interval) => {
                 self.config.interval = interval;
                 let _ = self.config.save();
-                return self.set_status(format!("Intervalo de rotación: {} min", interval));
+                return self.set_status(self.language.status_interval_selected(interval));
             }
 
             Message::SelectRotationOrder(order) => {
                 self.config.order = order.clone();
                 let _ = self.config.save();
-                return self.set_status(format!("Orden de rotación: {}", if order == "random" { "Aleatorio" } else { "Secuencial" }));
+                return self.set_status(self.language.status_rotation_order_selected(&order));
             }
 
             Message::TogglePauseOnBattery(active) => {
                 self.config.pause_on_battery = active;
                 let _ = self.config.save();
-                return self.set_status(if active { "Ahorro de batería activado" } else { "Ahorro de batería desactivado" });
+                return self.set_status(if active { self.language.status_pause_battery_enabled() } else { self.language.status_pause_battery_disabled() });
             }
 
             Message::ChangeVolume(vol) => {
@@ -926,8 +926,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 if let Some(path) = self.config.wallpapers.get(&output).cloned() {
                     let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec);
-                    self.status_message = Some(format!("Modo de escala para {} cambiado a '{}'", output, scaling));
-                    self.status_timer = 5;
+                    return self.set_status(self.language.status_scaling_changed(&output, &scaling));
                 }
             }
 

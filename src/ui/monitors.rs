@@ -72,7 +72,7 @@ impl AuraApp {
             };
 
             let target_btn = if is_target {
-                widget::button::suggested("Destino activo")
+                widget::button::suggested(self.language.monitors_target_active())
                     .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
             } else {
                 widget::button::standard(self.language.monitors_apply_to_this())
@@ -93,23 +93,23 @@ impl AuraApp {
                         .align_y(Alignment::Center)
                         .push(
                             if active_scaling == "fit" {
-                                widget::button::suggested("Fit")
+                                widget::button::suggested(self.language.scaling_fit())
                             } else {
-                                widget::button::standard("Fit")
+                                widget::button::standard(self.language.scaling_fit())
                             }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fit".into() })
                         )
                         .push(
                             if active_scaling == "fill" {
-                                widget::button::suggested("Fill")
+                                widget::button::suggested(self.language.scaling_fill())
                             } else {
-                                widget::button::standard("Fill")
+                                widget::button::standard(self.language.scaling_fill())
                             }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fill".into() })
                         )
                         .push(
                             if active_scaling == "stretch" {
-                                widget::button::suggested("Stretch")
+                                widget::button::suggested(self.language.scaling_stretch())
                             } else {
-                                widget::button::standard("Stretch")
+                                widget::button::standard(self.language.scaling_stretch())
                             }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "stretch".into() })
                         )
                         .push(

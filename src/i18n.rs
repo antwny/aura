@@ -986,6 +986,83 @@ impl Language {
         }
     }
 
+    pub fn monitors_target_active(&self) -> &'static str {
+        match self {
+            Language::Es => "Destino activo",
+            Language::En => "Active Target",
+        }
+    }
+
+    pub fn scaling_fit(&self) -> &'static str {
+        match self {
+            Language::Es => "Ajustar",
+            Language::En => "Fit",
+        }
+    }
+
+    pub fn scaling_fill(&self) -> &'static str {
+        match self {
+            Language::Es => "Rellenar",
+            Language::En => "Fill",
+        }
+    }
+
+    pub fn scaling_stretch(&self) -> &'static str {
+        match self {
+            Language::Es => "Estirar",
+            Language::En => "Stretch",
+        }
+    }
+
+    pub fn status_scaling_changed(&self, output: &str, scaling: &str) -> String {
+        match self {
+            Language::Es => format!("Modo de escala para {} cambiado a '{}'", output, scaling),
+            Language::En => format!("Scaling mode for {} changed to '{}'", output, scaling),
+        }
+    }
+
+    pub fn status_output_selected(&self, output: &str) -> String {
+        match self {
+            Language::Es => format!("Pantalla seleccionada: {}", output),
+            Language::En => format!("Selected display: {}", output),
+        }
+    }
+
+    pub fn status_hwdec_selected(&self, hwdec: &str) -> String {
+        match self {
+            Language::Es => format!("Decodificador GPU: {}", hwdec),
+            Language::En => format!("GPU decoder: {}", hwdec),
+        }
+    }
+
+    pub fn status_interval_selected(&self, interval: u64) -> String {
+        match self {
+            Language::Es => format!("Intervalo de rotación: {} min", interval),
+            Language::En => format!("Rotation interval: {} min", interval),
+        }
+    }
+
+    pub fn status_rotation_order_selected(&self, order: &str) -> String {
+        match self {
+            Language::Es => format!("Orden de rotación: {}", if order == "random" { "Aleatorio" } else { "Secuencial" }),
+            Language::En => format!("Rotation order: {}", if order == "random" { "Random" } else { "Sequential" }),
+        }
+    }
+
+    pub fn status_pause_battery_enabled(&self) -> &'static str {
+        match self {
+            Language::Es => "Ahorro de batería activado",
+            Language::En => "Battery saver enabled",
+        }
+    }
+
+    pub fn status_pause_battery_disabled(&self) -> &'static str {
+        match self {
+            Language::Es => "Ahorro de batería desactivado",
+            Language::En => "Battery saver disabled",
+        }
+    }
+
     pub fn settings_rotation_title(&self) -> &'static str {
         match self {
             Language::Es => "Rotación Automática de Fondos",
@@ -1166,6 +1243,12 @@ mod tests {
             assert!(!lang.library_target_output_label().is_empty());
             assert!(!lang.monitors_apply_to_this().is_empty());
             assert!(!lang.monitors_all_displays().is_empty());
+            assert!(!lang.monitors_target_active().is_empty());
+            assert!(!lang.scaling_fit().is_empty());
+            assert!(!lang.scaling_fill().is_empty());
+            assert!(!lang.scaling_stretch().is_empty());
+            assert!(!lang.status_pause_battery_enabled().is_empty());
+            assert!(!lang.status_pause_battery_disabled().is_empty());
             assert!(!lang.settings_rotation_title().is_empty());
             assert!(!lang.settings_rotation_desc().is_empty());
             assert!(!lang.settings_rotation_toggle().is_empty());
