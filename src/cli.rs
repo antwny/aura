@@ -105,9 +105,9 @@ fn cmd_next() {
         config.current = Some(path_str.clone());
         let _ = config.save();
 
-        if config.auto_theme {
+        if config.auto_theme || config.auto_dark {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_dark);
+                apply_cosmic_theme(thumb, config.auto_theme, config.auto_dark);
             }
         }
 
@@ -144,9 +144,9 @@ fn cmd_prev() {
         config.current = Some(path_str.clone());
         let _ = config.save();
 
-        if config.auto_theme {
+        if config.auto_theme || config.auto_dark {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_dark);
+                apply_cosmic_theme(thumb, config.auto_theme, config.auto_dark);
             }
         }
 
@@ -214,8 +214,8 @@ fn cmd_apply(path_arg: &str) {
         let _ = config.save();
 
         let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
-        if thumb.exists() && config.auto_theme {
-            apply_cosmic_theme(&thumb, config.auto_dark);
+        if thumb.exists() && (config.auto_theme || config.auto_dark) {
+            apply_cosmic_theme(&thumb, config.auto_theme, config.auto_dark);
         }
 
         println!("✨ Aura: Fondo aplicado exitosamente (PID: {}) -> {}", pid, full_path.display());

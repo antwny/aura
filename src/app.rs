@@ -947,12 +947,12 @@ impl cosmic::Application for AuraApp {
                     self.tray_controller.update_state(file_name.clone(), false, true);
 
                     // COSMIC dynamic accent theme
-                    if self.config.auto_theme {
+                    if self.config.auto_theme || self.config.auto_dark {
                         if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
-                            apply_cosmic_theme(thumb, self.config.auto_dark);
+                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
                         } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
                             if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                apply_cosmic_theme(&video_path, self.config.auto_dark);
+                                apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.auto_dark);
                             }
                         }
                     }
@@ -1028,11 +1028,35 @@ impl cosmic::Application for AuraApp {
             Message::ToggleAutoTheme(active) => {
                 self.config.auto_theme = active;
                 let _ = self.config.save();
+                if active {
+                    if let Some(current_str) = &self.config.current {
+                        let cur_path = PathBuf::from(current_str);
+                        if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
+                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
+                        } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
+                            if crate::scanner::is_supported_wallpaper_ext(ext) {
+                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.auto_dark);
+                            }
+                        }
+                    }
+                }
             }
 
             Message::ToggleAutoDark(active) => {
                 self.config.auto_dark = active;
                 let _ = self.config.save();
+                if active {
+                    if let Some(current_str) = &self.config.current {
+                        let cur_path = PathBuf::from(current_str);
+                        if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
+                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
+                        } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
+                            if crate::scanner::is_supported_wallpaper_ext(ext) {
+                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.auto_dark);
+                            }
+                        }
+                    }
+                }
             }
 
             Message::ToggleSmartPause(active) => {
