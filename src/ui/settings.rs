@@ -106,7 +106,7 @@ impl AuraApp {
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.rotation).on_toggle(Message::ToggleRotation))
-                    .push(widget::text::body("Activar rotación automática"))
+                    .push(widget::text::body(self.language.settings_rotation_toggle()))
             );
 
         if self.config.rotation {

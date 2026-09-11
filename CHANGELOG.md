@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-09-11
+
+### Fixed
+- **0.5s Playback Freeze Resolved**:
+  - Bound `mpvpaper` to Wayland layer `bottom` (`-l bottom`), ensuring it renders permanently above `cosmic-bg` (`background`) and preventing dynamic theme palette updates from occluding wallpaper playback.
+- **Excluded Downloads & Generic Directories**:
+  - Removed `~/Downloads`, `~/Descargas`, and root `~/Videos`/`~/Pictures` from default library directories, preventing UI hangs and excessive thumbnail generation on startup.
+  - Automatically sanitizes existing configurations on load to strip legacy Downloads paths.
+- **Opaque Letterbox on Ultrawide Displays**:
+  - Configured mpv with `--background-color=#000000` so pillarboxed videos render solid black margins rather than leaking the desktop wallpaper on ultrawide monitors.
+- **Auto-Rotation i18n Translations**:
+  - Translated the playlist auto-rotation toggle and status notification messages for both English and Spanish.
+
+### Changed
+- **Optimized Library Header Button**:
+  - Shortened "Abrir carpeta en el Gestor de Archivos" to "Abrir carpeta" (ES) and "Open folder" (EN) for a clean, non-cluttered header.
+
 ## [1.1.3] - 2026-09-10
 
 ### Changed

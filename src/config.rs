@@ -61,36 +61,36 @@ pub fn default_library_dirs() -> Vec<String> {
     let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
     dirs.push(online_dir);
 
-    // 2. Localized XDG user directories (Videos, Pictures, Download)
-    if let Some(v) = resolve_xdg_user_dir("VIDEOS") {
-        let s = v.to_string_lossy().to_string();
-        if !dirs.contains(&s) { dirs.push(s); }
-    }
+    // 2. Specific wallpaper subdirectories only (never general Downloads or root Videos/Pictures)
     if let Some(p) = resolve_xdg_user_dir("PICTURES") {
-        let s = p.to_string_lossy().to_string();
-        if !dirs.contains(&s) { dirs.push(s); }
-        let wall_sub = p.join("Wallpapers");
-        if wall_sub.exists() {
-            let s = wall_sub.to_string_lossy().to_string();
-            if !dirs.contains(&s) { dirs.push(s); }
+        for sub in &["Wallpapers", "Wallpaper", "Fondos"] {
+            let wall_sub = p.join(sub);
+            if wall_sub.exists() {
+                let s = wall_sub.to_string_lossy().to_string();
+                if !dirs.contains(&s) { dirs.push(s); }
+            }
         }
     }
-    if let Some(d) = resolve_xdg_user_dir("DOWNLOAD") {
-        let s = d.to_string_lossy().to_string();
-        if !dirs.contains(&s) { dirs.push(s); }
+    if let Some(v) = resolve_xdg_user_dir("VIDEOS") {
+        for sub in &["Wallpapers", "Wallpaper", "Fondos"] {
+            let wall_sub = v.join(sub);
+            if wall_sub.exists() {
+                let s = wall_sub.to_string_lossy().to_string();
+                if !dirs.contains(&s) { dirs.push(s); }
+            }
+        }
     }
 
-    // 3. Fallback standard candidates (multilingual & common paths)
+    // 3. Fallback dedicated wallpaper candidates (multilingual & common paths)
     let candidates = [
-        format!("{}/Wallpapers/Aura", home),
+        format!("{}/Pictures/Wallpapers", home),
+        format!("{}/Pictures/Wallpaper", home),
+        format!("{}/Imágenes/Wallpapers", home),
+        format!("{}/Videos/Wallpapers", home),
+        format!("{}/Videos/Wallpaper", home),
+        format!("{}/Vídeos/Wallpapers", home),
         format!("{}/Wallpapers", home),
         format!("{}/Fondos", home),
-        format!("{}/Vídeos", home),
-        format!("{}/Videos", home),
-        format!("{}/Imágenes", home),
-        format!("{}/Pictures", home),
-        format!("{}/Descargas", home),
-        format!("{}/Downloads", home),
     ];
 
     for c in candidates {
@@ -99,11 +99,9 @@ pub fn default_library_dirs() -> Vec<String> {
         }
     }
 
-    // If only online_dir is found, keep common paths so user sees where to place files
+    // If only online_dir was added, provide standard pictures/wallpapers path
     if dirs.len() <= 1 {
-        dirs.push(format!("{}/Videos", home));
-        dirs.push(format!("{}/Wallpapers", home));
-        dirs.push(format!("{}/Downloads", home));
+        dirs.push(format!("{}/Pictures/Wallpapers", home));
     }
 
     dirs
@@ -160,6 +158,16 @@ impl Config {
                     if !cfg.dirs.contains(&online_dir) {
                         cfg.dirs.insert(0, online_dir);
                     }
+                    // Sanitize dirs: remove default Downloads / Descargas if present from previous versions
+                    cfg.dirs.retain(|d| {
+                        let p = std::path::Path::new(d);
+                        let is_downloads = p.file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|name| name.eq_ignore_ascii_case("downloads") || name.eq_ignore_ascii_case("descargas"))
+                            .unwrap_or(false);
+                        !is_downloads
+                    });
+
                     // If all dirs in config no longer exist, refresh with default library dirs
                     let has_valid_dir = cfg.dirs.iter().any(|d| std::path::Path::new(d).exists());
                     if !has_valid_dir {
@@ -204,6 +212,7 @@ mod tests {
         assert_eq!(cfg.hwdec, "auto-safe");
         assert_eq!(cfg.output, "*");
         assert!(!cfg.dirs.is_empty());
+        assert!(!cfg.dirs.iter().any(|d| d.to_lowercase().ends_with("downloads") || d.to_lowercase().ends_with("descargas")));
         assert!(!cfg.autostart);
     }
 

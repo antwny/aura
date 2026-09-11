@@ -650,8 +650,8 @@ impl Language {
 
     pub fn open_in_file_manager(&self) -> &'static str {
         match self {
-            Language::Es => "Abrir carpeta en el Gestor de Archivos",
-            Language::En => "Open folder in File Manager",
+            Language::Es => "Abrir carpeta",
+            Language::En => "Open folder",
         }
     }
 
@@ -1000,6 +1000,27 @@ impl Language {
         }
     }
 
+    pub fn settings_rotation_toggle(&self) -> &'static str {
+        match self {
+            Language::Es => "Activar rotación automática",
+            Language::En => "Enable automatic rotation",
+        }
+    }
+
+    pub fn status_rotation_enabled(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación automática activada",
+            Language::En => "Automatic rotation enabled",
+        }
+    }
+
+    pub fn status_rotation_disabled(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación automática desactivada",
+            Language::En => "Automatic rotation disabled",
+        }
+    }
+
     pub fn settings_interval_label(&self) -> &'static str {
         match self {
             Language::Es => "Intervalo de cambio:",
@@ -1147,6 +1168,7 @@ mod tests {
             assert!(!lang.monitors_all_displays().is_empty());
             assert!(!lang.settings_rotation_title().is_empty());
             assert!(!lang.settings_rotation_desc().is_empty());
+            assert!(!lang.settings_rotation_toggle().is_empty());
             assert!(!lang.settings_interval_label().is_empty());
             assert!(!lang.settings_order_label().is_empty());
             assert!(!lang.settings_order_random().is_empty());

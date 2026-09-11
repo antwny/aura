@@ -81,6 +81,8 @@ impl WallpaperEngine {
         let opts = Self::build_mpv_options(scaling, mute, volume, hwdec, is_image);
 
         let child = match Command::new(resolve_mpvpaper_binary())
+            .arg("-l")
+            .arg("bottom")
             .arg("-o")
             .arg(&opts)
             .arg(output)
@@ -159,7 +161,7 @@ impl WallpaperEngine {
             String::from("image-display-duration=inf --pause=yes --no-config --no-audio --demuxer-max-bytes=8M --vd-lavc-threads=1")
         } else {
             let mut o = format!(
-                "loop-file=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2",
+                "loop-file=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
                 hwdec
             );
             if mute || volume == 0 {
@@ -261,6 +263,7 @@ mod tests {
         assert!(opts_fit_mute.contains("--no-audio"));
         assert!(opts_fit_mute.contains("--demuxer-max-bytes=24M"));
         assert!(opts_fit_mute.contains("--vd-lavc-threads=2"));
+        assert!(opts_fit_mute.contains("--background-color=#000000"));
         assert!(!opts_fit_mute.contains("--panscan"));
 
         let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, 80, "vaapi", false);

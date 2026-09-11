@@ -567,7 +567,8 @@ impl cosmic::Application for AuraApp {
             Message::ToggleRotation(active) => {
                 self.config.rotation = active;
                 let _ = self.config.save();
-                return self.set_status(if active { "Rotación automática activada" } else { "Rotación automática desactivada" });
+                let status_msg = if active { self.language.status_rotation_enabled() } else { self.language.status_rotation_disabled() };
+                return self.set_status(status_msg);
             }
 
             Message::SelectInterval(interval) => {
