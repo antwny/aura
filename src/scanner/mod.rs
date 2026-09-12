@@ -64,7 +64,23 @@ impl VideoItem {
 
 fn resolve_or_link_thumb(path: &Path) -> Option<PathBuf> {
     let potential_thumb = thumbs::thumb_path_for_video(path);
+    let online_dir = crate::online::wallpapers_online_dir();
+    let is_online_image = path.starts_with(&online_dir)
+        && path.extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false);
+
     if potential_thumb.exists() {
+        // Upgrade legacy low-res web thumbnails (< 16KB) if master wallpaper exists on disk
+        if is_online_image && path.exists() {
+            if let Ok(meta) = potential_thumb.metadata() {
+                if meta.len() < 16_384 {
+                    let _ = std::fs::remove_file(&potential_thumb);
+                    return None;
+                }
+            }
+        }
         return Some(potential_thumb);
     }
 

@@ -70,9 +70,10 @@ impl WallpaperEngine {
             .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
             .unwrap_or(false);
 
-        // Pre-scale large static images to screen resolution to prevent 400MB+ RAM and 1.2GB GTT usage
+        // Pass image directly to mpvpaper to preserve full native 4K/2K/UHD quality and color depth.
+        // Only pre-scale truly extreme gigapixel / astronomical images (> 8K: 7680x4320) as a safeguard.
         let effective_path = if is_image {
-            crate::scanner::thumbs::optimize_wallpaper_image(std::path::Path::new(video_path), 2560, 1440)
+            crate::scanner::thumbs::optimize_wallpaper_image(std::path::Path::new(video_path), 7680, 4320)
         } else {
             std::path::PathBuf::from(video_path)
         };
@@ -158,7 +159,7 @@ impl WallpaperEngine {
 
     pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, is_image: bool) -> String {
         let mut opts = if is_image {
-            String::from("image-display-duration=inf --pause=yes --no-config --no-audio --demuxer-max-bytes=8M --vd-lavc-threads=1")
+            String::from("image-display-duration=inf --pause=yes --no-config --no-audio --scale=spline36 --cscale=spline36 --dscale=mitchell --demuxer-max-bytes=8M --vd-lavc-threads=1")
         } else {
             let mut o = format!(
                 "loop-file=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
@@ -278,6 +279,7 @@ mod tests {
         let opts_image = WallpaperEngine::build_mpv_options("fill", true, 100, "auto-safe", true);
         assert!(opts_image.contains("image-display-duration=inf"));
         assert!(opts_image.contains("--pause=yes"));
+        assert!(opts_image.contains("--scale=spline36"));
         assert!(opts_image.contains("--demuxer-max-bytes=8M"));
         assert!(opts_image.contains("--vd-lavc-threads=1"));
         assert!(opts_image.contains("--panscan=1.0"));

@@ -1573,8 +1573,21 @@ impl cosmic::Application for AuraApp {
                     async move {
                         match download_to_file(&client, &url, &dest).await {
                             Ok(p) => {
-                                if thumb_src.exists() {
-                                    let target_thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
+                                let target_thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
+                                let is_image = p.extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                                    .unwrap_or(false);
+
+                                let generated = if is_image {
+                                    // Remove any stale or low-res web thumbnail to generate crisp local Lanczos3 thumbnail
+                                    let _ = tokio::fs::remove_file(&target_thumb).await;
+                                    crate::scanner::thumbs::generate_thumbnail(&p).await.is_some()
+                                } else {
+                                    false
+                                };
+
+                                if !generated && thumb_src.exists() && !target_thumb.exists() {
                                     if let Some(parent) = target_thumb.parent() {
                                         let _ = tokio::fs::create_dir_all(parent).await;
                                     }

@@ -60,16 +60,30 @@ pub fn optimize_wallpaper_image(image_path: &Path, max_w: u32, max_h: u32) -> Pa
         .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
         .unwrap_or(0);
 
-    let cached_path = cache_dir.join(format!("{}_{}_{}_{}x{}.jpg", clean_stem, &hash[..8], mtime, max_w, max_h));
+    let is_png = image_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("png"))
+        .unwrap_or(false);
+    let ext = if is_png { "png" } else { "jpg" };
+
+    let cached_path = cache_dir.join(format!("{}_{}_{}_{}x{}.{}", clean_stem, &hash[..8], mtime, max_w, max_h, ext));
     if cached_path.exists() {
         return cached_path;
     }
 
     match image::open(image_path) {
         Ok(img) => {
-            let scaled = img.resize(max_w, max_h, image::imageops::FilterType::Triangle);
-            if scaled.save(&cached_path).is_ok() {
-                return cached_path;
+            let scaled = img.resize(max_w, max_h, image::imageops::FilterType::Lanczos3);
+            if is_png {
+                if scaled.save_with_format(&cached_path, image::ImageFormat::Png).is_ok() {
+                    return cached_path;
+                }
+            } else if let Ok(mut file) = std::fs::File::create(&cached_path) {
+                let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 95);
+                if encoder.encode_image(&scaled).is_ok() {
+                    return cached_path;
+                }
             }
         }
         Err(e) => {
