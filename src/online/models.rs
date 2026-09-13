@@ -4,6 +4,7 @@ use crate::online::cache::{clean_filename, clean_title_filename, thumbs_online_c
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OnlineSource {
+    MotionBGS,
     Bing,
     Wallhaven,
     Minimalistic,
@@ -23,7 +24,11 @@ pub struct OnlineWallpaperItem {
 
 impl OnlineWallpaperItem {
     pub fn extension(&self) -> &str {
-        if self.full_url.ends_with(".png") {
+        if self.source == OnlineSource::MotionBGS || self.full_url.contains(".mp4") || self.full_url.contains("/dl/") {
+            "mp4"
+        } else if self.full_url.contains(".webm") {
+            "webm"
+        } else if self.full_url.ends_with(".png") {
             "png"
         } else if self.full_url.ends_with(".webp") {
             "webp"
@@ -35,6 +40,7 @@ impl OnlineWallpaperItem {
     pub fn thumb_extension(&self) -> &str {
         match self.source {
             OnlineSource::Minimalistic => "jpg",
+            OnlineSource::MotionBGS => "jpg",
             _ => {
                 if self.thumb_url.contains(".png") {
                     "png"
@@ -49,6 +55,7 @@ impl OnlineWallpaperItem {
 
     pub fn source_prefix(&self) -> &'static str {
         match self.source {
+            OnlineSource::MotionBGS => "motionbgs",
             OnlineSource::Bing => "bing",
             OnlineSource::Wallhaven => "wallhaven",
             OnlineSource::Minimalistic => "minimal",
@@ -57,6 +64,14 @@ impl OnlineWallpaperItem {
 
     pub fn wallpaper_filename(&self) -> String {
         match self.source {
+            OnlineSource::MotionBGS => {
+                let clean = clean_title_filename(&self.title);
+                if clean.is_empty() || clean == "MotionBGS" {
+                    clean_filename(self.source_prefix(), &self.id, self.extension())
+                } else {
+                    format!("{}.{}", clean, self.extension())
+                }
+            }
             OnlineSource::Bing => {
                 let clean = clean_title_filename(&self.title);
                 if clean == "Bing Wallpaper" {
@@ -104,8 +119,8 @@ impl OnlineWallpaperItem {
             }
         }
 
-        // 2. Check legacy paths (e.g. "bing_xyz123.jpg") for backwards compatibility
-        let extensions = ["jpg", "jpeg", "png", "webp"];
+        // 2. Check legacy paths (e.g. "bing_xyz123.jpg", "motionbgs_9967.mp4") for backwards compatibility
+        let extensions = ["mp4", "webm", "jpg", "jpeg", "png", "webp"];
         for ext in &extensions {
             let legacy = dir.join(clean_filename(self.source_prefix(), &self.id, ext));
             if legacy.exists() {
@@ -168,6 +183,23 @@ mod tests {
 
         assert_eq!(minimal_item.source_prefix(), "minimal");
         assert_eq!(minimal_item.wallpaper_filename(), "Alena Aenami - Clouds.jpg");
+
+        let motion_item = OnlineWallpaperItem {
+            id: "9967".into(),
+            title: "Celestial Battle Gojo vs Mahoraga".into(),
+            author_or_copyright: "MotionBGS (Anime)".into(),
+            thumb_url: "https://motionbgs.com/i/c/364x205/media/9967/celestial-battle-gojo-vs-mahoraga.3840x2160.jpg".into(),
+            full_url: "https://motionbgs.com/dl/4k/9967/".into(),
+            resolution: "4K UHD".into(),
+            source: OnlineSource::MotionBGS,
+            date: None,
+        };
+
+        assert_eq!(motion_item.extension(), "mp4");
+        assert_eq!(motion_item.thumb_extension(), "jpg");
+        assert_eq!(motion_item.source_prefix(), "motionbgs");
+        assert_eq!(motion_item.wallpaper_filename(), "Celestial Battle Gojo vs Mahoraga.mp4");
+        assert!(motion_item.local_wallpaper_path().to_string_lossy().ends_with("Celestial Battle Gojo vs Mahoraga.mp4"));
     }
 }
 

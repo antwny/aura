@@ -5,6 +5,10 @@ use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
 
+fn fire_icon() -> widget::icon::Handle {
+    widget::icon::from_svg_bytes(include_bytes!("../../resources/icons/fire-symbolic.svg"))
+}
+
 impl AuraApp {
     pub(crate) fn view_explore(&self) -> Element<'_, Message> {
         let lang = self.language;
@@ -18,13 +22,13 @@ impl AuraApp {
         let is_loading_more = self.explore_loading_more;
 
         let build_header = || {
-            let bing_btn = if current_source == OnlineSource::Bing {
-                widget::button::suggested(lang.explore_source_bing())
+            let live_btn = if current_source == OnlineSource::MotionBGS {
+                widget::button::suggested(lang.explore_source_motionbgs())
             } else {
-                widget::button::standard(lang.explore_source_bing())
+                widget::button::standard(lang.explore_source_motionbgs())
             }
-            .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Bing));
+            .leading_icon(fire_icon())
+            .on_press(Message::SelectExploreSource(OnlineSource::MotionBGS));
 
             let wallhaven_btn = if current_source == OnlineSource::Wallhaven {
                 widget::button::suggested(lang.explore_source_wallhaven())
@@ -33,6 +37,14 @@ impl AuraApp {
             }
             .leading_icon(widget::icon::from_name("view-grid-symbolic"))
             .on_press(Message::SelectExploreSource(OnlineSource::Wallhaven));
+
+            let bing_btn = if current_source == OnlineSource::Bing {
+                widget::button::suggested(lang.explore_source_bing())
+            } else {
+                widget::button::standard(lang.explore_source_bing())
+            }
+            .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
+            .on_press(Message::SelectExploreSource(OnlineSource::Bing));
 
             let minimal_btn = if current_source == OnlineSource::Minimalistic {
                 widget::button::suggested(lang.explore_source_minimalistic())
@@ -45,24 +57,127 @@ impl AuraApp {
             let reload_btn = widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
                 .on_press(Message::FetchOnlineWallpapers(current_source));
 
-            let top_bar = widget::row::with_capacity(4)
+            let top_bar = widget::row::with_capacity(5)
                 .spacing(12)
                 .align_y(Alignment::Center)
-                .push(bing_btn)
+                .push(live_btn)
                 .push(wallhaven_btn)
+                .push(bing_btn)
                 .push(minimal_btn)
                 .push(reload_btn);
 
             let subtitle = match current_source {
+                OnlineSource::MotionBGS => lang.explore_motionbgs_subtitle(),
                 OnlineSource::Bing => lang.explore_featured_today(),
                 OnlineSource::Wallhaven => lang.explore_recent_title(),
                 OnlineSource::Minimalistic => lang.explore_minimalistic_subtitle(),
             };
 
-            let mut header_col = widget::column::with_capacity(4)
+            let mut header_col = widget::column::with_capacity(5)
                 .spacing(8)
                 .push(top_bar)
                 .push(widget::text::caption(subtitle));
+
+            if current_source == OnlineSource::MotionBGS {
+                let search_input = widget::text_input::search_input(
+                    lang.explore_search_motionbgs_placeholder(),
+                    &self.motionbgs_search,
+                )
+                .on_input(Message::MotionbgsSearchChanged)
+                .on_submit(|_| Message::SubmitMotionbgsSearch)
+                .width(Length::Fill);
+
+                let motion_cat = &self.motionbgs_category;
+
+                let cat_all = if motion_cat == "all" {
+                    widget::button::suggested(lang.explore_cat_all())
+                } else {
+                    widget::button::standard(lang.explore_cat_all())
+                }.on_press(Message::SelectMotionbgsCategory("all".into()));
+
+                let cat_anime = if motion_cat == "anime" {
+                    widget::button::suggested(lang.explore_cat_anime())
+                } else {
+                    widget::button::standard(lang.explore_cat_anime())
+                }.on_press(Message::SelectMotionbgsCategory("anime".into()));
+
+                let cat_games = if motion_cat == "games" {
+                    widget::button::suggested(lang.explore_cat_games())
+                } else {
+                    widget::button::standard(lang.explore_cat_games())
+                }.on_press(Message::SelectMotionbgsCategory("games".into()));
+
+                let cat_nature = if motion_cat == "nature" {
+                    widget::button::suggested(lang.explore_cat_nature())
+                } else {
+                    widget::button::standard(lang.explore_cat_nature())
+                }.on_press(Message::SelectMotionbgsCategory("nature".into()));
+
+                let cat_space = if motion_cat == "space" {
+                    widget::button::suggested(lang.explore_cat_space())
+                } else {
+                    widget::button::standard(lang.explore_cat_space())
+                }.on_press(Message::SelectMotionbgsCategory("space".into()));
+
+                let cat_cars = if motion_cat == "car" {
+                    widget::button::suggested(lang.explore_cat_cars())
+                } else {
+                    widget::button::standard(lang.explore_cat_cars())
+                }.on_press(Message::SelectMotionbgsCategory("car".into()));
+
+                let cat_superhero = if motion_cat == "superhero" {
+                    widget::button::suggested(lang.explore_cat_superhero())
+                } else {
+                    widget::button::standard(lang.explore_cat_superhero())
+                }.on_press(Message::SelectMotionbgsCategory("superhero".into()));
+
+                let cat_fantasy = if motion_cat == "fantasy" {
+                    widget::button::suggested(lang.explore_cat_fantasy())
+                } else {
+                    widget::button::standard(lang.explore_cat_fantasy())
+                }.on_press(Message::SelectMotionbgsCategory("fantasy".into()));
+
+                let cat_tech = if motion_cat == "technology" {
+                    widget::button::suggested(lang.explore_cat_technology())
+                } else {
+                    widget::button::standard(lang.explore_cat_technology())
+                }.on_press(Message::SelectMotionbgsCategory("technology".into()));
+
+                let motion_res = &self.motionbgs_resolution;
+                let res_4k = if motion_res == "4k" {
+                    widget::button::suggested(lang.explore_res_4k())
+                } else {
+                    widget::button::standard(lang.explore_res_4k())
+                }.on_press(Message::SelectMotionbgsResolution("4k".into()));
+
+                let res_hd = if motion_res == "hd" {
+                    widget::button::suggested(lang.explore_res_1080p())
+                } else {
+                    widget::button::standard(lang.explore_res_1080p())
+                }.on_press(Message::SelectMotionbgsResolution("hd".into()));
+
+                let filters_row = widget::row::with_capacity(10)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(cat_all)
+                    .push(cat_anime)
+                    .push(cat_games)
+                    .push(cat_nature)
+                    .push(cat_space)
+                    .push(cat_cars)
+                    .push(cat_superhero)
+                    .push(cat_fantasy)
+                    .push(cat_tech);
+
+                let res_row = widget::row::with_capacity(3)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::caption(lang.explore_resolution_label()))
+                    .push(res_4k)
+                    .push(res_hd);
+
+                header_col = header_col.push(search_input).push(filters_row).push(res_row);
+            }
 
             if current_source == OnlineSource::Wallhaven {
                 let search_input = widget::text_input::search_input(
@@ -179,6 +294,7 @@ impl AuraApp {
                 .align_x(Horizontal::Center)
                 .push(widget::text::title2(lang.explore_loading()))
                 .push(widget::text::caption(match current_source {
+                    OnlineSource::MotionBGS => "MotionBGS 4K & HD Live Wallpapers",
                     OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
                     OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
                     OnlineSource::Minimalistic => "Minimalistic Flat Art & Nature Collection",
@@ -224,6 +340,7 @@ impl AuraApp {
         }
 
         let items: Vec<OnlineWallpaperItem> = match current_source {
+            OnlineSource::MotionBGS => self.motionbgs_wallpapers.clone(),
             OnlineSource::Bing => self.bing_wallpapers.clone(),
             OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
             OnlineSource::Minimalistic => self.minimalistic_wallpapers.clone(),
@@ -359,7 +476,7 @@ impl AuraApp {
 
         // Pagination "Load More" Button at Bottom
         let has_more = match current_source {
-            OnlineSource::Bing | OnlineSource::Wallhaven => true,
+            OnlineSource::MotionBGS | OnlineSource::Bing | OnlineSource::Wallhaven => true,
             OnlineSource::Minimalistic => {
                 let total_matching = if self.minimalistic_search.trim().is_empty() {
                     self.minimalistic_all_wallpapers.len()

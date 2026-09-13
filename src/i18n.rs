@@ -564,6 +564,13 @@ impl Language {
     }
 
     // --- Explore View (Online Catalog) ---
+    pub fn explore_source_motionbgs(&self) -> &'static str {
+        match self {
+            Language::Es => "Live Wallpapers",
+            Language::En => "Live Wallpapers",
+        }
+    }
+
     pub fn explore_source_bing(&self) -> &'static str {
         match self {
             Language::Es => "Bing del Día (4K)",
@@ -582,6 +589,20 @@ impl Language {
         match self {
             Language::Es => "Minimalista",
             Language::En => "Minimalist",
+        }
+    }
+
+    pub fn explore_motionbgs_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Catálogo de 9,400+ fondos animados en bucle 4K y HD de MotionBGS",
+            Language::En => "Catalog of 9,400+ 4K and HD looping animated wallpapers from MotionBGS",
+        }
+    }
+
+    pub fn explore_search_motionbgs_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar fondos animados (ej: anime, cyberpunk, espacio, rain)...",
+            Language::En => "Search live wallpapers (e.g. anime, cyberpunk, space, rain)...",
         }
     }
 
@@ -739,6 +760,55 @@ impl Language {
         }
     }
 
+    pub fn explore_cat_games(&self) -> &'static str {
+        match self {
+            Language::Es => "Videojuegos",
+            Language::En => "Games",
+        }
+    }
+
+    pub fn explore_cat_nature(&self) -> &'static str {
+        match self {
+            Language::Es => "Naturaleza",
+            Language::En => "Nature",
+        }
+    }
+
+    pub fn explore_cat_space(&self) -> &'static str {
+        match self {
+            Language::Es => "Espacio / Sci-Fi",
+            Language::En => "Space / Sci-Fi",
+        }
+    }
+
+    pub fn explore_cat_cars(&self) -> &'static str {
+        match self {
+            Language::Es => "Autos",
+            Language::En => "Cars",
+        }
+    }
+
+    pub fn explore_cat_superhero(&self) -> &'static str {
+        match self {
+            Language::Es => "Superhéroes",
+            Language::En => "Superheroes",
+        }
+    }
+
+    pub fn explore_cat_fantasy(&self) -> &'static str {
+        match self {
+            Language::Es => "Fantasía",
+            Language::En => "Fantasy",
+        }
+    }
+
+    pub fn explore_cat_technology(&self) -> &'static str {
+        match self {
+            Language::Es => "Tecnología",
+            Language::En => "Technology",
+        }
+    }
+
     pub fn explore_sort_top(&self) -> &'static str {
         match self {
             Language::Es => "Más Votados",
@@ -777,6 +847,17 @@ impl Language {
 
     pub fn explore_res_ultrawide(&self) -> &'static str {
         "Ultrawide 21:9"
+    }
+
+    pub fn explore_res_1080p(&self) -> &'static str {
+        "1080p HD"
+    }
+
+    pub fn explore_resolution_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Resolución:",
+            Language::En => "Resolution:",
+        }
     }
 
     // --- Tray (StatusNotifierItem) ---
@@ -1248,6 +1329,16 @@ mod tests {
             assert!(!lang.explore_sort_hot().is_empty());
             assert!(!lang.explore_sort_random().is_empty());
             assert!(!lang.explore_source_minimalistic().is_empty());
+            assert!(!lang.explore_source_motionbgs().is_empty());
+            assert!(!lang.explore_motionbgs_subtitle().is_empty());
+            assert!(!lang.explore_search_motionbgs_placeholder().is_empty());
+            assert!(!lang.explore_cat_games().is_empty());
+            assert!(!lang.explore_cat_nature().is_empty());
+            assert!(!lang.explore_cat_space().is_empty());
+            assert!(!lang.explore_cat_cars().is_empty());
+            assert!(!lang.explore_cat_superhero().is_empty());
+            assert!(!lang.explore_cat_fantasy().is_empty());
+            assert!(!lang.explore_cat_technology().is_empty());
             assert!(!lang.explore_minimalistic_subtitle().is_empty());
             assert!(!lang.explore_search_minimal_placeholder().is_empty());
             assert!(!lang.library_filter_all().is_empty());

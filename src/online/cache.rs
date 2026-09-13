@@ -279,13 +279,16 @@ pub fn is_downloaded(prefix: &str, id: &str) -> Option<PathBuf> {
 }
 
 pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: &Path) -> Result<PathBuf, String> {
+    use tokio::io::AsyncWriteExt;
+
     if let Some(parent) = destination.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = tokio::fs::create_dir_all(parent).await;
     }
 
+    // Increased timeout for large video wallpapers (120s)
     let response = client
         .get(url)
-        .timeout(Duration::from_secs(25))
+        .timeout(Duration::from_secs(120))
         .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
         .send()
         .await
@@ -295,19 +298,30 @@ pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: 
         return Err(format!("Server returned HTTP error {}", response.status()));
     }
 
-    let bytes = response
-        .bytes()
+    let tmp_path = destination.with_extension("tmp");
+    let mut file = tokio::fs::File::create(&tmp_path)
         .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| format!("Failed to create temporary file: {}", e))?;
 
-    if bytes.is_empty() {
-        return Err("Received empty file from server".into());
+    let mut response = response;
+    let mut total_bytes: usize = 0;
+
+    while let Some(chunk) = response.chunk().await.map_err(|e| format!("Error while downloading stream: {}", e))? {
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Failed to write chunk to disk: {}", e))?;
+        total_bytes += chunk.len();
     }
 
-    let tmp_path = destination.with_extension("tmp");
-    tokio::fs::write(&tmp_path, &bytes)
+    file.flush()
         .await
-        .map_err(|e| format!("Failed to write temporary file: {}", e))?;
+        .map_err(|e| format!("Failed to flush downloaded file: {}", e))?;
+    drop(file);
+
+    if total_bytes == 0 {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err("Received empty file from server".into());
+    }
 
     tokio::fs::rename(&tmp_path, destination)
         .await
