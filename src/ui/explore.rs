@@ -284,19 +284,21 @@ impl AuraApp {
 
                     // Image preview button
                     if let Some(thumb) = &thumb_path {
-                        let img_press = if let Some(dp) = &downloaded_path {
-                            Message::ApplyDownloadedOnlineWallpaper(dp.clone())
-                        } else {
-                            Message::DownloadOnlineWallpaper {
-                                item: item.clone(),
-                                auto_apply: true,
-                            }
-                        };
-
-                        let img_btn = widget::button::image(thumb.to_string_lossy().to_string())
+                        let mut img_btn = widget::button::image(thumb.to_string_lossy().to_string())
                             .width(240.0)
-                            .selected(is_active)
-                            .on_press(img_press);
+                            .selected(is_active);
+
+                        if !is_downloading {
+                            let img_press = if let Some(dp) = &downloaded_path {
+                                Message::ApplyDownloadedOnlineWallpaper(dp.clone())
+                            } else {
+                                Message::DownloadOnlineWallpaper {
+                                    item: item.clone(),
+                                    auto_apply: true,
+                                }
+                            };
+                            img_btn = img_btn.on_press(img_press);
+                        }
                         card_content = card_content.push(img_btn);
                     } else {
                         let placeholder = widget::container(widget::text::caption(lang.explore_loading()))

@@ -204,6 +204,7 @@ pub struct AuraApp {
     pub(crate) wallhaven_search: String,
     pub(crate) library_filter: LibraryFilter,
     pub(crate) update_status: UpdateStatus,
+    pub(crate) pending_auto_apply_id: Option<String>,
 }
 
 impl AuraApp {
@@ -447,6 +448,7 @@ impl cosmic::Application for AuraApp {
             wallhaven_search: String::new(),
             library_filter: LibraryFilter::All,
             update_status: UpdateStatus::Idle,
+            pending_auto_apply_id: None,
         };
 
         if is_window_open && !crate::online::updater::is_flatpak() {
@@ -957,7 +959,13 @@ impl cosmic::Application for AuraApp {
                         }
                     }
 
-                    return self.set_status(self.language.status_applied(&output, &file_name));
+                    let status_msg = self.language.status_applied(&output, &file_name);
+                    self.status_message = Some(status_msg.clone());
+                    return self.notify_with_action(
+                        status_msg,
+                        self.language.toast_show_in_files(),
+                        Message::OpenWallpapersFolder,
+                    );
                 }
             }
 
@@ -1564,6 +1572,9 @@ impl cosmic::Application for AuraApp {
 
             Message::DownloadOnlineWallpaper { item, auto_apply } => {
                 self.downloading_online_ids.insert(item.id.clone());
+                if auto_apply {
+                    self.pending_auto_apply_id = Some(item.id.clone());
+                }
                 let client = self.http_client.clone();
                 let id = item.id.clone();
                 let url = item.full_url.clone();
@@ -1613,15 +1624,8 @@ impl cosmic::Application for AuraApp {
                 self.downloading_online_ids.remove(&id);
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
                 let _ = self.config.save();
-                let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                let msg_text = format!("{}: {}", self.language.explore_toast_downloaded(), fname);
-                let toast_task = self.notify_with_action(
-                    msg_text,
-                    self.language.toast_show_in_files(),
-                    Message::OpenWallpapersFolder,
-                );
 
-                let mut tasks = vec![toast_task];
+                let mut tasks = Vec::new();
                 if let Some(item) = self.videos.iter().find(|v| v.path == path) {
                     if item.thumb_path.is_none() {
                         let vp = path.clone();
@@ -1639,7 +1643,22 @@ impl cosmic::Application for AuraApp {
                 }
 
                 if auto_apply {
-                    tasks.push(Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path))));
+                    // Only apply if this download corresponds to the latest requested wallpaper
+                    let is_latest = self.pending_auto_apply_id.as_deref() == Some(&id);
+                    if is_latest {
+                        self.pending_auto_apply_id = None;
+                        // Directly apply: ApplyWallpaper will show the single applied notification with "Show in Files"
+                        tasks.push(Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path))));
+                    }
+                } else {
+                    // Explicit manual download: show single "Downloaded" notification with "Show in Files"
+                    let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let msg_text = format!("{}: {}", self.language.explore_toast_downloaded(), fname);
+                    tasks.push(self.notify_with_action(
+                        msg_text,
+                        self.language.toast_show_in_files(),
+                        Message::OpenWallpapersFolder,
+                    ));
                 }
 
                 if !tasks.is_empty() {
