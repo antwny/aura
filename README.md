@@ -179,7 +179,10 @@ aura
 
 - **Developer**: [Antwny](https://github.com/antwny)
 - **YouTube Channel**: [@antwny](https://www.youtube.com/@antwny)
-- **Inspiration**: Concept inspired by [Papyrus](https://github.com/PSGtatitos/papyrus); re-engineered in pure Rust for Pop!_OS and modern COSMIC Desktop.
+
+- **Reddit**: [@antw-ny](https://www.reddit.com/user/antw-ny/)
+
+
 
 ---
 
