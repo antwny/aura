@@ -24,7 +24,22 @@ jobs:
             libwayland-dev \
             desktop-file-utils \
             appstream \
-            libmpv-dev
+            libmpv-dev \
+            meson \
+            ninja-build \
+            libwlroots-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libglib2.0-dev
+
+      - name: Build mpvpaper Wayland Engine
+        run: |
+          git clone --depth 1 https://github.com/GhostNaN/mpvpaper.git /tmp/mpvpaper-src
+          meson setup /tmp/mpvpaper-src/build /tmp/mpvpaper-src
+          ninja -C /tmp/mpvpaper-src/build
+          mkdir -p packaging
+          cp /tmp/mpvpaper-src/build/mpvpaper packaging/mpvpaper
+          chmod +x packaging/mpvpaper
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
