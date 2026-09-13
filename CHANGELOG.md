@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-09-13
+
+### Fixed
+- **Library Toast Notification Stacking & Spam Elimination**:
+  - Eliminated notification flooding when rapidly testing and applying multiple wallpapers in the Library.
+  - Implemented immediate toast replacement (`notify_applied`): applying a new wallpaper cleans up previous toasts, ensuring at most one notification is active at any time.
+  - Reduced toast display duration from 15 seconds (`Duration::Long`) to 5 seconds (`Duration::Short`).
+  - Added duplicate check in `Message::ApplyWallpaper`: skips redundant re-applications, mpv respawns, and toast spam if the selected wallpaper is already running on that monitor.
+  - Disabled redundant clicks on the active wallpaper card in the Library.
+- **Automated mpvpaper Wayland Engine Compilation in CI**:
+  - Configured GitHub Actions release workflow to install build tools (`meson`, `ninja`, `libwlroots-dev`) and compile `mpvpaper` from source on release, ensuring it is always bundled in release tarballs.
+
 ## [1.2.1] - 2026-09-12
 
 ### Added

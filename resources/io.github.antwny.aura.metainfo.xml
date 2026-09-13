@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.2.2" date="2026-09-13">
+      <description>
+        <p>Aura 1.2.2 fixes notification stacking and automates mpvpaper bundling in releases:</p>
+        <ul>
+          <li>Eliminated toast notification stacking when rapidly applying wallpapers in the Library.</li>
+          <li>Implemented immediate single toast replacement with short 5-second duration.</li>
+          <li>Skipped redundant re-application and toast spam if wallpaper is already active on that monitor.</li>
+          <li>Automated Wayland mpvpaper engine compilation directly within GitHub Actions CI packaging.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-09-12">
       <description>
         <p>Aura 1.2.1 brings native 4K wallpaper quality, improved update notifications, and streamlined download flow:</p>
