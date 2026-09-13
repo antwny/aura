@@ -12,7 +12,7 @@ use cosmic::iced::{Length, Subscription, Task};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -205,6 +205,7 @@ pub struct AuraApp {
     pub(crate) library_filter: LibraryFilter,
     pub(crate) update_status: UpdateStatus,
     pub(crate) pending_auto_apply_id: Option<String>,
+    pub(crate) last_update_check: Option<Instant>,
 }
 
 impl AuraApp {
@@ -449,9 +450,10 @@ impl cosmic::Application for AuraApp {
             library_filter: LibraryFilter::All,
             update_status: UpdateStatus::Idle,
             pending_auto_apply_id: None,
+            last_update_check: None,
         };
 
-        if is_window_open && !crate::online::updater::is_flatpak() {
+        if !crate::online::updater::is_flatpak() {
             tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
         }
 
@@ -602,6 +604,13 @@ impl cosmic::Application for AuraApp {
             );
         }
 
+        if !crate::online::updater::is_flatpak() {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_secs(4 * 3600))
+                    .map(|_| Message::CheckForUpdates { user_initiated: false })
+            );
+        }
+
         Subscription::batch(subs)
     }
 
@@ -737,6 +746,8 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::ShowMainWindow => {
+                let mut tasks = Vec::new();
+
                 if !self.is_window_open || self.core().main_window_id().is_none() {
                     let mut win_settings = cosmic::iced::window::Settings::default();
                     win_settings.size = cosmic::iced::Size::new(1024.0, 720.0);
@@ -754,13 +765,42 @@ impl cosmic::Application for AuraApp {
                     let (new_id, open_task) = cosmic::iced::window::open(win_settings);
                     self.is_window_open = true;
                     self.core_mut().set_main_window_id(Some(new_id));
-                    return Task::batch([open_task.discard(), cosmic::iced::window::gain_focus(new_id)]);
+                    tasks.push(open_task.discard());
+                    tasks.push(cosmic::iced::window::gain_focus(new_id));
                 } else if let Some(id) = self.core().main_window_id() {
-                    return Task::batch([
-                        cosmic::iced::window::minimize(id, false),
-                        cosmic::iced::window::gain_focus(id),
-                    ]);
+                    tasks.push(cosmic::iced::window::minimize(id, false));
+                    tasks.push(cosmic::iced::window::gain_focus(id));
                 }
+
+                if !crate::online::updater::is_flatpak() {
+                    if let UpdateStatus::Available { ref latest_tag, ref download_url, .. } = self.update_status {
+                        let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
+                        if let Some(url) = download_url {
+                            let action_lbl = self.language.toast_update_available_action();
+                            tasks.push(self.notify_with_action(
+                                toast_text,
+                                action_lbl,
+                                Message::PerformGuiUpdate { download_url: url.clone(), version: latest_tag.clone() },
+                            ));
+                        } else {
+                            tasks.push(self.notify_with_action(
+                                toast_text,
+                                self.language.about_github_btn(),
+                                Message::OpenGitHub,
+                            ));
+                        }
+                    } else {
+                        let should_check = match self.last_update_check {
+                            Some(last) => last.elapsed() > Duration::from_secs(45 * 60),
+                            None => true,
+                        };
+                        if should_check && !matches!(self.update_status, UpdateStatus::Checking | UpdateStatus::Downloading) {
+                            tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
+                        }
+                    }
+                }
+
+                return Task::batch(tasks);
             }
 
             Message::WindowCloseRequested(id) => {
@@ -840,6 +880,7 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::CheckForUpdates { user_initiated } => {
+                self.last_update_check = Some(Instant::now());
                 self.update_status = UpdateStatus::Checking;
                 let client = self.http_client.clone();
                 return Task::perform(
@@ -861,20 +902,22 @@ impl cosmic::Application for AuraApp {
                                 notes,
                                 download_url: download_url.clone(),
                             };
-                            let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
-                            if let Some(url) = download_url {
-                                let action_lbl = self.language.toast_update_available_action();
-                                return self.notify_with_action(
-                                    toast_text,
-                                    action_lbl,
-                                    Message::PerformGuiUpdate { download_url: url, version: latest_tag },
-                                );
-                            } else {
-                                return self.notify_with_action(
-                                    toast_text,
-                                    self.language.about_github_btn(),
-                                    Message::OpenGitHub,
-                                );
+                            if self.is_window_open {
+                                let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
+                                if let Some(url) = download_url {
+                                    let action_lbl = self.language.toast_update_available_action();
+                                    return self.notify_with_action(
+                                        toast_text,
+                                        action_lbl,
+                                        Message::PerformGuiUpdate { download_url: url, version: latest_tag },
+                                    );
+                                } else {
+                                    return self.notify_with_action(
+                                        toast_text,
+                                        self.language.about_github_btn(),
+                                        Message::OpenGitHub,
+                                    );
+                                }
                             }
                         } else {
                             self.update_status = UpdateStatus::UpToDate;
