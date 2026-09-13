@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-12
+
+### Added
+- **Native 4K/UHD Static Wallpaper Rendering & Spline36 Filtering**:
+  - Direct unconstrained GPU rendering of ultra-high-resolution wallpapers in `mpvpaper` without downscaling to 1440p.
+  - Enhanced scaling pipeline with `--scale=spline36 --cscale=spline36 --dscale=mitchell` for sharp, artifact-free presentation on high-DPI displays.
+  - High-definition Lanczos3 thumbnail generation preserving PNG transparency and 95% JPEG quality for safety caps on extreme (>8K) images.
+  - Automatic thumbnail promotion in scanner: detects legacy low-resolution web previews (<16 KB) and regenerates crisp 480x270 Lanczos3 thumbnails directly from downloaded master files.
+- **Reliable Update Lifecycle Notifications**:
+  - Background update checks run seamlessly on boot and autostart (`--hidden`), preserving update status in memory.
+  - Restoring or opening Aura from the system tray, dock, or D-Bus (`ShowMainWindow`) immediately triggers the update notification banner if an update is available.
+  - Added smart 45-minute window reactivation check cooldown and a periodic 4-hour background subscription to notify about new releases during long uptime sessions.
+
+### Changed
+- **Streamlined Explore Download & Apply Flow**:
+  - Consolidated redundant notifications into a single clear toast ("Fondo de pantalla aplicado") with an actionable `[ Mostrar en Archivos ]` button.
+  - Prevented race conditions and wallpaper overriding when clicking multiple items in Explore (`pending_auto_apply_id`).
+  - Disabled download interactions on in-progress items to prevent duplicate requests.
+
 ## [1.2.0] - 2026-09-11
 
 ### Added

@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.2.1" date="2026-09-12">
+      <description>
+        <p>Aura 1.2.1 brings native 4K wallpaper quality, improved update notifications, and streamlined download flow:</p>
+        <ul>
+          <li>Unconstrained native 4K/UHD wallpaper rendering with high-quality spline36 and Mitchell scaling filters in mpvpaper.</li>
+          <li>High-definition Lanczos3 thumbnail generation preserving PNG and 95% JPEG quality with automatic legacy thumbnail promotion.</li>
+          <li>Reliable update notification banners when restoring Aura from the tray, dock, or D-Bus after booting in hidden mode.</li>
+          <li>Periodic background update checks and streamlined Explore download and application workflow without duplicate toasts.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-09-11">
       <description>
         <p>Aura 1.2.0 introduces COSMIC v2 desktop accent synchronization and DenverCoder1 Minimalistic wallpapers:</p>
