@@ -223,13 +223,15 @@ impl AuraApp {
                     let mut card_content = widget::column::with_capacity(5).spacing(8).padding(12);
 
                     if let Some(thumb) = &video.thumb_path {
-                        let img_btn = widget::button::image(thumb.clone())
+                        let mut img_btn = widget::button::image(thumb.clone())
                             .width(240.0)
-                            .selected(is_active)
-                            .on_press(Message::ApplyWallpaper {
+                            .selected(is_active);
+                        if !is_active {
+                            img_btn = img_btn.on_press(Message::ApplyWallpaper {
                                 video_path: video.path.clone(),
                                 output: selected_output.clone(),
                             });
+                        }
                         card_content = card_content.push(img_btn);
                     } else {
                         let placeholder = widget::container(widget::text::body(self.language.library_extracting_frame()))
@@ -250,10 +252,11 @@ impl AuraApp {
                     } else {
                         widget::button::standard(self.language.library_apply())
                             .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
-                    }.on_press(Message::ApplyWallpaper {
-                        video_path: video.path.clone(),
-                        output: selected_output.clone(),
-                    });
+                            .on_press(Message::ApplyWallpaper {
+                                video_path: video.path.clone(),
+                                output: selected_output.clone(),
+                            })
+                    };
 
                     let mut action_row = widget::row::with_capacity(3)
                         .spacing(8)

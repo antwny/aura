@@ -229,6 +229,21 @@ impl AuraApp {
         task.map(cosmic::Action::App)
     }
 
+    pub(crate) fn notify_applied(
+        &mut self,
+        text: impl Into<String>,
+        action_label: impl Into<String>,
+        action_msg: Message,
+    ) -> Task<cosmic::Action<Message>> {
+        // Clear previous toast notifications so they never stack up when switching wallpapers
+        self.toasts = cosmic::widget::Toasts::new(Message::CloseToast);
+        let toast = cosmic::widget::Toast::new(text)
+            .duration(cosmic::widget::toaster::Duration::Short)
+            .action(action_label.into(), move |_id| action_msg.clone());
+        let task = self.toasts.push(toast);
+        task.map(cosmic::Action::App)
+    }
+
     pub(crate) fn set_status(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
         let msg = text.into();
         self.status_message = Some(msg.clone());
@@ -976,12 +991,18 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::ApplyWallpaper { video_path, output } => {
+                let path_str = video_path.to_string_lossy().to_string();
+
+                // If this wallpaper is already running on this output and not paused, do nothing to avoid redundant respawns and toast spam
+                if self.config.wallpapers.get(&output).map(|s| s.as_str()) == Some(&path_str) && !self.is_paused {
+                    return Task::none();
+                }
+
                 let scaling = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
                 let mute = self.config.mute;
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
-                let path_str = video_path.to_string_lossy().to_string();
                 if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec) {
                     self.config.wallpapers.insert(output.clone(), path_str.clone());
                     self.config.current = Some(path_str.clone());
@@ -1004,7 +1025,7 @@ impl cosmic::Application for AuraApp {
 
                     let status_msg = self.language.status_applied(&output, &file_name);
                     self.status_message = Some(status_msg.clone());
-                    return self.notify_with_action(
+                    return self.notify_applied(
                         status_msg,
                         self.language.toast_show_in_files(),
                         Message::OpenWallpapersFolder,
