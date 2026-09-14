@@ -60,6 +60,18 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.3.0" date="2026-09-13">
+      <description>
+        <p>Aura 1.3.0 introduces online live wallpapers, download progress tracking, seamless MPV IPC engine, and native auto-pause:</p>
+        <ul>
+          <li>Integrated curated MotionBGS Live Wallpapers catalog in Explore with category filtering, search, and 4K/1080p resolution support.</li>
+          <li>Live download progress indicator with transfer metrics, cancel button, and resilient chunk streaming.</li>
+          <li>Real-time MPV IPC socket control enabling flicker-free wallpaper transitions, dynamic volume, and live mute.</li>
+          <li>Automatic hardware-accelerated auto-pause when windows obscure the desktop (0% GPU/CPU consumption) with Settings toggle.</li>
+          <li>Fixed CLI toggle-pause signal handling to properly resume paused wallpapers via IPC and process state verification.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-09-13">
       <description>
         <p>Aura 1.2.2 fixes notification stacking and automates mpvpaper bundling in releases:</p>

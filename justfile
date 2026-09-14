@@ -44,6 +44,7 @@ clean:
 install: build
     install -d "${HOME}/.local/bin"
     install -m 755 target/release/aura "${HOME}/.local/bin/aura"
+    @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "${HOME}/.local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "${HOME}/.local/bin/mpvpaper"; fi
     install -d "${HOME}/.local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
     sed -i "s|^Exec=.*|Exec=${HOME}/.local/bin/aura|" "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
@@ -60,6 +61,7 @@ install: build
 install-system: build
     install -d "/usr/local/bin"
     install -m 755 target/release/aura "/usr/local/bin/aura"
+    @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "/usr/local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "/usr/local/bin/mpvpaper"; fi
     install -d "/usr/local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "/usr/local/share/applications/io.github.antwny.aura.desktop"
     sed -i "s|^Exec=.*|Exec=/usr/local/bin/aura|" "/usr/local/share/applications/io.github.antwny.aura.desktop"
@@ -83,7 +85,7 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.2.2": build
+package version="1.3.0": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"

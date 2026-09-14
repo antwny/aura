@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-13
+
+### Added
+- **Online Live Wallpapers Catalog (MotionBGS Integration)**:
+  - Curated animated live wallpapers catalog in Explore tab with custom fire iconography (`fire-symbolic.svg`).
+  - Full resolution selection for 4K and 1080p live wallpapers with accurate badge indicators.
+  - Multi-category filters, live search, and paginated lazy-loading.
+- **Interactive Download Progress & Dynamic Streaming**:
+  - Live progress bar showing exact download percentage, MBs transferred, and total file size for both live and static wallpapers.
+  - Interactive cancel button (`✕`) to cleanly abort ongoing downloads.
+  - Dynamic chunk-idle timeout ensuring resilient streaming without premature aborts on slow networks.
+  - Sanitized unique filenames avoiding overwrite collisions between downloaded live wallpapers.
+- **Seamless MPV IPC Socket Engine Integration**:
+  - Dedicated per-output UNIX IPC sockets (`/tmp/aura_mpv_<output>.sock`).
+  - Zero-flicker live wallpaper switching via `loadfile <path> replace` without destroying Wayland surfaces or restarting `mpvpaper`.
+  - Instant hot-adjustment for volume and audio mute in Settings via JSON IPC properties.
+  - Dynamic aspect ratio and panscan control (`fit`, `fill`, `stretch`) in real-time.
+- **Native Auto-Pause on Desktop Hidden**:
+  - Direct integration with `mpvpaper -p` to automatically halt video rendering when windows obscure the desktop.
+  - Delivers true 0% CPU and GPU utilization during active application use.
+  - User-configurable toggle in Settings: *"Pausar automáticamente si el escritorio está oculto"* with bilingual ES/EN descriptions.
+
+### Fixed
+- **CLI `aura toggle-pause` Signal Bug**:
+  - Fixed issue where repeated `aura toggle-pause` calls continuously sent `SIGSTOP` because `pkill -STOP` always returns exit code 0 in Linux.
+  - Prioritized JSON IPC `cycle pause` commands with a robust fallback inspecting `/proc/<PID>/status` for `State: T (stopped)` before alternating between `SIGCONT` and `SIGSTOP`.
+- **Explore Tab Applied Check Indicators**:
+  - Fixed visual bug where all live wallpaper cards erroneously displayed the active checkmark.
+
 ## [1.2.2] - 2026-09-13
 
 ### Fixed
