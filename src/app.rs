@@ -3,7 +3,7 @@ use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
 use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
 use crate::theme::apply_cosmic_theme;
 use crate::online::{
-    download_online_thumbnail, download_to_file, fetch_bing_archive_page, fetch_bing_wallpapers,
+    download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
     fetch_motionbgs_wallpapers, fetch_wallhaven_wallpapers, fetch_minimalistic_wallpapers,
     OnlineSource, OnlineWallpaperItem,
 };
@@ -94,13 +94,17 @@ pub enum Message {
     SelectMotionbgsResolution(String),
     MotionbgsSearchChanged(String),
     SubmitMotionbgsSearch,
+    ClearMotionbgsSearch,
     SelectWallhavenCategory(String),
     SelectWallhavenSorting(String),
     SelectWallhavenResolution(String),
     WallhavenSearchChanged(String),
     SubmitWallhavenSearch,
+    ClearWallhavenSearch,
     MinimalisticSearchChanged(String),
+    ClearMinimalisticSearch,
     DownloadOnlineWallpaper { item: OnlineWallpaperItem, auto_apply: bool },
+    DownloadProgressUpdated { id: String, downloaded: u64, total: Option<u64>, percent: f32 },
     OnlineWallpaperDownloaded { id: String, path: PathBuf, auto_apply: bool },
     OnlineWallpaperDownloadFailed { id: String, error: String },
     OnlineThumbLoaded { id: String, path: PathBuf },
@@ -204,6 +208,7 @@ pub struct AuraApp {
     pub(crate) explore_loading_more: bool,
     pub(crate) explore_error: Option<String>,
     pub(crate) downloading_online_ids: std::collections::HashSet<String>,
+    pub(crate) download_progress: std::collections::HashMap<String, (u64, Option<u64>, f32)>,
     pub(crate) online_thumbs: std::collections::HashMap<String, PathBuf>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) bing_page: u32,
@@ -469,6 +474,7 @@ impl cosmic::Application for AuraApp {
             explore_loading_more: false,
             explore_error: None,
             downloading_online_ids: std::collections::HashSet::new(),
+            download_progress: std::collections::HashMap::new(),
             online_thumbs: std::collections::HashMap::new(),
             http_client: reqwest::Client::new(),
             bing_page: 1,
@@ -1649,7 +1655,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::SelectMotionbgsCategory(cat) => {
-                if self.motionbgs_category != cat {
+                let search_cleared = !self.motionbgs_search.is_empty();
+                self.motionbgs_search.clear();
+                if self.motionbgs_category != cat || search_cleared {
                     self.motionbgs_category = cat;
                     self.motionbgs_page = 1;
                     self.motionbgs_wallpapers.clear();
@@ -1671,13 +1679,25 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::SubmitMotionbgsSearch => {
+                self.motionbgs_category = "all".into();
                 self.motionbgs_page = 1;
                 self.motionbgs_wallpapers.clear();
                 return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::MotionBGS)));
             }
 
+            Message::ClearMotionbgsSearch => {
+                if !self.motionbgs_search.is_empty() {
+                    self.motionbgs_search.clear();
+                    self.motionbgs_page = 1;
+                    self.motionbgs_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::MotionBGS)));
+                }
+            }
+
             Message::SelectWallhavenCategory(cat) => {
-                if self.wallhaven_category != cat {
+                let search_cleared = !self.wallhaven_search.is_empty();
+                self.wallhaven_search.clear();
+                if self.wallhaven_category != cat || search_cleared {
                     self.wallhaven_category = cat;
                     self.wallhaven_page = 1;
                     self.wallhaven_wallpapers.clear();
@@ -1713,11 +1733,29 @@ impl cosmic::Application for AuraApp {
                 return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::Wallhaven)));
             }
 
+            Message::ClearWallhavenSearch => {
+                if !self.wallhaven_search.is_empty() {
+                    self.wallhaven_search.clear();
+                    self.wallhaven_page = 1;
+                    self.wallhaven_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::Wallhaven)));
+                }
+            }
+
             Message::MinimalisticSearchChanged(q) => {
                 self.minimalistic_search = q;
                 self.minimalistic_page = 1;
                 let paged = self.apply_minimalistic_filter();
                 return self.queue_thumbnails(&paged);
+            }
+
+            Message::ClearMinimalisticSearch => {
+                if !self.minimalistic_search.is_empty() {
+                    self.minimalistic_search.clear();
+                    self.minimalistic_page = 1;
+                    let paged = self.apply_minimalistic_filter();
+                    return self.queue_thumbnails(&paged);
+                }
             }
 
             Message::OnlineThumbLoaded { id, path } => {
@@ -1726,6 +1764,7 @@ impl cosmic::Application for AuraApp {
 
             Message::DownloadOnlineWallpaper { item, auto_apply } => {
                 self.downloading_online_ids.insert(item.id.clone());
+                self.download_progress.insert(item.id.clone(), (0, None, 0.0));
                 if auto_apply {
                     self.pending_auto_apply_id = Some(item.id.clone());
                 }
@@ -1734,9 +1773,34 @@ impl cosmic::Application for AuraApp {
                 let url = item.full_url.clone();
                 let dest = item.local_wallpaper_path();
                 let thumb_src = item.local_thumb_path();
-                return Task::perform(
+
+                let stream = cosmic::iced::stream::channel(50, move |mut output: cosmic::iced::futures::channel::mpsc::Sender<cosmic::Action<Message>>| {
                     async move {
-                        match download_to_file(&client, &url, &dest).await {
+                        use cosmic::iced::futures::SinkExt;
+                        let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Option<u64>, f32)>(30);
+                        let client_task = client.clone();
+                        let url_task = url.clone();
+                        let dest_task = dest.clone();
+
+                        let dl_handle = tokio::spawn(async move {
+                            download_to_file_with_progress(&client_task, &url_task, &dest_task, move |down, tot, pct| {
+                                let _ = tx.try_send((down, tot, pct));
+                            }).await
+                        });
+
+                        // Forward real-time throttled progress updates to Iced UI
+                        while let Some((downloaded, total, percent)) = rx.recv().await {
+                            let _ = output.send(cosmic::Action::App(Message::DownloadProgressUpdated {
+                                id: id.clone(),
+                                downloaded,
+                                total,
+                                percent,
+                            })).await;
+                        }
+
+                        let download_res = dl_handle.await.unwrap_or_else(|e| Err(format!("Download task error: {}", e)));
+
+                        match download_res {
                             Ok(p) => {
                                 let target_thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
                                 let is_image = p.extension()
@@ -1745,7 +1809,6 @@ impl cosmic::Application for AuraApp {
                                     .unwrap_or(false);
 
                                 let generated = if is_image {
-                                    // Remove any stale or low-res web thumbnail to generate crisp local Lanczos3 thumbnail
                                     let _ = tokio::fs::remove_file(&target_thumb).await;
                                     crate::scanner::thumbs::generate_thumbnail(&p).await.is_some()
                                 } else {
@@ -1758,24 +1821,33 @@ impl cosmic::Application for AuraApp {
                                     }
                                     let _ = tokio::fs::copy(&thumb_src, &target_thumb).await;
                                 }
-                                Ok((id, p, auto_apply))
+
+                                let _ = output.send(cosmic::Action::App(Message::OnlineWallpaperDownloaded {
+                                    id: id.clone(),
+                                    path: p,
+                                    auto_apply,
+                                })).await;
                             }
-                            Err(e) => Err((id, e)),
+                            Err(err) => {
+                                let _ = output.send(cosmic::Action::App(Message::OnlineWallpaperDownloadFailed {
+                                    id: id.clone(),
+                                    error: err,
+                                })).await;
+                            }
                         }
-                    },
-                    |res| match res {
-                        Ok((id, path, auto_apply)) => {
-                            cosmic::Action::App(Message::OnlineWallpaperDownloaded { id, path, auto_apply })
-                        }
-                        Err((id, error)) => {
-                            cosmic::Action::App(Message::OnlineWallpaperDownloadFailed { id, error })
-                        }
-                    },
-                );
+                    }
+                });
+
+                return cosmic::task::stream(stream);
+            }
+
+            Message::DownloadProgressUpdated { id, downloaded, total, percent } => {
+                self.download_progress.insert(id, (downloaded, total, percent));
             }
 
             Message::OnlineWallpaperDownloaded { id, path, auto_apply } => {
                 self.downloading_online_ids.remove(&id);
+                self.download_progress.remove(&id);
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
                 let _ = self.config.save();
 
@@ -1783,29 +1855,37 @@ impl cosmic::Application for AuraApp {
                 if let Some(item) = self.videos.iter().find(|v| v.path == path) {
                     if item.thumb_path.is_none() {
                         let vp = path.clone();
-                        tasks.push(Task::perform(
-                            async move { (vp.clone(), generate_thumbnail(&vp).await) },
-                            move |(video_path, t)| {
-                                if let Some(thumb_path) = t {
-                                    cosmic::Action::App(Message::ThumbnailGenerated { video_path, thumb_path })
-                                } else {
-                                    cosmic::Action::None
-                                }
-                            },
-                        ));
+                        let vp_for_msg = path.clone();
+                        let is_video = vp.extension()
+                            .and_then(|e| e.to_str())
+                            .map(|ext| crate::scanner::VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                            .unwrap_or(false);
+                        if is_video {
+                            tasks.push(Task::perform(
+                                async move {
+                                    crate::scanner::thumbs::generate_thumbnail(&vp).await
+                                },
+                                move |thumb_opt| {
+                                    if let Some(tp) = thumb_opt {
+                                        cosmic::Action::App(Message::ThumbnailGenerated {
+                                            video_path: vp_for_msg,
+                                            thumb_path: tp,
+                                        })
+                                    } else {
+                                        cosmic::Action::None
+                                    }
+                                },
+                            ));
+                        }
                     }
                 }
 
                 if auto_apply {
-                    // Only apply if this download corresponds to the latest requested wallpaper
-                    let is_latest = self.pending_auto_apply_id.as_deref() == Some(&id);
-                    if is_latest {
+                    if self.pending_auto_apply_id.as_deref() == Some(&id) {
                         self.pending_auto_apply_id = None;
-                        // Directly apply: ApplyWallpaper will show the single applied notification with "Show in Files"
                         tasks.push(Task::done(cosmic::Action::App(Message::ApplyDownloadedOnlineWallpaper(path))));
                     }
                 } else {
-                    // Explicit manual download: show single "Downloaded" notification with "Show in Files"
                     let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                     let msg_text = format!("{}: {}", self.language.explore_toast_downloaded(), fname);
                     tasks.push(self.notify_with_action(
@@ -1822,6 +1902,7 @@ impl cosmic::Application for AuraApp {
 
             Message::OnlineWallpaperDownloadFailed { id, error } => {
                 self.downloading_online_ids.remove(&id);
+                self.download_progress.remove(&id);
                 self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
                 self.status_timer = 5;
             }

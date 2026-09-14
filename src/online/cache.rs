@@ -278,7 +278,20 @@ pub fn is_downloaded(prefix: &str, id: &str) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code)]
 pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: &Path) -> Result<PathBuf, String> {
+    download_to_file_with_progress(client, url, destination, |_, _, _| {}).await
+}
+
+pub async fn download_to_file_with_progress<F>(
+    client: &reqwest::Client,
+    url: &str,
+    destination: &Path,
+    mut progress_cb: F,
+) -> Result<PathBuf, String>
+where
+    F: FnMut(u64, Option<u64>, f32) + Send + 'static,
+{
     use tokio::io::AsyncWriteExt;
 
     if let Some(parent) = destination.parent() {
@@ -298,19 +311,43 @@ pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: 
         return Err(format!("Server returned HTTP error {}", response.status()));
     }
 
+    let total_len = response.content_length();
+
     let tmp_path = destination.with_extension("tmp");
     let mut file = tokio::fs::File::create(&tmp_path)
         .await
         .map_err(|e| format!("Failed to create temporary file: {}", e))?;
 
     let mut response = response;
-    let mut total_bytes: usize = 0;
+    let mut total_bytes: u64 = 0;
+    let mut last_progress_time = std::time::Instant::now();
+
+    // Initial progress report (0%)
+    progress_cb(0, total_len, 0.0);
 
     while let Some(chunk) = response.chunk().await.map_err(|e| format!("Error while downloading stream: {}", e))? {
         file.write_all(&chunk)
             .await
             .map_err(|e| format!("Failed to write chunk to disk: {}", e))?;
-        total_bytes += chunk.len();
+        total_bytes += chunk.len() as u64;
+
+        // Throttle updates to at most once every 100ms
+        if last_progress_time.elapsed() >= Duration::from_millis(100) {
+            let pct = if let Some(tot) = total_len {
+                if tot > 0 { (total_bytes as f32 / tot as f32).clamp(0.0, 1.0) } else { 0.0 }
+            } else {
+                0.0
+            };
+            progress_cb(total_bytes, total_len, pct);
+            last_progress_time = std::time::Instant::now();
+        }
+    }
+
+    // Final progress report (100%)
+    if let Some(tot) = total_len {
+        progress_cb(total_bytes, Some(tot), 1.0);
+    } else {
+        progress_cb(total_bytes, None, 1.0);
     }
 
     file.flush()
@@ -522,6 +559,18 @@ mod tests {
 
         let invalid = b"<html>404 Not Found</html>";
         assert!(!is_image_data(invalid));
+    }
+
+    #[test]
+    fn test_progress_calculation() {
+        let total: Option<u64> = Some(10_000_000);
+        let downloaded: u64 = 4_500_000;
+        let pct = if let Some(tot) = total {
+            (downloaded as f32 / tot as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        assert!((pct - 0.45).abs() < 0.001);
     }
 }
 

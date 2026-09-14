@@ -6,7 +6,7 @@ use cosmic::widget;
 use cosmic::Element;
 
 fn fire_icon() -> widget::icon::Handle {
-    widget::icon::from_svg_bytes(include_bytes!("../../resources/icons/fire-symbolic.svg"))
+    widget::icon::from_svg_bytes(include_bytes!("../../resources/icons/fire-symbolic.svg")).symbolic(true)
 }
 
 impl AuraApp {
@@ -14,6 +14,7 @@ impl AuraApp {
         let lang = self.language;
         let active_wallpapers = self.config.wallpapers.clone();
         let downloading_ids = self.downloading_online_ids.clone();
+        let download_progress = self.download_progress.clone();
         let online_thumbs = self.online_thumbs.clone();
         let current_source = self.explore_source;
         let wallhaven_cat = &self.wallhaven_category;
@@ -86,6 +87,17 @@ impl AuraApp {
                 .on_input(Message::MotionbgsSearchChanged)
                 .on_submit(|_| Message::SubmitMotionbgsSearch)
                 .width(Length::Fill);
+
+                let mut search_row = widget::row::with_capacity(2)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(search_input);
+
+                if !self.motionbgs_search.is_empty() {
+                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
+                        .on_press(Message::ClearMotionbgsSearch);
+                    search_row = search_row.push(clear_btn);
+                }
 
                 let motion_cat = &self.motionbgs_category;
 
@@ -176,7 +188,7 @@ impl AuraApp {
                     .push(res_4k)
                     .push(res_hd);
 
-                header_col = header_col.push(search_input).push(filters_row).push(res_row);
+                header_col = header_col.push(search_row).push(filters_row).push(res_row);
             }
 
             if current_source == OnlineSource::Wallhaven {
@@ -187,6 +199,17 @@ impl AuraApp {
                 .on_input(Message::WallhavenSearchChanged)
                 .on_submit(|_| Message::SubmitWallhavenSearch)
                 .width(Length::Fill);
+
+                let mut search_row = widget::row::with_capacity(2)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(search_input);
+
+                if !wallhaven_search.is_empty() {
+                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
+                        .on_press(Message::ClearWallhavenSearch);
+                    search_row = search_row.push(clear_btn);
+                }
 
                 // Categories
                 let cat_all = if wallhaven_cat == "110" {
@@ -271,7 +294,7 @@ impl AuraApp {
                     .push(res_2k)
                     .push(res_uw);
 
-                header_col = header_col.push(search_input).push(filters_row).push(res_row);
+                header_col = header_col.push(search_row).push(filters_row).push(res_row);
             }
 
             if current_source == OnlineSource::Minimalistic {
@@ -282,7 +305,18 @@ impl AuraApp {
                 .on_input(Message::MinimalisticSearchChanged)
                 .width(Length::Fill);
 
-                header_col = header_col.push(search_input);
+                let mut search_row = widget::row::with_capacity(2)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(search_input);
+
+                if !self.minimalistic_search.is_empty() {
+                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
+                        .on_press(Message::ClearMinimalisticSearch);
+                    search_row = search_row.push(clear_btn);
+                }
+
+                header_col = header_col.push(search_row);
             }
 
             header_col
@@ -441,27 +475,67 @@ impl AuraApp {
                     let meta_lbl = widget::text::caption(meta_text);
                     card_content = card_content.push(meta_lbl);
 
-                    // Morphing Action Button with Native Symbolic Icons (NO EMOJIS)
-                    let action_btn = if is_downloading {
-                        widget::button::standard(lang.explore_btn_downloading())
-                            .leading_icon(widget::icon::from_name("process-working-symbolic"))
+                    // Morphing Action Button with Native Symbolic Icons and Live Download Progress
+                    let action_widget: Element<'_, Message> = if is_downloading {
+                        let prog = download_progress.get(&item.id);
+                        let (p_bar, prog_label) = if let Some(&(downloaded, total_opt, pct)) = prog {
+                            let mb_down = downloaded as f64 / (1024.0 * 1024.0);
+                            let bar: Element<'_, Message> = if pct > 0.0 {
+                                Element::from(widget::progress_bar::determinate_linear(pct).width(Length::Fill))
+                            } else {
+                                Element::from(widget::progress_bar::indeterminate_linear().width(Length::Fill))
+                            };
+                            let label = if let Some(total) = total_opt {
+                                let mb_tot = total as f64 / (1024.0 * 1024.0);
+                                format!("{:.0}% · {:.1} / {:.1} MB", pct * 100.0, mb_down, mb_tot)
+                            } else {
+                                format!("{:.1} MB", mb_down)
+                            };
+                            (bar, label)
+                        } else {
+                            (
+                                Element::from(widget::progress_bar::indeterminate_linear().width(Length::Fill)),
+                                lang.explore_btn_downloading().to_string(),
+                            )
+                        };
+
+                        let dl_col = widget::column::with_capacity(2)
+                            .spacing(6)
+                            .width(Length::Fill)
+                            .push(p_bar)
+                            .push(
+                                widget::button::standard(prog_label)
+                                    .leading_icon(widget::icon::from_name("process-working-symbolic"))
+                                    .width(Length::Fill)
+                            );
+
+                        Element::from(dl_col)
                     } else if is_active {
-                        widget::button::suggested(lang.explore_badge_active())
-                            .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
+                        Element::from(
+                            widget::button::suggested(lang.explore_badge_active())
+                                .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
+                                .width(Length::Fill)
+                        )
                     } else if let Some(dp) = downloaded_path {
-                        widget::button::suggested(lang.explore_btn_apply())
-                            .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
-                            .on_press(Message::ApplyDownloadedOnlineWallpaper(dp))
+                        Element::from(
+                            widget::button::suggested(lang.explore_btn_apply())
+                                .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
+                                .on_press(Message::ApplyDownloadedOnlineWallpaper(dp))
+                                .width(Length::Fill)
+                        )
                     } else {
-                        widget::button::standard(lang.explore_btn_download())
-                            .leading_icon(widget::icon::from_name("folder-download-symbolic"))
-                            .on_press(Message::DownloadOnlineWallpaper {
-                                item: item.clone(),
-                                auto_apply: false,
-                            })
+                        Element::from(
+                            widget::button::standard(lang.explore_btn_download())
+                                .leading_icon(widget::icon::from_name("folder-download-symbolic"))
+                                .on_press(Message::DownloadOnlineWallpaper {
+                                    item: item.clone(),
+                                    auto_apply: false,
+                                })
+                                .width(Length::Fill)
+                        )
                     };
 
-                    card_content = card_content.push(action_btn);
+                    card_content = card_content.push(action_widget);
 
                     let card_container = widget::container(card_content)
                         .width(Length::Fixed(card_w));
