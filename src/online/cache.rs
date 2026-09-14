@@ -280,28 +280,36 @@ pub fn is_downloaded(prefix: &str, id: &str) -> Option<PathBuf> {
 
 #[allow(dead_code)]
 pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: &Path) -> Result<PathBuf, String> {
-    download_to_file_with_progress(client, url, destination, |_, _, _| {}).await
+    download_to_file_with_progress(client, url, destination, None, |_, _, _| {}).await
 }
 
 pub async fn download_to_file_with_progress<F>(
     client: &reqwest::Client,
     url: &str,
     destination: &Path,
+    cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     mut progress_cb: F,
 ) -> Result<PathBuf, String>
 where
     F: FnMut(u64, Option<u64>, f32) + Send + 'static,
 {
+    use std::sync::atomic::Ordering;
     use tokio::io::AsyncWriteExt;
 
     if let Some(parent) = destination.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    // Increased timeout for large video wallpapers (120s)
+    // Check if cancelled before starting
+    if let Some(ref flag) = cancel_flag {
+        if flag.load(Ordering::Relaxed) {
+            return Err("Download canceled by user".into());
+        }
+    }
+
+    // Connect with user agent; do not set a rigid total download timeout so slow/large downloads can finish.
     let response = client
         .get(url)
-        .timeout(Duration::from_secs(120))
         .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
         .send()
         .await
@@ -325,10 +333,43 @@ where
     // Initial progress report (0%)
     progress_cb(0, total_len, 0.0);
 
-    while let Some(chunk) = response.chunk().await.map_err(|e| format!("Error while downloading stream: {}", e))? {
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("Failed to write chunk to disk: {}", e))?;
+    loop {
+        // Check if download was canceled by user
+        if let Some(ref flag) = cancel_flag {
+            if flag.load(Ordering::Relaxed) {
+                drop(file);
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err("Download canceled by user".into());
+            }
+        }
+
+        // Per-chunk idle timeout (45 seconds without any chunk received)
+        let chunk_res = tokio::time::timeout(Duration::from_secs(45), response.chunk()).await;
+        let chunk_opt = match chunk_res {
+            Ok(Ok(opt)) => opt,
+            Ok(Err(e)) => {
+                drop(file);
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err(format!("Error while downloading stream: {}", e));
+            }
+            Err(_) => {
+                drop(file);
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err("Download connection timed out (server stopped sending data for 45s)".into());
+            }
+        };
+
+        let chunk = match chunk_opt {
+            Some(c) => c,
+            None => break, // Stream complete
+        };
+
+        if let Err(e) = file.write_all(&chunk).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(format!("Failed to write chunk to disk: {}", e));
+        }
+
         total_bytes += chunk.len() as u64;
 
         // Throttle updates to at most once every 100ms
@@ -571,6 +612,22 @@ mod tests {
             0.0
         };
         assert!((pct - 0.45).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_download_cancellation_pre_check() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            use std::sync::atomic::AtomicBool;
+            use std::sync::Arc;
+            let client = reqwest::Client::new();
+            let cancel = Arc::new(AtomicBool::new(true));
+            let dest = std::env::temp_dir().join("test_cancel_dl.mp4");
+            let res = download_to_file_with_progress(&client, "http://127.0.0.1:9/dummy", &dest, Some(cancel), |_, _, _| {}).await;
+            assert!(res.is_err());
+            assert_eq!(res.unwrap_err(), "Download canceled by user");
+            assert!(!dest.with_extension("tmp").exists());
+        });
     }
 }
 

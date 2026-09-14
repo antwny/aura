@@ -634,6 +634,13 @@ impl Language {
         }
     }
 
+    pub fn explore_btn_cancel(&self) -> &'static str {
+        match self {
+            Language::Es => "Cancelar",
+            Language::En => "Cancel",
+        }
+    }
+
     pub fn explore_btn_apply(&self) -> &'static str {
         match self {
             Language::Es => "Aplicar",
@@ -1330,6 +1337,7 @@ mod tests {
             assert!(!lang.explore_sort_random().is_empty());
             assert!(!lang.explore_source_minimalistic().is_empty());
             assert!(!lang.explore_source_motionbgs().is_empty());
+            assert!(!lang.explore_btn_cancel().is_empty());
             assert!(!lang.explore_motionbgs_subtitle().is_empty());
             assert!(!lang.explore_search_motionbgs_placeholder().is_empty());
             assert!(!lang.explore_cat_games().is_empty());

@@ -66,10 +66,15 @@ impl OnlineWallpaperItem {
         match self.source {
             OnlineSource::MotionBGS => {
                 let clean = clean_title_filename(&self.title);
-                if clean.is_empty() || clean == "MotionBGS" {
-                    clean_filename(self.source_prefix(), &self.id, self.extension())
+                let res_tag = if self.resolution.contains("1080") || self.full_url.contains("/dl/hd/") {
+                    "1080p"
                 } else {
-                    format!("{}.{}", clean, self.extension())
+                    "4k"
+                };
+                if clean.is_empty() || clean == "MotionBGS" || clean == "MotionBGS Wallpaper" {
+                    clean_filename(self.source_prefix(), &format!("{}_{}", self.id, res_tag), self.extension())
+                } else {
+                    format!("{} - {}-{}.{}", clean, self.id, res_tag, self.extension())
                 }
             }
             OnlineSource::Bing => {
@@ -198,8 +203,8 @@ mod tests {
         assert_eq!(motion_item.extension(), "mp4");
         assert_eq!(motion_item.thumb_extension(), "jpg");
         assert_eq!(motion_item.source_prefix(), "motionbgs");
-        assert_eq!(motion_item.wallpaper_filename(), "Celestial Battle Gojo vs Mahoraga.mp4");
-        assert!(motion_item.local_wallpaper_path().to_string_lossy().ends_with("Celestial Battle Gojo vs Mahoraga.mp4"));
+        assert_eq!(motion_item.wallpaper_filename(), "Celestial Battle Gojo vs Mahoraga - 9967-4k.mp4");
+        assert!(motion_item.local_wallpaper_path().to_string_lossy().ends_with("Celestial Battle Gojo vs Mahoraga - 9967-4k.mp4"));
     }
 }
 

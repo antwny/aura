@@ -499,15 +499,28 @@ impl AuraApp {
                             )
                         };
 
+                        let cancel_btn = widget::tooltip(
+                            widget::button::icon(widget::icon::from_name("process-stop-symbolic"))
+                                .on_press(Message::CancelOnlineDownload(item.id.clone())),
+                            widget::text::caption(lang.explore_btn_cancel()),
+                            widget::tooltip::Position::Top,
+                        );
+
+                        let status_btn = widget::button::standard(prog_label)
+                            .leading_icon(widget::icon::from_name("process-working-symbolic"))
+                            .width(Length::Fill);
+
+                        let btn_row = widget::row::with_capacity(2)
+                            .spacing(6)
+                            .align_y(Alignment::Center)
+                            .push(status_btn)
+                            .push(cancel_btn);
+
                         let dl_col = widget::column::with_capacity(2)
                             .spacing(6)
                             .width(Length::Fill)
                             .push(p_bar)
-                            .push(
-                                widget::button::standard(prog_label)
-                                    .leading_icon(widget::icon::from_name("process-working-symbolic"))
-                                    .width(Length::Fill)
-                            );
+                            .push(btn_row);
 
                         Element::from(dl_col)
                     } else if is_active {

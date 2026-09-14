@@ -87,6 +87,14 @@ fn form_urlencoded(s: &str) -> String {
 pub fn parse_motionbgs_html(html: &str, preferred_res: &str, category: &str) -> Vec<OnlineWallpaperItem> {
     let mut seen = HashSet::new();
     let mut items = Vec::new();
+
+    // Skip <head> so <meta> tags are never accidentally parsed as wallpaper cards
+    let html_slice = if let Some(idx) = html.find("<body").or_else(|| html.find("<div class=tmb").or_else(|| html.find("<div class=\"tmb\""))) {
+        &html[idx..]
+    } else {
+        html
+    };
+
     let mut pos = 0;
 
     let cat_label = if category.is_empty() || category == "all" {
@@ -99,8 +107,8 @@ pub fn parse_motionbgs_html(html: &str, preferred_res: &str, category: &str) -> 
         }
     };
 
-    while let Some(idx) = html[pos..].find("/media/").map(|i| pos + i) {
-        let a_idx = match html[..idx].rfind("<a ") {
+    while let Some(idx) = html_slice[pos..].find("/media/").map(|i| pos + i) {
+        let a_idx = match html_slice[..idx].rfind("<a ") {
             Some(a) => a,
             None => {
                 pos = idx + 7;
@@ -108,57 +116,94 @@ pub fn parse_motionbgs_html(html: &str, preferred_res: &str, category: &str) -> 
             }
         };
 
-        let title = if let Some(title_start) = html[a_idx..idx].find("title=\"").map(|i| a_idx + i + 7) {
-            if let Some(title_end) = html[title_start..].find('"').map(|i| title_start + i) {
-                let raw_title = &html[title_start..title_end];
-                let trimmed = if raw_title.to_lowercase().ends_with(" live wallpaper") {
-                    &raw_title[..raw_title.len() - 15]
-                } else {
-                    raw_title
-                };
-                html_decode(trimmed.trim())
-            } else {
-                "MotionBGS Wallpaper".to_string()
-            }
-        } else {
-            "MotionBGS Wallpaper".to_string()
-        };
-
         let after_media = idx + 7;
-        let slash_idx = match html[after_media..].find('/').map(|i| after_media + i) {
+        let slash_idx = match html_slice[after_media..].find('/').map(|i| after_media + i) {
             Some(s) => s,
             None => {
                 pos = idx + 7;
                 continue;
             }
         };
-        let media_id = &html[after_media..slash_idx];
+        let media_id = &html_slice[after_media..slash_idx];
 
         let after_slash = slash_idx + 1;
-        let jpg_idx = match html[after_slash..].find(".jpg").map(|i| after_slash + i) {
+        let jpg_idx = match html_slice[after_slash..].find(".jpg").map(|i| after_slash + i) {
             Some(j) if j - after_slash < 160 => j,
             _ => {
                 pos = idx + 7;
                 continue;
             }
         };
-        let img_filename = &html[after_slash..jpg_idx];
+        let img_filename = &html_slice[after_slash..jpg_idx];
 
         if media_id.chars().all(|c| c.is_ascii_digit()) && !seen.contains(media_id) {
             seen.insert(media_id.to_string());
 
+            // 1. Try extracting title from <a title="... live wallpaper">
+            let mut title = if let Some(title_start) = html_slice[a_idx..idx].find("title=\"").map(|i| a_idx + i + 7) {
+                if let Some(title_end) = html_slice[title_start..].find('"').map(|i| title_start + i) {
+                    let raw_title = &html_slice[title_start..title_end];
+                    let trimmed = if raw_title.to_lowercase().ends_with(" live wallpaper") {
+                        &raw_title[..raw_title.len() - 15]
+                    } else {
+                        raw_title
+                    };
+                    html_decode(trimmed.trim())
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            // 2. If not found, try <span class=ttl>...</span> after idx
+            if title.is_empty() {
+                if let Some(span_pos) = html_slice[idx..].find("class=ttl>").or_else(|| html_slice[idx..].find("class=\"ttl\">")).map(|i| idx + i) {
+                    let after_tag = if html_slice[span_pos..].starts_with("class=ttl>") {
+                        span_pos + 10
+                    } else {
+                        span_pos + 12
+                    };
+                    if let Some(span_end) = html_slice[after_tag..].find('<').map(|i| after_tag + i) {
+                        let raw = &html_slice[after_tag..span_end];
+                        title = html_decode(raw.trim());
+                    }
+                }
+            }
+
+            // 3. If still empty, derive from img slug (e.g. "celestial-battle-gojo" -> "Celestial Battle Gojo")
+            if title.is_empty() {
+                let base_slug = img_filename.split('.').next().unwrap_or(img_filename);
+                let words: Vec<String> = base_slug
+                    .split('-')
+                    .filter(|w| !w.is_empty() && !w.chars().all(|c| c.is_ascii_digit()))
+                    .map(|w| {
+                        let mut c = w.chars();
+                        match c.next() {
+                            None => String::new(),
+                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                        }
+                    })
+                    .collect();
+                if !words.is_empty() {
+                    title = words.join(" ");
+                }
+            }
+
+            if title.is_empty() {
+                title = format!("MotionBGS {}", media_id);
+            }
+
             let is_4k = img_filename.to_lowercase().contains("4k") || img_filename.contains("3840x2160");
-            let resolution_str = if is_4k { "4K UHD" } else { "1080p HD" };
+            let (resolution_str, full_url) = if preferred_res.eq_ignore_ascii_case("hd") {
+                ("1080p HD", format!("https://motionbgs.com/dl/hd/{}/", media_id))
+            } else if is_4k {
+                ("4K UHD", format!("https://motionbgs.com/dl/4k/{}/", media_id))
+            } else {
+                ("1080p HD", format!("https://motionbgs.com/dl/hd/{}/", media_id))
+            };
 
             let thumb_url = format!("https://motionbgs.com/i/c/364x205/media/{}/{}.jpg", media_id, img_filename);
-
-            let full_url = if preferred_res.eq_ignore_ascii_case("hd") {
-                format!("https://motionbgs.com/dl/hd/{}/", media_id)
-            } else if is_4k {
-                format!("https://motionbgs.com/dl/4k/{}/", media_id)
-            } else {
-                format!("https://motionbgs.com/dl/hd/{}/", media_id)
-            };
 
             items.push(OnlineWallpaperItem {
                 id: media_id.to_string(),
@@ -226,6 +271,11 @@ mod tests {
         assert_eq!(items[1].id, "10102");
         assert_eq!(items[1].title, "Dark Angel Rising");
         assert_eq!(items[1].full_url, "https://motionbgs.com/dl/4k/10102/");
+
+        // Test 1080p resolution preference
+        let items_hd = parse_motionbgs_html(sample_html, "hd", "anime");
+        assert_eq!(items_hd[0].resolution, "1080p HD");
+        assert_eq!(items_hd[0].full_url, "https://motionbgs.com/dl/hd/9967/");
     }
 
     #[test]

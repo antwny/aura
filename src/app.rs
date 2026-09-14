@@ -104,6 +104,7 @@ pub enum Message {
     MinimalisticSearchChanged(String),
     ClearMinimalisticSearch,
     DownloadOnlineWallpaper { item: OnlineWallpaperItem, auto_apply: bool },
+    CancelOnlineDownload(String),
     DownloadProgressUpdated { id: String, downloaded: u64, total: Option<u64>, percent: f32 },
     OnlineWallpaperDownloaded { id: String, path: PathBuf, auto_apply: bool },
     OnlineWallpaperDownloadFailed { id: String, error: String },
@@ -209,6 +210,7 @@ pub struct AuraApp {
     pub(crate) explore_error: Option<String>,
     pub(crate) downloading_online_ids: std::collections::HashSet<String>,
     pub(crate) download_progress: std::collections::HashMap<String, (u64, Option<u64>, f32)>,
+    pub(crate) download_cancels: std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(crate) online_thumbs: std::collections::HashMap<String, PathBuf>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) bing_page: u32,
@@ -475,6 +477,7 @@ impl cosmic::Application for AuraApp {
             explore_error: None,
             downloading_online_ids: std::collections::HashSet::new(),
             download_progress: std::collections::HashMap::new(),
+            download_cancels: std::collections::HashMap::new(),
             online_thumbs: std::collections::HashMap::new(),
             http_client: reqwest::Client::new(),
             bing_page: 1,
@@ -1762,9 +1765,22 @@ impl cosmic::Application for AuraApp {
                 self.online_thumbs.insert(id, path);
             }
 
+            Message::CancelOnlineDownload(id) => {
+                if let Some(flag) = self.download_cancels.remove(&id) {
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                self.downloading_online_ids.remove(&id);
+                self.download_progress.remove(&id);
+                if self.pending_auto_apply_id.as_deref() == Some(&id) {
+                    self.pending_auto_apply_id = None;
+                }
+            }
+
             Message::DownloadOnlineWallpaper { item, auto_apply } => {
                 self.downloading_online_ids.insert(item.id.clone());
                 self.download_progress.insert(item.id.clone(), (0, None, 0.0));
+                let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                self.download_cancels.insert(item.id.clone(), cancel_flag.clone());
                 if auto_apply {
                     self.pending_auto_apply_id = Some(item.id.clone());
                 }
@@ -1781,9 +1797,10 @@ impl cosmic::Application for AuraApp {
                         let client_task = client.clone();
                         let url_task = url.clone();
                         let dest_task = dest.clone();
+                        let cancel_task = cancel_flag.clone();
 
                         let dl_handle = tokio::spawn(async move {
-                            download_to_file_with_progress(&client_task, &url_task, &dest_task, move |down, tot, pct| {
+                            download_to_file_with_progress(&client_task, &url_task, &dest_task, Some(cancel_task), move |down, tot, pct| {
                                 let _ = tx.try_send((down, tot, pct));
                             }).await
                         });
@@ -1846,6 +1863,7 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::OnlineWallpaperDownloaded { id, path, auto_apply } => {
+                self.download_cancels.remove(&id);
                 self.downloading_online_ids.remove(&id);
                 self.download_progress.remove(&id);
                 self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
@@ -1901,10 +1919,13 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::OnlineWallpaperDownloadFailed { id, error } => {
-                self.downloading_online_ids.remove(&id);
+                self.download_cancels.remove(&id);
+                let was_downloading = self.downloading_online_ids.remove(&id);
                 self.download_progress.remove(&id);
-                self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
-                self.status_timer = 5;
+                if was_downloading && !error.contains("canceled by user") {
+                    self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
+                    self.status_timer = 5;
+                }
             }
 
             Message::ApplyDownloadedOnlineWallpaper(path) => {
