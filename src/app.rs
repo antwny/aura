@@ -55,6 +55,7 @@ pub enum Message {
     ToggleAutoDark(bool),
     ToggleMute(bool),
     ToggleSmartPause(bool),
+    ToggleAutoPause(bool),
     ToggleKeepRunningOnClose(bool),
     RemoveFolder(String),
     RefreshLibrary,
@@ -409,7 +410,7 @@ impl cosmic::Application for AuraApp {
             for (out, path) in &config.wallpapers {
                 let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
                 if std::path::Path::new(path).exists() {
-                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec);
+                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause);
                 }
             }
         }
@@ -686,7 +687,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 for (output, path) in self.config.wallpapers.clone() {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec);
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause);
                 }
                 return self.set_status(self.language.status_hwdec_selected(&hwdec));
             }
@@ -720,10 +721,7 @@ impl cosmic::Application for AuraApp {
                 self.config.volume = vol;
                 let _ = self.config.save();
                 if !self.config.mute {
-                    for (output, path) in self.config.wallpapers.clone() {
-                        let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                        let _ = self.engine.set_wallpaper(&output, &path, &sc, false, self.config.volume, &self.config.hwdec);
-                    }
+                    self.engine.set_volume(None, vol);
                 }
             }
 
@@ -1029,7 +1027,7 @@ impl cosmic::Application for AuraApp {
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
-                if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec) {
+                if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause) {
                     self.config.wallpapers.insert(output.clone(), path_str.clone());
                     self.config.current = Some(path_str.clone());
                     let _ = self.config.save();
@@ -1097,10 +1095,12 @@ impl cosmic::Application for AuraApp {
             Message::SelectScaling { output, scaling } => {
                 self.config.scaling.insert(output.clone(), scaling.clone());
                 let _ = self.config.save();
-                if let Some(path) = self.config.wallpapers.get(&output).cloned() {
-                    let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec);
-                    return self.set_status(self.language.status_scaling_changed(&output, &scaling));
+                if !self.engine.set_scaling(&output, &scaling) {
+                    if let Some(path) = self.config.wallpapers.get(&output).cloned() {
+                        let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause);
+                    }
                 }
+                return self.set_status(self.language.status_scaling_changed(&output, &scaling));
             }
 
             Message::ToggleAutostart(active) => {
@@ -1162,6 +1162,15 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
             }
 
+            Message::ToggleAutoPause(active) => {
+                self.config.auto_pause = active;
+                let _ = self.config.save();
+                for (output, path) in self.config.wallpapers.clone() {
+                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, active);
+                }
+            }
+
             Message::ToggleKeepRunningOnClose(active) => {
                 self.config.keep_running_on_close = active;
                 let _ = self.config.save();
@@ -1170,10 +1179,7 @@ impl cosmic::Application for AuraApp {
             Message::ToggleMute(mute) => {
                 self.config.mute = mute;
                 let _ = self.config.save();
-                for (output, path) in self.config.wallpapers.clone() {
-                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, mute, self.config.volume, &self.config.hwdec);
-                }
+                self.engine.set_mute(None, mute);
                 self.status_message = Some(if mute { self.language.status_muted().into() } else { self.language.status_unmuted().into() });
                 self.status_timer = 5;
             }

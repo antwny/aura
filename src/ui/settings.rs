@@ -63,6 +63,18 @@ impl AuraApp {
                 widget::row::with_capacity(2)
                     .spacing(20)
                     .align_y(Alignment::Center)
+                    .push(widget::toggler(self.config.auto_pause).on_toggle(Message::ToggleAutoPause))
+                    .push(
+                        widget::column::with_capacity(2)
+                            .spacing(2)
+                            .push(widget::text::body(self.language.settings_auto_pause()))
+                            .push(widget::text::caption(self.language.settings_auto_pause_desc()))
+                    )
+            )
+            .push(
+                widget::row::with_capacity(2)
+                    .spacing(20)
+                    .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.pause_on_battery).on_toggle(Message::TogglePauseOnBattery))
                     .push(
                         widget::column::with_capacity(2)

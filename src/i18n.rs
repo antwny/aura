@@ -351,6 +351,20 @@ impl Language {
         }
     }
 
+    pub fn settings_auto_pause(&self) -> &'static str {
+        match self {
+            Language::Es => "Pausar automáticamente si el escritorio está oculto",
+            Language::En => "Automatically pause when desktop is hidden",
+        }
+    }
+
+    pub fn settings_auto_pause_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Detiene la reproducción para 0% de uso de GPU/CPU cuando las ventanas cubren el fondo",
+            Language::En => "Stops playback for 0% GPU/CPU usage when windows cover the wallpaper",
+        }
+    }
+
     pub fn settings_keep_running(&self) -> &'static str {
         match self {
             Language::Es => "Minimizar a la barra superior (bandeja del sistema) al cerrar la ventana",
@@ -1385,6 +1399,8 @@ mod tests {
             assert!(!lang.settings_battery_desc().is_empty());
             assert!(!lang.status_battery_paused().is_empty());
             assert!(!lang.status_battery_resumed().is_empty());
+            assert!(!lang.settings_auto_pause().is_empty());
+            assert!(!lang.settings_auto_pause_desc().is_empty());
             assert!(!lang.bar_volume().is_empty());
         }
     }

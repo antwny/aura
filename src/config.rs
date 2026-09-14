@@ -21,6 +21,8 @@ pub struct Config {
     pub volume: u8,
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
     pub smart_pause: bool,
+    #[serde(default = "default_auto_pause")]
+    pub auto_pause: bool,
     #[serde(default)]
     pub pause_on_battery: bool,
     pub keep_running_on_close: bool,
@@ -28,6 +30,10 @@ pub struct Config {
     pub autostart: bool,
     #[serde(default = "default_language")]
     pub language: String,
+}
+
+fn default_auto_pause() -> bool {
+    true
 }
 
 fn default_volume() -> u8 {
@@ -126,6 +132,7 @@ impl Default for Config {
             volume: 100,
             hwdec: "auto-safe".into(),
             smart_pause: true,
+            auto_pause: true,
             pause_on_battery: false,
             keep_running_on_close: true,
             autostart: false,
@@ -259,6 +266,7 @@ mod tests {
         assert!(cfg.is_ok());
         let cfg = cfg.unwrap();
         assert!(!cfg.language.is_empty());
+        assert!(cfg.auto_pause);
     }
 
     #[test]

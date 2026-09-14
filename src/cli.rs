@@ -3,7 +3,6 @@ use crate::engine::{detect_outputs, WallpaperEngine};
 use crate::scanner::scan_directories;
 use crate::theme::apply_cosmic_theme;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub fn is_pure_cli(args: &[String]) -> bool {
     if args.len() <= 1 {
@@ -100,7 +99,7 @@ fn cmd_next() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -139,7 +138,7 @@ fn cmd_prev() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -167,18 +166,17 @@ fn cmd_stop() {
 
 #[allow(dead_code)]
 fn cmd_toggle_pause() {
-    // Check if mpvpaper is running
-    let status = Command::new("pkill").args(["-0", "-x", "mpvpaper"]).status();
-    if status.is_err() || !status.unwrap().success() {
+    let pids = crate::engine::mpvpaper::find_mpvpaper_pids();
+    if pids.is_empty() {
         println!("No hay ningún fondo de mpvpaper ejecutándose.");
         return;
     }
 
-    let pkill_stop = Command::new("pkill").args(["-STOP", "-x", "mpvpaper"]).status();
-    if pkill_stop.is_ok() && pkill_stop.unwrap().success() {
+    let mut engine = WallpaperEngine::new();
+    let is_paused = engine.toggle_pause();
+    if is_paused {
         println!("⏸ Aura: Fondo pausado (0% GPU/CPU).");
     } else {
-        let _ = Command::new("pkill").args(["-CONT", "-x", "mpvpaper"]).status();
         println!("▶ Aura: Fondo reanudado.");
     }
 }
@@ -205,7 +203,7 @@ fn cmd_apply(path_arg: &str) {
     let mut engine = WallpaperEngine::new();
     let path_str = full_path.to_string_lossy().to_string();
 
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         if !config.custom_videos.contains(&path_str) {
