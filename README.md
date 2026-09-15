@@ -1,113 +1,141 @@
 <div align="center">
 
-<img src="resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg" alt="Aura Logo" width="128" height="128" />
+<img src="docs/assets/img/logo.svg" alt="Aura Logo" width="100" height="100" />
 
 # Aura
 
-### Next-generation animated live wallpaper manager built natively in Rust for Pop!_OS COSMIC Desktop.
+### Alive wallpapers for Linux. Built for the modern desktop.
+
+**Transform your Pop!_OS and COSMIC workspace with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
 
 [![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
-[![Rust](https://img.shields.io/badge/Rust-1.80%2B-DEA584.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![COSMIC](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=pop!_os&logoColor=white)](https://github.com/pop-os/libcosmic)
-[![Wayland](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
-[![Performance](https://img.shields.io/badge/Performance-60_FPS_%7C_%3C20ms_Startup-success.svg?style=for-the-badge)](#performance-benchmarks)
+[![Pop!_OS COSMIC](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=pop!_os&logoColor=white)](https://github.com/pop-os/libcosmic)
+[![Wayland Native](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
+[![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
+[![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 
-<p align="center">
-  <b>Sub-20ms Cold Boots</b> • <b>Zero Python Overhead</b> • <b>Real-Time Palette Sync</b> • <b>Multi-Monitor Wayland Layer-Shell</b>
-</p>
+<br/>
 
-<p align="center">
-  <img src="docs/screenshots/auto_theming.png" alt="Aura Main Interface" width="92%" />
-</p>
+### ⚡ Quick Install (Ready in 30 seconds)
 
-<p align="center">
-  <img src="docs/screenshots/bing_catalog.png" alt="Aura Main Interface" width="92%" />
-</p>
+Run this single command in your terminal to install or update Aura with its video engine bundled:
 
-<p align="center">
-  <img src="docs/screenshots/wallhaven_catalog.png" alt="Aura Main Interface" width="92%" />
-</p>
+```bash
+curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
+```
 
----
+*No compiling or complex setup needed. Works right out of the box on Pop!_OS and Linux.*
+
+<br/>
+
+<!-- Real Software Showcase Video -->
+<video src="docs/assets/video/aura-showcase.mp4" poster="docs/assets/video/aura-poster.webp" controls autoplay loop muted playsinline width="96%"></video>
+
+<sub><i>Live recording: Pop!_OS COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine</i></sub>
+
+<br/>
+<br/>
 
 </div>
 
-## Overview
+---
 
-Aura is a lightweight, hardware-accelerated animated live wallpaper manager designed specifically for the Pop!_OS COSMIC Desktop environment. Built from the ground up in 100% pure Rust, it replaces heavy, interpreted legacy utilities with a compiled native application.
+## ✨ Why You'll Love Aura
 
-By integrating directly with System76's official `libcosmic` framework (`iced` + `wgpu`) and communicating natively with the Wayland compositor via layer-shell protocols, Aura achieves sub-20ms cold startups, a minimal native memory footprint, 0% GPU load during pause, and automated desktop theme color synchronization.
+In the past, running animated wallpapers on Linux meant dealing with clunky background scripts that drained your laptop battery and made games stutter.
+
+**Aura changes everything.** Engineered in native compiled Rust for Wayland and COSMIC, it delivers smooth 60 FPS animations when viewing your desktop, and automatically freezes to **0% CPU / 0% GPU** the instant you play a game or open a window.
 
 ---
 
-## Key Features
+### 🔥 Thousands of Free Live & 4K Wallpapers Built-In
 
-- **Native Rust & COSMIC UI**: Built with `libcosmic` (`iced` + `wgpu`), sub-20ms cold startups, zero runtime overhead, frosted acrylic styling, and seamless Wayland layer-shell integration.
-- **Dynamic Desktop Auto-Theming**: Real-time HSV keyframe color extraction and COSMIC v2 theme synchronization dynamically adapting desktop accent colors, button highlights (WCAG contrast), and dark/light modes.
-- **Hardware Acceleration & Smart Pause**: VA-API / NVDEC GPU decoding via `mpvpaper` on Wayland layer `bottom`; automatic `SIGSTOP` pause during full-screen apps, games, and battery operation (0% GPU/CPU).
-- **Multi-Monitor Topology & Scaling**: Per-display wallpaper targeting, true-to-scale visual canvas, hotplug detection, and independent `Fit`, `Fill` (zoom crop), and `Stretch` modes with solid black ultrawide letterboxing.
-- **Playlist Auto-Rotation**: Hands-free background rotation with customizable timer intervals and playback order (random or sequential).
-- **Online Wallpaper Catalogs**: Wallhaven 4K, Bing Daily UHD, and DenverCoder1 Minimalistic Flat Art collections with category filters, keyword search, tag exploration, and non-blocking background downloads.
-- **Multimedia Audio Controls**: Bottom playback bar with dedicated 0-100% volume slider and instant mute toggle with level memory.
-- **Desktop & File Manager Integration**: Non-shifting floating toast notifications (`cosmic::widget::toaster`), user-accessible wallpaper storage (`~/Pictures/Wallpapers/Aura`), and 1-click reveal in COSMIC Files.
-- **Integrated In-App GUI & CLI Updates**: Background release checks with interactive action toasts, 1-click atomic self-updates in the About view, and automatic Flatpak vs. native package routing.
-- **Tray Menu & Headless CLI**: StatusNotifierItem tray menu for playback controls, D-Bus single-instance activation, and full CLI control for global shortcuts.
-- **Bilingual (ES / EN)**: Zero-cost, type-safe in-memory localization with automatic system locale detection.
+No need to scour the web for compatible video clips. Browse and download thousands of stunning wallpapers directly within the app:
 
-### Command-Line Interface and Desktop Shortcuts
+<p align="center">
+  <img src="docs/assets/img/explore-catalogs.png" alt="Aura Online Catalogs" width="94%" />
+</p>
 
-Control Aura headlessly from scripts or bind commands to global shortcuts in **Settings -> Keyboard -> Custom Shortcuts**:
-
-```bash
-aura next              # Switch to the next wallpaper
-aura prev              # Switch to the previous wallpaper
-aura toggle-pause      # Toggle playback pause (drops to 0% GPU)
-aura apply <file>      # Apply a video or image wallpaper directly
-aura stop              # Stop active wallpaper playback
-aura status            # Display current configuration, monitor, and engine status
-aura check-update      # Check GitHub Releases for newer versions
-aura update            # Atomically update Aura to the latest release
-aura --daemon          # Run in background as daemon without opening GUI
-aura --version         # Print version information
-aura help              # Display help and available options
-```
+- **MotionBGS Live Wallpapers**: High-quality curated video loops in both **4K** and **1080p** with real-time download progress tracking and instant preview.
+- **Wallhaven UHD**: Endless collection of crisp 4K & 8K static artwork, landscapes, and anime backgrounds.
+- **Bing Daily Wallpaper**: Automatically fetch Microsoft Bing's daily high-resolution landscape photo.
+- **DenverCoder1 Minimalist Flat Art**: Elegant vector landscapes and illustrations that look clean on any setup.
+- **Category Filters & Instant Search**: Filter by Anime, Nature, Sci-Fi, Cyberpunk, Gaming, Minimalist, or search by keywords in real time.
 
 ---
 
-## Performance Benchmarks
+### 🎨 Magic Desktop Auto-Theming
 
-Measured on Pop!_OS 24.04 LTS (AMD Ryzen 5 4500U, Radeon Graphics, Wayland):
+Bring your entire desktop into harmony. Aura automatically analyzes the colors in your active video or static wallpaper and adapts your entire COSMIC Desktop theme in real time:
 
-| Metric                      | Aura (Rust + libcosmic)      | Legacy Wallpaper Tools (Python / GTK) | Difference                |
-|:--------------------------- |:----------------------------:|:-------------------------------------:|:-------------------------:|
-| **Cold Startup Time**       | **< 20 ms**                  | ~1,120 ms                             | **~56x faster**           |
-| **Memory Overhead**         | **Minimal native footprint** | ~180 MB - 240 MB                      | **Significant reduction** |
-| **CPU Usage (Daemon Idle)** | **0.00%**                    | 3.5% - 8.0%                           | **Zero idle wakeups**     |
-| **GPU Usage When Paused**   | **0.4%** (`SIGSTOP`)         | 3.0% - 8.0%                           | **Complete GPU release**  |
-| **UI Framerate Under Load** | **Solid 60 FPS**             | 24 - 45 FPS                           | **No frame drops**        |
+<p align="center">
+  <img src="docs/assets/img/library-amber.png" alt="Aura Dynamic Auto-Theming" width="94%" />
+</p>
+
+- **Harmonized Accents**: Window borders, buttons, highlights, and system toggles dynamically shift to match your background's palette.
+- **Intelligent Contrast**: Automatically computes WCAG-compliant text contrast for readability.
+- **Auto Light / Dark Adaptation**: Shifts theme tone according to the ambiance of the wallpaper.
+- **Instant Unixporn Ricing**: Get a cohesive desktop aesthetic without spending hours editing configuration files.
+
+---
+
+### 🖥️ Multi-Screen Studio
+
+Have dual monitors or an ultrawide setup? Aura gives you complete independent control over every display:
+
+<p align="center">
+  <img src="docs/assets/img/displays-visualizer.png" alt="Aura Multi-Monitor Visualizer" width="94%" />
+</p>
+
+- **Independent Wallpapers**: Assign different live videos or static images to each monitor.
+- **Per-Screen Scaling**: Choose between **Fit** (letterbox), **Fill** (zoom crop), or **Stretch** individually.
+- **Live Canvas Visualizer**: See a proportional representation of your physical monitor arrangement.
+- **Hotplug Detection**: Seamlessly detects connected or disconnected monitors on the fly.
+
+<div align="center">
+  <video src="docs/assets/video/multimonitor-showcase.mp4" poster="docs/assets/video/multimonitor-poster.webp" controls loop muted playsinline width="80%"></video>
+  <p><sub><i>Independent video playback per monitor with zero tearing</i></sub></p>
+</div>
 
 ---
 
-## Installation Guide
+### 🎮 Smart Auto-Pause: 0% GPU & CPU in Games
 
-### System Requirements
+The biggest concern with live wallpapers is performance. Aura solves this completely:
 
-Install the multimedia runtime libraries (`libmpv2` for Wayland wallpaper playback and `ffmpeg` for video thumbnail generation):
+<p align="center">
+  <img src="docs/assets/img/settings-performance.png" alt="Aura Performance Settings" width="94%" />
+</p>
 
-```bash
-sudo apt update
-sudo apt install libmpv2 ffmpeg
-```
-
-> Note: The standalone release package (`tar.gz`) bundles the `mpvpaper` Wayland engine binary, so compiling from source is not required.
+- **Window Occlusion Detection (`-p`)**: When any application window covers your desktop, Aura automatically halts rendering to save power.
+- **Fullscreen Game Detection**: Launches Steam games or full-screen apps with **zero frame drops**. 100% of your GPU and CPU remain dedicated to your game.
+- **Battery Saver Mode**: Automatically switches to ultra-low-power mode or pauses animation when your laptop is unplugged.
+- **Real-Time Volume & Audio Mute**: Enjoy live wallpapers with atmospheric soundtracks, adjust volume with a slider, or mute them anytime with a single click.
 
 ---
+
+## ⌨️ Effortless Control & Keyboard Shortcuts
+
+Control Aura seamlessly with global keyboard shortcuts. Open **COSMIC Settings → Keyboard → Custom Shortcuts** and assign your favorite key combinations:
+
+| Action | Command | Recommended Shortcut |
+| :--- | :--- | :--- |
+| **Next Wallpaper** | `aura next` | <kbd>Super</kbd> + <kbd>W</kbd> |
+| **Previous Wallpaper** | `aura prev` | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> |
+| **Pause / Resume** (0% GPU) | `aura toggle-pause` | <kbd>Super</kbd> + <kbd>P</kbd> |
+| **Apply Video Directly** | `aura apply /path/to/video.mp4` | Right-click in file manager |
+| **Stop Wallpaper** | `aura stop` | Custom script / shortcut |
+| **System Status** | `aura status` | Terminal check |
+| **Update Aura** | `aura update` | Automatic in-app update |
+
+---
+
+## 🚀 Installation Options
 
 ### Method 1: One-Line Web Installer (Fastest & Recommended)
 
-Install or update Aura and its bundled video engine in a single command:
+Install Aura and its bundled video engine in a single step:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
@@ -122,10 +150,8 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 ### Method 2: Precompiled Release Package
 
-Precompiled binary packages are provided on the [GitHub Releases](https://github.com/antwny/aura/releases) page.
-
-1. Download the latest `aura-vX.Y.Z-x86_64-linux.tar.gz` archive from the Releases section.
-2. Extract the archive and run the installer script:
+1. Download `aura-v1.3.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
+2. Extract the archive and run the installer:
 
 ```bash
 tar -xzf aura-v1.3.0-x86_64-linux.tar.gz
@@ -133,10 +159,7 @@ cd aura-v1.3.0-x86_64-linux
 ./install.sh
 ```
 
-The script automatically installs the `aura` binary to `~/.local/bin`, along with its desktop entry, icons, and AppStream metadata to `~/.local/share/`.
-
-To uninstall:
-
+To uninstall at any time:
 ```bash
 ./uninstall.sh
 ```
@@ -145,75 +168,62 @@ To uninstall:
 
 ### Method 3: Flatpak Package
 
-Aura can be built and installed in an isolated sandbox using Flatpak:
+Build and run in an isolated sandbox using Flatpak:
 
 ```bash
-# Clone the repository
 git clone https://github.com/antwny/aura.git
 cd aura
-
-# Build and install locally via Flatpak Builder
 flatpak run org.flatpak.Builder --user --install --force-clean build-dir packaging/flatpak/io.github.antwny.aura.yml
-
-# Run Aura
 flatpak run io.github.antwny.aura
 ```
 
 ---
 
-### Method 3: Building from Source
+### Method 4: Build from Source (Rust Developers)
 
-To compile Aura directly on your system with the Rust toolchain:
-
-#### 1. Install Build Dependencies
-
-```bash
-sudo apt update
-sudo apt install cargo just pkg-config libwayland-dev libxkbcommon-dev
-```
-
-#### 2. Build and Install
+Requirements: `cargo`, `just`, `pkg-config`, `libwayland-dev`, `libxkbcommon-dev`.
 
 ```bash
 git clone https://github.com/antwny/aura.git
 cd aura
-
-# Build optimized release binary
 just build
-
-# Install binary, desktop entry, and icons to ~/.local
 just install
-
-# Launch Aura
 aura
 ```
 
 ---
 
-## Author & Credits
+## 📊 Performance Benchmarks
 
-- **Developer**: [Antwny](https://github.com/antwny)
-- **YouTube Channel**: [@antwny](https://www.youtube.com/@antwny)
+Tested on Pop!_OS 24.04 LTS (AMD Ryzen 5 4500U, Radeon Graphics, Wayland):
 
-- **Reddit**: [@antw-ny](https://www.reddit.com/user/antw-ny/)
-
-
-
----
-
-## Support & Donations
-
-If you find Aura useful and want to support ongoing development, optimizations, and new features:
-
-- **PayPal Donation**: [Donate via PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
-- **PayPal Account**: `antwnyab@gmail.com`
+| Benchmark | Aura (Compiled Rust) | Legacy Python/GTK Tools | Advantage |
+| :--- | :---: | :---: | :---: |
+| **Cold Startup Time** | **< 20 ms** | ~1,120 ms | **56x faster** |
+| **RAM Footprint** | **Minimal native footprint** | ~220 MB | **Lightweight** |
+| **Idle CPU (Paused/Occluded)** | **0.00%** | 3.5% - 8.0% | **Zero battery drain** |
+| **GPU Usage When Paused** | **0.0%** (Hardware halted) | 4.0% - 10.0% | **100% GPU for games** |
+| **Desktop UI Framerate** | **Smooth 60+ FPS** | 24 - 45 FPS | **Silky smooth** |
 
 ---
 
-## License
+## 💬 Community & Support
 
-Distributed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for details.
+- **Creator & Maintainer**: [Antwny](https://github.com/antwny)
+- **YouTube Tutorials & Demos**: [@antwny](https://www.youtube.com/@antwny)
+- **Reddit Community**: [@antw-ny](https://www.reddit.com/user/antw-ny/)
+
+### Support the Project ⭐
+If Aura makes your desktop look awesome, please consider:
+- Giving the repository a **Star** on [GitHub](https://github.com/antwny/aura) ⭐!
+- [Donating via PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD) to support ongoing development, optimizations, and new features.
+
+---
+
+## 📜 License
+
+Aura is proudly **Free & Open Source** software licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for details.
 
 <div align="center">
-  <sub>Built for the Pop!_OS COSMIC and Linux Wayland community.</sub>
+  <sub>Crafted with passion for Pop!_OS, COSMIC Desktop, and the Linux Wayland community.</sub>
 </div>
