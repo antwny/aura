@@ -29,10 +29,14 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 <br/>
 
-<!-- Real Software Showcase Video -->
-<video src="https://antwny.github.io/aura/assets/video/aura-showcase.mp4" poster="https://antwny.github.io/aura/assets/video/aura-poster.webp" controls autoplay loop muted playsinline width="96%"></video>
+<!-- GitHub does not render HTML <video> elements in README files. -->
+<p align="center">
+  <a href="https://antwny.github.io/aura/assets/video/aura-showcase.mp4">
+    <img src="docs/assets/video/aura-poster.webp" alt="Aura showcase video — click to play" width="96%" />
+  </a>
+</p>
 
-<sub><i>Live recording: Pop!_OS COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine</i></sub>
+<p align="center"><sub><i>Live recording: Pop!_OS COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine — click the image to play</i></sub></p>
 
 <br/>
 <br/>
