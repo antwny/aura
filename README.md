@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 <br/>
 
 <!-- Real Software Showcase Video -->
-<video src="docs/assets/video/aura-showcase.mp4" poster="docs/assets/video/aura-poster.webp" controls autoplay loop muted playsinline width="96%"></video>
+<video src="https://antwny.github.io/aura/assets/video/aura-showcase.mp4" poster="https://antwny.github.io/aura/assets/video/aura-poster.webp" controls autoplay loop muted playsinline width="96%"></video>
 
 <sub><i>Live recording: Pop!_OS COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine</i></sub>
 
@@ -94,7 +94,7 @@ Have dual monitors or an ultrawide setup? Aura gives you complete independent co
 - **Hotplug Detection**: Seamlessly detects connected or disconnected monitors on the fly.
 
 <div align="center">
-  <video src="docs/assets/video/multimonitor-showcase.mp4" poster="docs/assets/video/multimonitor-poster.webp" controls loop muted playsinline width="80%"></video>
+  <video src="https://antwny.github.io/aura/assets/video/multimonitor-showcase.mp4" poster="https://antwny.github.io/aura/assets/video/multimonitor-poster.webp" controls loop muted playsinline width="80%"></video>
   <p><sub><i>Independent video playback per monitor with zero tearing</i></sub></p>
 </div>
 
