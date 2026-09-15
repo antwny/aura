@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 <!-- GitHub does not render HTML <video> elements in README files. -->
 <p align="center">
   <a href="https://antwny.github.io/aura/assets/video/aura-showcase.mp4">
-    <img src="docs/assets/video/aura-poster.webp" alt="Aura showcase video — click to play" width="96%" />
+    <img src="docs/assets/video/aura-showcase-preview.webp" alt="Animated preview of the Aura showcase — click to play the full video" width="96%" />
   </a>
 </p>
 
