@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+  <url>
+    <loc>https://antwny.github.io/aura/</loc>
+    <lastmod>2026-09-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://antwny.github.io/aura/assets/img/og-image.png</image:loc>
+      <image:title>Aura — Next-Gen Animated Wallpaper Engine for Linux and COSMIC Desktop</image:title>
+      <image:caption>Aura Linux animated live wallpaper engine interface with dynamic auto-theming</image:caption>
+    </image:image>
+    <video:video>
+      <video:thumbnail_loc>https://antwny.github.io/aura/assets/video/aura-poster.webp</video:thumbnail_loc>
+      <video:title>Aura Live Wallpaper Engine Desktop Demo</video:title>
+      <video:description>Demonstration of Aura animated wallpaper playback, frosted acrylic styling, and dynamic auto-theming on Linux Pop!_OS COSMIC Desktop.</video:description>
+      <video:content_loc>https://antwny.github.io/aura/assets/video/aura-showcase.mp4</video:content_loc>
+    </video:video>
+  </url>
+</urlset>

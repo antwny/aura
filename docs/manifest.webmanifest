@@ -1,0 +1,21 @@
+{
+  "name": "Aura — Animated Live Wallpaper Engine",
+  "short_name": "Aura",
+  "description": "Next-generation animated live wallpaper manager built natively in pure Rust for Pop!_OS COSMIC Desktop.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0c14",
+  "theme_color": "#f59e0b",
+  "icons": [
+    {
+      "src": "assets/img/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

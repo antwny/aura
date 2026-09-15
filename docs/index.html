@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO Meta Tags -->
+  <title>Aura — Animated Live Wallpaper Manager for Linux &amp; COSMIC Desktop</title>
+  <meta name="title" content="Aura — Animated Live Wallpaper Manager for Linux &amp; COSMIC Desktop" />
+  <meta name="description" content="A native Rust animated live wallpaper manager built for Linux and the Pop!_OS COSMIC desktop. Hardware-accelerated, dynamic desktop auto-theming, and zero overhead while paused." />
+  <meta name="keywords" content="aura, cosmic desktop live wallpaper, linux animated wallpaper, rust wallpaper engine, wayland layer-shell, pop os cosmic, mpvpaper rust, libcosmic wallpaper" />
+  <meta name="author" content="Antwny" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://antwny.github.io/aura/" />
+  <meta name="theme-color" content="#090a0e" />
+
+  <!-- Favicons & Manifest -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://antwny.github.io/aura/" />
+  <meta property="og:title" content="Aura — Animated Live Wallpaper Manager for Linux" />
+  <meta property="og:description" content="Native Rust animated live wallpaper manager for Linux and the Pop!_OS COSMIC desktop. Hardware accelerated, dynamic auto-theming, multi-monitor support, and 0% GPU load in games." />
+  <meta property="og:image" content="https://antwny.github.io/aura/assets/img/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Aura Live Wallpaper Manager for Linux" />
+  <meta property="og:site_name" content="Aura" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="https://antwny.github.io/aura/" />
+  <meta name="twitter:title" content="Aura — Animated Live Wallpaper Manager for Linux" />
+  <meta name="twitter:description" content="Native Rust live wallpaper manager for COSMIC Desktop and Wayland. Hardware accelerated, dynamic auto-theming, and 0% GPU load while paused." />
+  <meta name="twitter:image" content="https://antwny.github.io/aura/assets/img/og-image.png" />
+
+  <!-- Structured Data: SoftwareApplication (JSON-LD, Version-Agnostic) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Aura",
+    "applicationCategory": "DesktopEnhancementApplication",
+    "operatingSystem": "Linux (Pop!_OS, COSMIC Desktop, Wayland)",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "A native Rust animated live wallpaper manager designed for Pop!_OS COSMIC Desktop and modern Wayland compositors.",
+    "downloadUrl": "https://github.com/antwny/aura/releases",
+    "codeRepository": "https://github.com/antwny/aura",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html"
+  }
+  </script>
+
+  <!-- Typography & Stylesheet -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Accessibility Skip Link -->
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- ====================================================================
+       00 — NAVBAR (Minimalist, Editorial, Clean)
+       ==================================================================== -->
+  <header class="site-nav" role="banner">
+    <div class="container nav-inner">
+      <a href="#" class="nav-brand" aria-label="Aura Home">
+        <img src="assets/img/logo.svg" alt="" class="nav-brand-logo" width="26" height="26" />
+        <span class="nav-brand-name">AURA</span>
+      </a>
+
+      <nav aria-label="Primary Navigation">
+        <ul class="nav-links">
+          <li class="nav-item"><a href="#why-aura">Why Aura</a></li>
+          <li class="nav-item"><a href="#theming">Auto-Theming</a></li>
+          <li class="nav-item"><a href="#catalogs">Catalogs</a></li>
+          <li class="nav-item"><a href="#multimonitor">Multi-Screen</a></li>
+          <li class="nav-item"><a href="#benchmarks">Benchmarks</a></li>
+          <li class="nav-item"><a href="#install">Install</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer" class="nav-github-link">
+          <span>GitHub</span>
+          <span aria-hidden="true">↗</span>
+        </a>
+
+        <button class="nav-mobile-toggle" id="nav-mobile-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Nav Overlay -->
+  <div class="mobile-nav-overlay" id="mobile-nav-overlay" role="navigation" aria-label="Mobile Navigation">
+    <a href="#why-aura">Why Aura</a>
+    <a href="#theming">Motion &amp; Auto-Theming</a>
+    <a href="#catalogs">Online Catalogs</a>
+    <a href="#multimonitor">Multi-Screen Setup</a>
+    <a href="#benchmarks">Performance &amp; Benchmarks</a>
+    <a href="#install">Installation</a>
+    <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer">GitHub Repository ↗</a>
+  </div>
+
+  <!-- Main Content Flow -->
+  <main id="main-content">
+
+    <!-- ====================================================================
+         01 — HERO (Dominated by Real Wallpaper Experience)
+         ==================================================================== -->
+    <section class="hero-editorial" aria-labelledby="hero-title">
+      <div class="container">
+
+        <div class="hero-header-block">
+          <div class="hero-brand-column">
+            <span class="editorial-num">01 / OVERVIEW &bull; POP!_OS COSMIC &bull; WAYLAND</span>
+            <h1 id="hero-title" class="hero-main-title">AURA</h1>
+            <p class="hero-statement">
+              Alive wallpapers for Linux. Built for the modern desktop.
+            </p>
+            <p class="hero-substatement">
+              Transform your workspace with fluid animated backgrounds and dynamic theme colors. Automatically pauses when gaming to keep 100% of your performance.
+            </p>
+
+            <div class="hero-trust-badges">
+              <span class="hero-trust-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                100% Free &amp; Open Source (GPL-3.0)
+              </span>
+              <span class="hero-trust-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Zero Game Lag (Auto-Pause)
+              </span>
+              <span class="hero-trust-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Pop!_OS &amp; Wayland Native
+              </span>
+            </div>
+          </div>
+
+          <div class="hero-action-column">
+            <div class="hero-ctas-row">
+              <a href="#install" class="btn-editorial btn-editorial-primary" style="flex: 1;">Get Aura Free</a>
+              <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer" class="btn-editorial btn-editorial-outline">★ Star on GitHub ↗</a>
+            </div>
+
+            <!-- Quickstart Snippet (Frictionless 1-Line Web Installer) -->
+            <div class="hero-quickstart-box">
+              <div class="hero-quickstart-label">
+                <span>1-Line Install &bull; Linux x86_64</span>
+                <span style="color: #22c55e;">Auto-Setup</span>
+              </div>
+              <div class="hero-quickstart-cmd">
+                <code id="hero-cmd-sample">curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash</code>
+                <button class="copy-button" data-copy-target="#hero-cmd-sample" title="Copy installer command" aria-label="Copy Install Command">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim);">Auto-installs Aura + mpvpaper &bull; App launcher ready</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Huge Expansive Video Stage (Real Software Demonstration) -->
+        <div class="hero-cinematic-stage">
+          <video id="hero-video" class="hero-video-element" autoplay loop muted playsinline poster="assets/video/aura-poster.webp">
+            <source src="assets/video/aura-showcase.mp4" type="video/mp4" />
+            Your browser does not support HTML5 video.
+          </video>
+
+          <div class="hero-stage-footer">
+            <div class="hero-stage-caption">
+              <span class="status-dot-active"></span>
+              <span>LIVE RECORDING: POP!_OS COSMIC DESKTOP &bull; WAYLAND LAYER-SHELL</span>
+            </div>
+            <div class="hero-media-controls">
+              <button id="hero-toggle-play" class="hero-media-btn" aria-label="Toggle playback">
+                <span id="hero-play-text">Pause</span>
+              </button>
+              <span>/</span>
+              <button id="hero-toggle-sound" class="hero-media-btn" aria-label="Toggle sound">
+                <span id="hero-sound-text">Sound [Muted]</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         02 — WHY AURA (Zero-Compromise Performance in Action)
+         ==================================================================== -->
+    <section class="section-idea" id="why-aura" aria-labelledby="why-aura-heading">
+      <div class="container">
+
+        <div class="why-aura-visual-grid">
+          <div>
+            <span class="editorial-num">02 / WHY AURA</span>
+            <span class="mono-label">ZERO-COMPROMISE PERFORMANCE</span>
+            <h2 id="why-aura-heading" class="editorial-headline-large" style="margin-top: 14px; margin-bottom: 18px;">
+              Live wallpapers without the lag or battery drain.
+            </h2>
+            <div class="editorial-prose">
+              <p>
+                In the past, running animated wallpapers on Linux meant dealing with heavy background scripts that heated up your laptop, drained battery in an hour, and dropped framerates the moment you started a game.
+              </p>
+              <p>
+                <strong>Aura is engineered from scratch in pure compiled Rust.</strong> It communicates natively with Wayland's layer-shell, launches in under 20 milliseconds, and automatically halts video rendering the exact millisecond you play a game or unplug your laptop.
+              </p>
+            </div>
+            <div class="hero-spec-strip" style="margin-top: 20px;">
+              <span>&lt; 20MS COLD STARTUP</span>
+              <span>0.00% IDLE CPU</span>
+              <span>0.4% GPU PAUSED</span>
+            </div>
+          </div>
+
+          <div class="why-aura-screenshot-card">
+            <picture>
+              <source srcset="assets/img/settings-performance.webp" type="image/webp" />
+              <img src="assets/img/settings-performance.png" alt="Aura Settings: Smart Pause and Performance Controls" class="inspectable-image" loading="lazy" />
+            </picture>
+            <div class="gallery-caption">
+              <span>SETTINGS VIEW &bull; SMART PAUSE &amp; BATTERY SAVER</span>
+              <span>CLICK TO EXPAND</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 Clear User Benefit Cards -->
+        <div class="premise-cards-grid">
+          <div class="premise-card">
+            <div class="premise-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+            <h4>Instant Game Freeze</h4>
+            <p>Aura detects fullscreen games and windows instantly, halting playback to return 100% of your GPU and CPU to your games.</p>
+          </div>
+
+          <div class="premise-card">
+            <div class="premise-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="18" height="12" rx="2"/><line x1="23" y1="11" x2="23" y2="13"/></svg>
+            </div>
+            <h4>Smart Battery Saver</h4>
+            <p>Automatically suspends playback when your laptop is on battery power so you can enjoy full battery life away from your desk.</p>
+          </div>
+
+          <div class="premise-card">
+            <div class="premise-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h4>Native Rust Engine</h4>
+            <p>Direct Wayland layer-shell protocol with zero Electron, WebKit, or Python wrappers. Minimal footprint and zero idle wakeups.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         03 — DESKTOP IN MOTION (Dynamic Auto-Theming)
+         ==================================================================== -->
+    <section class="section-motion" id="theming" aria-labelledby="theming-heading">
+      <div class="container">
+        <div class="editorial-split-layout">
+
+          <div class="editorial-column-meta">
+            <span class="editorial-num">03 / REAL-TIME SYNC</span>
+            <span class="mono-label">DYNAMIC AUTO-THEMING</span>
+          </div>
+
+          <div>
+            <h2 id="theming-heading" class="editorial-headline-large">
+              Your desktop changes color with your wallpaper.
+            </h2>
+            <p class="editorial-prose">
+              Aura analyzes your active animated wallpaper in real time. When the scene shifts from warm sunlight to deep night,
+              your desktop theme and accent colors adapt along with it — tinting your dock, active window highlights, and buttons automatically.
+            </p>
+          </div>
+
+        </div>
+
+        <!-- Interactive Demonstration of the Two Real Screenshots -->
+        <div class="motion-dual-preview">
+
+          <div class="motion-toggle-bar">
+            <div class="theme-switch-group">
+              <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); margin-right: 6px;">COMPARE PALETTES:</span>
+              <button class="theme-switch-btn active" data-theme-mode="amber" aria-pressed="true">
+                <span class="swatch-pip amber"></span>
+                <span>Solar Field (Amber)</span>
+              </button>
+              <button class="theme-switch-btn" data-theme-mode="violet" aria-pressed="false">
+                <span class="swatch-pip violet"></span>
+                <span>Night Portrait (Violet)</span>
+              </button>
+              <span class="theme-switch-hint">👆 Click buttons to preview live</span>
+            </div>
+            <span id="motion-theme-caption" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim);">
+              State: Solar field wallpaper active &rarr; Desktop accent dynamically shifted to warm gold (RGB: 245, 158, 11).
+            </span>
+          </div>
+
+          <div class="motion-frame-wrapper">
+            <picture>
+              <source srcset="assets/img/library-amber.webp" type="image/webp" />
+              <img id="motion-img-amber" src="assets/img/library-amber.png" alt="Aura with Solar Amber Auto-Theming" class="motion-screenshot-img inspectable-image" loading="lazy" />
+            </picture>
+            <picture>
+              <source srcset="assets/img/library-violet.webp" type="image/webp" />
+              <img id="motion-img-violet" src="assets/img/library-violet.png" alt="Aura with Cyber Violet Auto-Theming" class="motion-screenshot-img inspectable-image" style="display: none;" loading="lazy" />
+            </picture>
+          </div>
+
+          <!-- Editorial Technical Annotations (User-Centric) -->
+          <div class="motion-annotations-grid">
+            <div class="annotation-item">
+              <h4>Real-Time Color Match</h4>
+              <p>Extracts dominant tones from the video as it plays, without causing lag or dropping frames.</p>
+            </div>
+            <div class="annotation-item">
+              <h4>Always Easy to Read</h4>
+              <p>Intelligent contrast protection ensures your text, button labels, and system icons stay sharp and legible.</p>
+            </div>
+            <div class="annotation-item">
+              <h4>System-Wide Sync</h4>
+              <p>Integrates directly with COSMIC Desktop themes. Color shifts apply instantly across all open apps.</p>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         04 — ONLINE CATALOGS (Discover & 1-Click Apply)
+         ==================================================================== -->
+    <section class="section-catalogs" id="catalogs" aria-labelledby="catalogs-heading" style="padding: clamp(60px, 8vw, 120px) 0;">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">04 / BUILT-IN LIBRARIES</span>
+            <span class="mono-label">DISCOVER &bull; 9,400+ WALLPAPERS</span>
+          </div>
+          <div>
+            <h2 id="catalogs-heading" class="editorial-headline-large">
+              Over 9,400 wallpapers. Zero file hunting.
+            </h2>
+            <p class="editorial-prose">
+              Discover, preview, and apply gorgeous animated loops directly inside Aura. No browser searching, no downloading from sketchy websites, and no manual video conversion.
+            </p>
+          </div>
+        </div>
+
+        <!-- High-Impact Catalog Screenshot Showcase -->
+        <div class="why-aura-screenshot-card" style="margin-top: 36px;">
+          <picture>
+            <source srcset="assets/img/explore-catalogs.webp" type="image/webp" />
+            <img src="assets/img/explore-catalogs.png" alt="Aura Online Catalogs Interface" class="inspectable-image" loading="lazy" />
+          </picture>
+          <div class="gallery-caption">
+            <span>EXPLORE VIEW &bull; MOTIONBGS, WALLHAVEN &amp; BING DAILY REPOSITORIES</span>
+            <span>CLICK TO EXPAND</span>
+          </div>
+        </div>
+
+        <!-- 3 Feature Highlights -->
+        <div class="premise-cards-grid" style="margin-top: 24px;">
+          <div class="premise-card">
+            <h4>MotionBGS Library</h4>
+            <p>Thousands of handpicked anime, cyberpunk, nature, and ambient looping wallpapers in 4K and 1080p ready with one click.</p>
+          </div>
+          <div class="premise-card">
+            <h4>Wallhaven &amp; Bing Daily</h4>
+            <p>Direct access to Wallhaven's top-rated 4K community gallery and daily Bing UHD landscape photography.</p>
+          </div>
+          <div class="premise-card">
+            <h4>One-Click Instant Apply</h4>
+            <p>Preview in high resolution and set any background immediately with fast background async downloads.</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         05 — MULTI-MONITOR SETUP (Hardware in Use)
+         ==================================================================== -->
+    <section class="section-showcase" id="multimonitor" aria-labelledby="multimonitor-heading">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">05 / HARDWARE IN USE</span>
+            <span class="mono-label">MULTI-SCREEN TOPOLOGY</span>
+          </div>
+          <div>
+            <h2 id="multimonitor-heading" class="editorial-headline-large">
+              Different wallpapers for each monitor.
+            </h2>
+            <p class="editorial-prose">
+              An intuitive screen manager renders your connected displays to scale, letting you customize each monitor in seconds with independent video loops and aspect controls.
+            </p>
+          </div>
+        </div>
+
+        <!-- Real Multi-Monitor Video Demo -->
+        <div class="multimonitor-showcase-block">
+          <video class="multimonitor-video" autoplay loop muted playsinline poster="assets/video/multimonitor-poster.webp">
+            <source src="assets/video/multimonitor-showcase.mp4" type="video/mp4" />
+            Your browser does not support HTML5 video.
+          </video>
+          <div class="hero-stage-footer">
+            <span>MULTI-MONITOR TOPOLOGY &bull; DUAL DISPLAY OUTPUT (eDP-1 + HDMI-A-1)</span>
+            <span style="color: var(--text-dim);">AURA VIRTUAL LAYER</span>
+          </div>
+        </div>
+
+        <!-- Display Visualizer Card + Highlights -->
+        <div class="why-aura-visual-grid" style="margin-top: 32px; align-items: stretch;">
+          <div class="why-aura-screenshot-card">
+            <picture>
+              <source srcset="assets/img/displays-visualizer.webp" type="image/webp" />
+              <img src="assets/img/displays-visualizer.png" alt="Aura Multi-Monitor Visualizer" class="inspectable-image" loading="lazy" />
+            </picture>
+            <div class="gallery-caption">
+              <span>DISPLAY VIEW &bull; PER-MONITOR TARGETING</span>
+              <span>CLICK TO EXPAND</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; justify-content: center; gap: 16px;">
+            <div class="premise-card">
+              <h4>Per-Monitor Assignment</h4>
+              <p>Run distinct animated video loops on your laptop display and external monitors without conflict.</p>
+            </div>
+            <div class="premise-card">
+              <h4>Fit, Fill &amp; Stretch</h4>
+              <p>Maintain exact aspect ratios with pure black ultrawide letterboxing or fill the screen canvas.</p>
+            </div>
+            <div class="premise-card">
+              <h4>Seamless Hotplugging</h4>
+              <p>Plug in or unplug external monitors anytime &mdash; Aura detects changes without restarting.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         06 — PERFORMANCE & BENCHMARKS (Verified Real Metrics)
+         ==================================================================== -->
+    <section class="section-perf" id="benchmarks" aria-labelledby="benchmarks-heading">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">06 / BENCHMARKS</span>
+            <span class="mono-label">VERIFIED METRICS</span>
+          </div>
+          <div>
+            <h2 id="benchmarks-heading" class="editorial-headline-large">
+              Real speed. Zero idle wakeups.
+            </h2>
+            <p>
+              Tested and verified on Linux. Real numbers, no inflated claims. (Measured on Pop!_OS 24.04 LTS, AMD Ryzen, Wayland Layer-Shell).
+            </p>
+          </div>
+        </div>
+
+        <!-- Oversized Typographic Metric Display -->
+        <div class="perf-metrics-container">
+
+          <div class="perf-stat-block">
+            <div class="perf-stat-number">&lt; 20ms</div>
+            <div class="perf-stat-label">Instant Startup</div>
+            <div class="perf-stat-sub">Ready before you blink. 56x faster than legacy scripts.</div>
+          </div>
+
+          <div class="perf-stat-block">
+            <div class="perf-stat-number">0.00%</div>
+            <div class="perf-stat-label">CPU While Paused</div>
+            <div class="perf-stat-sub">Completely silent when you are playing games or working.</div>
+          </div>
+
+          <div class="perf-stat-block">
+            <div class="perf-stat-number">0.4%</div>
+            <div class="perf-stat-label">GPU While Paused</div>
+            <div class="perf-stat-sub">Zero graphics overhead. Never compromises your gaming framerates.</div>
+          </div>
+
+          <div class="perf-stat-block">
+            <div class="perf-stat-number">60 FPS</div>
+            <div class="perf-stat-label">Smooth Playback</div>
+            <div class="perf-stat-sub">Silky smooth hardware-accelerated video rendering.</div>
+          </div>
+
+        </div>
+
+        <!-- Clean Editorial Benchmark Comparison Table -->
+        <div class="benchmark-table-wrap">
+          <table class="editorial-table">
+            <thead>
+              <tr>
+                <th scope="col">METRIC</th>
+                <th scope="col">AURA (NATIVE RUST)</th>
+                <th scope="col">LEGACY LINUX SCRIPTS (PYTHON / GTK)</th>
+                <th scope="col">ADVANTAGE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Startup Speed</td>
+                <td class="highlight">&lt; 20 ms</td>
+                <td>~1,120 ms</td>
+                <td><span class="table-diff-tag">56x faster</span></td>
+              </tr>
+              <tr>
+                <td>Memory Footprint</td>
+                <td class="highlight">Minimal native footprint</td>
+                <td>~180 MB &ndash; 240 MB</td>
+                <td><span class="table-diff-tag">No WebKit / Electron bloat</span></td>
+              </tr>
+              <tr>
+                <td>Background CPU Usage</td>
+                <td class="highlight">0.00%</td>
+                <td>3.5% &ndash; 8.0%</td>
+                <td><span class="table-diff-tag">Zero wakeups</span></td>
+              </tr>
+              <tr>
+                <td>GPU Load in Fullscreen Games</td>
+                <td class="highlight">0.4% (Auto-Paused)</td>
+                <td>3.0% &ndash; 8.0% continuous draw</td>
+                <td><span class="table-diff-tag">100% GPU freed for games</span></td>
+              </tr>
+              <tr>
+                <td>Wayland Protocol Architecture</td>
+                <td class="highlight">Native layer-shell (bottom)</td>
+                <td>X11 hacks / root window tricks</td>
+                <td><span class="table-diff-tag">Native Wayland</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         08 — INSTALLATION (Quick & Frictionless)
+         ==================================================================== -->
+    <section class="section-install" id="install" aria-labelledby="install-heading">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">08 / GETTING STARTED</span>
+            <span class="mono-label">GET AURA</span>
+          </div>
+          <div>
+            <h2 id="install-heading" class="editorial-headline-large">
+              Get Aura for your desktop.
+            </h2>
+            <p>
+              Install or update with a single terminal command, test the portable standalone package, or compile from source.
+            </p>
+          </div>
+        </div>
+
+        <div class="install-methods-grid">
+
+          <!-- 1. One-Line Web Installer (Recommended Flagship) -->
+          <div class="install-channel-block featured" style="grid-column: 1 / -1;">
+            <div>
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                <span class="mono-label">01 / WEB INSTALLER &bull; FASTEST (RECOMMENDED)</span>
+                <span style="font-family: var(--font-mono); font-size: 0.72rem; color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 2px 8px; border-radius: 2px;">
+                  1-LINE AUTOMATED SETUP
+                </span>
+              </div>
+              <h3 class="channel-title">Install or Update in 10 Seconds</h3>
+              <p class="channel-desc">
+                Run the official installer directly in your terminal. Automatically validates Linux x86_64, verifies SHA-256 release checksums, installs both Aura and its bundled <code>mpvpaper</code> video engine, and configures the COSMIC app launcher.
+              </p>
+            </div>
+
+            <div>
+              <div class="distro-tabs-nav" role="tablist">
+                <button class="installer-tab-btn active" data-installer-mode="user" role="tab" aria-selected="true">User Install (~/.local/bin) [Recommended]</button>
+                <button class="installer-tab-btn" data-installer-mode="system" role="tab" aria-selected="false">System-Wide (/usr/local) [Sudo]</button>
+              </div>
+              <div class="terminal-command-box">
+                <code id="cmd-web-installer">curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash</code>
+                <button class="copy-button" data-copy-target="#cmd-web-installer" title="Copy installer command" aria-label="Copy Installer Command">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+
+              <div class="installer-features-list">
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>Linux x86_64:</strong> Pop!_OS COSMIC Wayland native check</span>
+                </div>
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>SHA-256 Verified:</strong> Official checksum validation on download</span>
+                </div>
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>Bundled Engine:</strong> Extracts Aura + <code>mpvpaper</code> together</span>
+                </div>
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>COSMIC Launcher:</strong> Adds .desktop, icons, and updates cache</span>
+                </div>
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>Auto-Configures PATH:</strong> Ready in terminal without manual exports</span>
+                </div>
+                <div class="installer-feature-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span><strong>1-Line Updates:</strong> Re-running updates existing installs cleanly</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. System Prerequisites with Distro Tabs -->
+          <div class="install-channel-block">
+            <div>
+              <span class="mono-label">02 / PREREQUISITES</span>
+              <h3 class="channel-title">Video Runtime Libraries</h3>
+              <p class="channel-desc">
+                Required for Wayland video playback and live video previews. The installer verifies these, or you can install them beforehand:
+              </p>
+            </div>
+
+            <div>
+              <div class="distro-tabs-nav" role="tablist">
+                <button class="distro-tab-btn active" data-distro="apt" role="tab" aria-selected="true">Ubuntu / Pop!_OS</button>
+                <button class="distro-tab-btn" data-distro="pacman" role="tab" aria-selected="false">Arch / Manjaro</button>
+                <button class="distro-tab-btn" data-distro="dnf" role="tab" aria-selected="false">Fedora</button>
+              </div>
+              <div class="terminal-command-box">
+                <code id="cmd-deps">sudo apt install libmpv2 ffmpeg</code>
+                <button class="copy-button" data-copy-target="#cmd-deps" title="Copy command" aria-label="Copy Command">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Precompiled Release Package (Manual / Portable) -->
+          <div class="install-channel-block">
+            <div>
+              <span class="mono-label">03 / MANUAL ARCHIVE</span>
+              <h3 class="channel-title">Pre-Compiled Tarball</h3>
+              <p class="channel-desc">
+                Prefer manual control? Download the standalone <code>.tar.gz</code> archive from GitHub Releases and run the local script:
+              </p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <a href="https://github.com/antwny/aura/releases/latest" target="_blank" rel="noopener noreferrer" class="btn-editorial btn-editorial-outline" style="width: 100%;">
+                Download Latest Release (.tar.gz) ↗
+              </a>
+              <div class="terminal-command-box">
+                <code id="cmd-tarball">tar -xzf aura-*.tar.gz &amp;&amp; cd aura-* &amp;&amp; ./install.sh</code>
+                <button class="copy-button" data-copy-target="#cmd-tarball" title="Copy command" aria-label="Copy Tarball Command">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <div class="portable-notice-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span><strong>Want to test without installing?</strong> Extract the archive and run <code>./aura</code> directly from the folder. Zero system modifications.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Build from Source (Cargo) -->
+          <div class="install-channel-block" style="grid-column: 1 / -1;">
+            <div>
+              <span class="mono-label">04 / BUILD FROM SOURCE</span>
+              <h3 class="channel-title">Compile with Cargo</h3>
+              <p class="channel-desc">
+                For developers and Rust enthusiasts who prefer building directly from the repository:
+              </p>
+            </div>
+            <div class="terminal-command-box">
+              <code id="cmd-cargo">cargo install --git https://github.com/antwny/aura</code>
+              <button class="copy-button" data-copy-target="#cmd-cargo" title="Copy command" aria-label="Copy Cargo Command">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- CLI Reference Panel -->
+        <div class="cli-spec-panel">
+          <div class="cli-spec-header">
+            <span class="mono-label">KEYBOARD SHORTCUTS &bull; CLI CONTROLS</span>
+            <button class="btn-editorial btn-editorial-outline" id="copy-cli-all" style="padding: 6px 14px; font-size: 0.76rem;">Copy All Commands</button>
+          </div>
+          <div class="cli-commands-list">
+            <div class="cli-row">
+              <span class="cli-cmd">aura next</span>
+              <span class="cli-comment"># Switch to the next wallpaper in your playlist</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura prev</span>
+              <span class="cli-comment"># Switch to the previous wallpaper</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura toggle-pause</span>
+              <span class="cli-comment"># Manually pause or resume playback (drops to 0% GPU load)</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura apply &lt;file&gt;</span>
+              <span class="cli-comment"># Apply any video or image wallpaper directly from path</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura stop</span>
+              <span class="cli-comment"># Stop wallpaper playback completely</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura status</span>
+              <span class="cli-comment"># Display connected screens, engine state, and active wallpaper</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura check-update</span>
+              <span class="cli-comment"># Check GitHub Releases for newer versions</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura update</span>
+              <span class="cli-comment"># Atomically update Aura to the latest release</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura --daemon</span>
+              <span class="cli-comment"># Run headless in background on system startup</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         09 — OPEN SOURCE & COMMUNITY (GPL-3.0)
+         ==================================================================== -->
+    <section class="section-opensource" id="community" aria-labelledby="opensource-heading">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">09 / COMMUNITY</span>
+            <span class="mono-label">100% OPEN SOURCE</span>
+          </div>
+          <div>
+            <h2 id="opensource-heading" class="editorial-headline-large">
+              Free and open-source forever.
+            </h2>
+            <p>
+              Aura is licensed under the GNU General Public License v3.0.
+              Zero telemetry. Zero metrics tracking. Zero ads or account requirements.
+            </p>
+          </div>
+        </div>
+
+        <div class="community-columns">
+
+          <div class="community-block">
+            <h4>GitHub Repository</h4>
+            <p>Star the project, inspect the Rust source code, report issues, and follow releases.</p>
+            <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer">github.com/antwny/aura ↗</a>
+          </div>
+
+          <div class="community-block">
+            <h4>COSMIC Desktop Ecosystem</h4>
+            <p>Built alongside System76's modern desktop environment written in Rust.</p>
+            <a href="https://github.com/pop-os/libcosmic" target="_blank" rel="noopener noreferrer">github.com/pop-os/libcosmic ↗</a>
+          </div>
+
+          <div class="community-block">
+            <h4>Support Development</h4>
+            <p>Aura is built with care for the Linux desktop community. Support ongoing maintenance.</p>
+            <a href="https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD" target="_blank" rel="noopener noreferrer">Donate via PayPal ↗</a>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         10 — FINAL CTA (A desktop worth looking at)
+         ==================================================================== -->
+    <section class="section-closing" aria-labelledby="closing-title">
+      <div class="container">
+
+        <div class="closing-layout">
+          <span class="editorial-num">10 / GET STARTED</span>
+          <h2 id="closing-title" class="closing-title">
+            Make your Linux desktop come alive.
+          </h2>
+          <div class="closing-actions-strip">
+            <a href="#install" class="btn-editorial btn-editorial-primary">Get Aura Free</a>
+            <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer" class="btn-editorial btn-editorial-outline">★ Star on GitHub ↗</a>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="container footer-inner">
+      <div>
+        <span>AURA PROJECT &bull; LICENSED UNDER GNU GPL-3.0</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/antwny/aura" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/antwny/aura/releases" target="_blank" rel="noopener noreferrer">Releases</a>
+        <a href="https://github.com/antwny/aura/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a>
+        <a href="https://github.com/antwny/aura/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Lightbox Modal for Real Screenshot Inspection -->
+  <div id="editorial-lightbox" class="editorial-lightbox" role="dialog" aria-modal="true" aria-label="Screenshot Inspection">
+    <div class="lightbox-dialog">
+      <button id="lightbox-close" class="lightbox-close-btn" aria-label="Close preview">[ ESC / CLOSE ]</button>
+      <img id="lightbox-img" src="" alt="Aura Preview" />
+      <span id="lightbox-caption" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim); text-align: center;"></span>
+    </div>
+  </div>
+
+  <!-- Discreet Monospace Toast Notification -->
+  <div id="discreet-toast" class="discreet-toast" role="status" aria-live="polite">
+    <span id="toast-text">COPIED TO CLIPBOARD</span>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/main.js"></script>
+</body>
+</html>

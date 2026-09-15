@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#121622" />
+      <stop offset="50%" stop-color="#0E111A" />
+      <stop offset="100%" stop-color="#080A10" />
+    </linearGradient>
+
+    <!-- Subtle Inset Rim Stroke -->
+    <linearGradient id="rim-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="50%" stop-color="#38BDF8" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4" />
+    </linearGradient>
+
+    <!-- Left Shard Gradient (Electric Cyan -> Deep Cobalt) -->
+    <linearGradient id="left-shard" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#00F5FF" />
+      <stop offset="50%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#1E1B4B" />
+    </linearGradient>
+
+    <!-- Right Shard Gradient (Cosmic Violet -> Radiant Fuchsia) -->
+    <linearGradient id="right-shard" x1="80%" y1="0%" x2="20%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4C1D95" />
+    </linearGradient>
+
+    <!-- Light Crossbar Gradient (Prismatic Horizon) -->
+    <linearGradient id="cross-beam" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#E0E7FF" stop-opacity="1" />
+      <stop offset="100%" stop-color="#F472B6" stop-opacity="0.95" />
+    </linearGradient>
+
+    <!-- Ambient Shadow Under Monolith -->
+    <radialGradient id="under-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.25" />
+      <stop offset="60%" stop-color="#7C3AED" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Soft Drop Shadow for Icon Base -->
+    <filter id="shadow-base" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.55" />
+    </filter>
+
+    <!-- Glow for Central Apex -->
+    <filter id="apex-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Squircle Container -->
+  <rect x="24" y="24" width="464" height="464" rx="104" ry="104" fill="url(#bg-1)" filter="url(#shadow-base)" />
+  <rect x="24.5" y="24.5" width="463" height="463" rx="103.5" ry="103.5" fill="none" stroke="url(#rim-1)" stroke-width="2" />
+
+  <!-- Ambient Backdrop Glow -->
+  <circle cx="256" cy="260" r="170" fill="url(#under-glow)" />
+
+  <!-- Dynamic Geometry of the "Kinetic A" -->
+  <g transform="translate(256, 252)">
+    <!-- Shadow under left shard -->
+    <path d="M -90 130 L -30 -140 L 0 -140 L -45 130 Z" fill="#000000" opacity="0.4" />
+
+    <!-- Left Pillar Shard -->
+    <path d="M -105 130 L -36 -140 L 4 -140 L -45 130 Z" fill="url(#left-shard)" />
+
+    <!-- Right Pillar Shard -->
+    <path d="M 45 130 L -4 -140 L 36 -140 L 105 130 Z" fill="url(#right-shard)" />
+
+    <!-- Apex Keystone (The Peak of the A, where the two shafts converge) -->
+    <path d="M -36 -140 L 0 -156 L 36 -140 L 10 -90 L -10 -90 Z" fill="#E0E7FF" opacity="0.9" />
+
+    <!-- Dynamic Prismatic Crossbar (The Horizon Beam) -->
+    <!-- It slices through the A horizontally with perspective, projecting forward -->
+    <path d="M -125 42 L 125 42 L 105 76 L -105 76 Z" fill="url(#cross-beam)" />
+
+    <!-- Internal Core Facet (Reflective Inset) -->
+    <polygon points="0,-140 18,-60 -18,-60" fill="#FFFFFF" opacity="0.35" />
+
+    <!-- Sharp Horizon Accent Line inside beam -->
+    <line x1="-115" y1="59" x2="115" y2="59" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.75" />
+
+    <!-- Center Play/Focus Negative Space Geometry -->
+    <polygon points="0,-35 -38,32 38,32" fill="#0E111A" />
+    <polygon points="0,-25 -26,26 26,26" fill="url(#left-shard)" opacity="0.2" />
+  </g>
+</svg>
