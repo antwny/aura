@@ -4,8 +4,19 @@ set -e
 # Aura - Standalone Installer
 # Supports user installation (~/.local) or system-wide (/usr/local with sudo)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR" ]; then
+    cd "$SCRIPT_DIR"
+fi
+
+# If invoked via curl or without pre-extracted binaries, delegate to web installer
+if [ ! -f "aura" ]; then
+    if command -v curl >/dev/null 2>&1; then
+        exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh)" -- "$@"
+    elif command -v wget >/dev/null 2>&1; then
+        exec bash -c "$(wget -qO- https://raw.githubusercontent.com/antwny/aura/main/install.sh)" -- "$@"
+    fi
+fi
 
 MODE="auto"
 for arg in "$@"; do

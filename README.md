@@ -105,7 +105,22 @@ sudo apt install libmpv2 ffmpeg
 
 ---
 
-### Method 1: Precompiled Release Package (Recommended)
+### Method 1: One-Line Web Installer (Fastest & Recommended)
+
+Install or update Aura and its bundled video engine in a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
+```
+
+> **Tip**: To install system-wide (`/usr/local` with sudo), pass `--system`:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash -s -- --system
+> ```
+
+---
+
+### Method 2: Precompiled Release Package
 
 Precompiled binary packages are provided on the [GitHub Releases](https://github.com/antwny/aura/releases) page.
 
@@ -128,7 +143,7 @@ To uninstall:
 
 ---
 
-### Method 2: Flatpak Package
+### Method 3: Flatpak Package
 
 Aura can be built and installed in an isolated sandbox using Flatpak:
 
