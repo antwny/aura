@@ -6,10 +6,10 @@
 
 ### Alive wallpapers for Linux. Built for the modern desktop.
 
-**Transform your Pop!_OS and COSMIC workspace with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
+**Transform your Linux and COSMIC workspace with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
 
 [![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
-[![Pop!_OS COSMIC](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=pop!_os&logoColor=white)](https://github.com/pop-os/libcosmic)
+[![COSMIC Desktop](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/pop-os/libcosmic)
 [![Wayland Native](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
 [![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
 [![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
@@ -25,7 +25,7 @@ Run this single command in your terminal to install or update Aura with its vide
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-*Native Rust performance for Pop!_OS, CachyOS, Arch Linux, Fedora, openSUSE, and any distribution running COSMIC Desktop.*
+*Native Rust performance for CachyOS, Arch Linux, Pop!_OS, Fedora, openSUSE, and any distribution running COSMIC Desktop.*
 
 > **💡 Prerequisites for live video playback & video thumbnails:**
 > - **CachyOS / Arch Linux**: `sudo pacman -S --needed mpv ffmpeg`
@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
   </a>
 </p>
 
-<p align="center"><sub><i>Live recording: Pop!_OS COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine — click the image to play</i></sub></p>
+<p align="center"><sub><i>Live recording: COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine — click the image to play</i></sub></p>
 
 <br/>
 <br/>
@@ -205,7 +205,7 @@ aura
 
 ## 📊 Performance Benchmarks
 
-Tested on Pop!_OS 24.04 LTS (AMD Ryzen 5 4500U, Radeon Graphics, Wayland):
+Tested on Linux with COSMIC Desktop (AMD Ryzen 5 4500U, Radeon Graphics, Wayland Layer-Shell):
 
 | Benchmark | Aura (Compiled Rust) | Legacy Python/GTK Tools | Advantage |
 | :--- | :---: | :---: | :---: |
@@ -235,5 +235,5 @@ If Aura makes your desktop look awesome, please consider:
 Aura is proudly **Free & Open Source** software licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for details.
 
 <div align="center">
-  <sub>Crafted with passion for Pop!_OS, COSMIC Desktop, and the Linux Wayland community.</sub>
+  <sub>Crafted with passion for the COSMIC Desktop, Linux, and Wayland community.</sub>
 </div>

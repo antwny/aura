@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-09-18
+
+### Added
+- **Dynamic Linux Distribution Detection**:
+  - Added `detect_os_pretty_name()` parsing `/etc/os-release` to dynamically identify the host distribution (e.g. CachyOS, Arch Linux, Pop!_OS, Fedora, openSUSE).
+  - The "Acerca de" (About) view now dynamically displays the active distribution alongside COSMIC Desktop (e.g. `Versión 1.3.2 • Arch Linux • COSMIC Desktop`).
+  - Generalized Settings autostart label from Pop!_OS to COSMIC Desktop.
+  - Updated CLI help header to reference COSMIC Desktop generically.
+
+### Fixed
+- **In-App Binary Update & Restart (`RestartApp`)**:
+  - Fixed an issue where clicking "Restart" after updating Aura through the UI or toast notification would terminate Aura without reopening.
+  - Replaced immediate synchronous spawning with a detached process launcher and a 400ms delay (`sh -c "sleep 0.4 && exec '$EXE' &"`), ensuring the dying parent fully unbinds from Wayland and relinquishes the D-Bus `io.github.antwny.aura` single-instance lock before the new instance initializes.
+  - Added path resolution targeting `~/.local/bin/aura` and stripping Linux kernel `/proc/self/exe` ` (deleted)` suffixes when the binary was replaced in-place.
+
+### Changed & Documentation
+- **Universal COSMIC Desktop Ecosystem**:
+  - Updated `README.md`, badges, and landing page documentation to emphasize universal COSMIC support across CachyOS, Arch Linux, Fedora, openSUSE, and Pop!_OS.
+  - Added interactive tabs for Arch/CachyOS (`pacman`), Pop!_OS/Ubuntu (`apt`), Fedora (`dnf`), and openSUSE (`zypper`) in the web documentation prerequisites.
+  - Refined `install.sh` platform checks to welcome all Linux distributions running COSMIC Desktop.
+
 ## [1.3.1] - 2026-09-17
 
 ### Added

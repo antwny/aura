@@ -15,7 +15,7 @@
     <video:video>
       <video:thumbnail_loc>https://antwny.github.io/aura/assets/video/aura-poster.webp</video:thumbnail_loc>
       <video:title>Aura Live Wallpaper Engine Desktop Demo</video:title>
-      <video:description>Demonstration of Aura animated wallpaper playback, frosted acrylic styling, and dynamic auto-theming on Linux Pop!_OS COSMIC Desktop.</video:description>
+      <video:description>Demonstration of Aura animated wallpaper playback, frosted acrylic styling, and dynamic auto-theming on Linux COSMIC Desktop.</video:description>
       <video:content_loc>https://antwny.github.io/aura/assets/video/aura-showcase.mp4</video:content_loc>
     </video:video>
   </url>

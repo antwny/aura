@@ -204,6 +204,30 @@ pub fn detect_distro_command() -> (&'static str, &'static str) {
     ("Linux", "sudo apt install -y libmpv2 ffmpeg || sudo pacman -S --needed mpv ffmpeg")
 }
 
+pub fn detect_os_pretty_name() -> String {
+    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("PRETTY_NAME=") {
+                let name = rest.trim_matches('"').trim_matches('\'').trim();
+                if !name.is_empty() {
+                    return name.to_string();
+                }
+            }
+        }
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("NAME=") {
+                let name = rest.trim_matches('"').trim_matches('\'').trim();
+                if !name.is_empty() {
+                    return name.to_string();
+                }
+            }
+        }
+    }
+    "Linux".to_string()
+}
+
 pub fn check_engine_health() -> EngineHealth {
     let bin = resolve_mpvpaper_binary();
     match Command::new(&bin).arg("-h").stdout(Stdio::null()).stderr(Stdio::piped()).output() {
@@ -768,6 +792,12 @@ mod tests {
         let (distro, cmd) = detect_distro_command();
         assert!(!distro.is_empty());
         assert!(!cmd.is_empty());
+    }
+
+    #[test]
+    fn test_detect_os_pretty_name() {
+        let os = detect_os_pretty_name();
+        assert!(!os.is_empty());
     }
 
     #[test]

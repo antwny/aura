@@ -1043,9 +1043,27 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::RestartApp => {
-                if let Ok(exe) = std::env::current_exe() {
-                    let _ = std::process::Command::new(exe).spawn();
-                }
+                let home = std::env::var("HOME").unwrap_or_default();
+                let local_bin = std::path::PathBuf::from(&home).join(".local/bin/aura");
+                let exe_path = if local_bin.is_file() {
+                    local_bin.to_string_lossy().to_string()
+                } else if let Ok(current) = std::env::current_exe() {
+                    let mut s = current.to_string_lossy().to_string();
+                    if s.ends_with(" (deleted)") {
+                        s = s.trim_end_matches(" (deleted)").to_string();
+                    }
+                    s
+                } else {
+                    "aura".to_string()
+                };
+
+                // Detach and delay slightly (400ms) to allow the current instance to fully
+                // disconnect from D-Bus and Wayland, avoiding single-instance collision
+                let _ = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(format!("sleep 0.4 && exec \"{}\" &", exe_path))
+                    .spawn();
+
                 std::process::exit(0);
             }
 

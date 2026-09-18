@@ -135,9 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const distroTabs = document.querySelectorAll('.distro-tab-btn');
   const cmdDepsElem = document.getElementById('cmd-deps');
   const distroCommands = {
-    'apt': 'sudo apt install libmpv2 ffmpeg',
-    'pacman': 'sudo pacman -S mpv ffmpeg',
-    'dnf': 'sudo dnf install mpv-libs ffmpeg'
+    'pacman': 'sudo pacman -S --needed mpv ffmpeg',
+    'apt': 'sudo apt install -y libmpv2 ffmpeg',
+    'dnf': 'sudo dnf install -y mpv-libs ffmpeg-free',
+    'zypper': 'sudo zypper install -y mpv ffmpeg'
   };
 
   distroTabs.forEach(tab => {

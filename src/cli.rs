@@ -403,7 +403,7 @@ fn cmd_update() {
 }
 
 fn print_help() {
-    println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC (Pop!_OS)");
+    println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC Desktop");
     println!("\nUso:");
     println!("  aura                  Abre la interfaz gráfica de COSMIC");
     println!("  aura next             Cambia al siguiente fondo de pantalla");

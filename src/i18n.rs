@@ -339,8 +339,8 @@ impl Language {
 
     pub fn settings_autostart(&self) -> &'static str {
         match self {
-            Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión en Pop!_OS",
-            Language::En => "Launch animated wallpaper automatically upon login to Pop!_OS",
+            Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión en COSMIC Desktop",
+            Language::En => "Launch animated wallpaper automatically upon login to COSMIC Desktop",
         }
     }
 
@@ -429,10 +429,11 @@ impl Language {
         }
     }
 
-    pub fn about_version_info(&self) -> &'static str {
+    pub fn about_version_info(&self) -> String {
+        let os = crate::engine::mpvpaper::detect_os_pretty_name();
         match self {
-            Language::Es => concat!("Versión ", env!("CARGO_PKG_VERSION"), " • Pop!_OS 24.04 LTS"),
-            Language::En => concat!("Version ", env!("CARGO_PKG_VERSION"), " • Pop!_OS 24.04 LTS"),
+            Language::Es => format!("Versión {} • {} • COSMIC Desktop", env!("CARGO_PKG_VERSION"), os),
+            Language::En => format!("Version {} • {} • COSMIC Desktop", env!("CARGO_PKG_VERSION"), os),
         }
     }
 
@@ -1411,5 +1412,9 @@ mod tests {
         assert_eq!(Language::En.header_wallpapers_count(5), "(5 wallpapers)");
         assert!(Language::Es.status_applied("DP-1", "ocean.mp4").contains("DP-1"));
         assert!(Language::En.status_applied("DP-1", "ocean.mp4").contains("ocean.mp4"));
+        assert!(Language::Es.about_version_info().contains("COSMIC Desktop"));
+        assert!(Language::En.about_version_info().contains("COSMIC Desktop"));
+        assert!(Language::Es.settings_autostart().contains("COSMIC Desktop"));
+        assert!(Language::En.settings_autostart().contains("COSMIC Desktop"));
     }
 }

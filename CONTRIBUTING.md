@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to **Aura**! 
 
-Aura is designed to be a high-performance, rock-solid, and aesthetically native live wallpaper manager for the Pop!_OS COSMIC desktop environment. We welcome community contributions, bug reports, and feature proposals.
+Aura is designed to be a high-performance, rock-solid, and aesthetically native live wallpaper manager for the COSMIC desktop environment across Linux distributions. We welcome community contributions, bug reports, and feature proposals.
 
 ---
 
@@ -12,6 +12,9 @@ Aura is designed to be a high-performance, rock-solid, and aesthetically native 
 Ensure you have the required system and build dependencies installed:
 
 ```bash
+# Arch Linux / CachyOS
+sudo pacman -S mpv ffmpeg pkgconf wayland libxkbcommon just
+
 # Pop!_OS 24.04 LTS / Ubuntu-based systems
 sudo apt update
 sudo apt install mpvpaper ffmpeg pkg-config libwayland-dev libxkbcommon-dev just

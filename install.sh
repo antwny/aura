@@ -24,7 +24,7 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 if [ "$OS" != "Linux" ]; then
-    echo "${RED}Error: Aura solo es compatible con Linux (Pop!_OS / COSMIC Wayland).${RESET}"
+    echo "${RED}Error: Aura solo es compatible con Linux y entornos de escritorio COSMIC Wayland.${RESET}"
     exit 1
 fi
 
