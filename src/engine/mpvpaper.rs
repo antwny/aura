@@ -170,6 +170,65 @@ pub fn find_mpvpaper_pids() -> Vec<u32> {
     pids
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineHealth {
+    Ready,
+    MissingBinary,
+    MissingLibrary(String),
+    ExecutionError(String),
+}
+
+pub fn detect_distro_command() -> (&'static str, &'static str) {
+    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+        let content_lower = content.to_lowercase();
+        if content_lower.contains("cachyos")
+            || content_lower.contains("arch")
+            || content_lower.contains("manjaro")
+            || content_lower.contains("endeavouros")
+        {
+            return ("Arch / CachyOS", "sudo pacman -S --needed mpv ffmpeg");
+        } else if content_lower.contains("pop")
+            || content_lower.contains("ubuntu")
+            || content_lower.contains("debian")
+            || content_lower.contains("mint")
+        {
+            return ("Pop!_OS / Ubuntu / Debian", "sudo apt install -y libmpv2 ffmpeg");
+        } else if content_lower.contains("fedora") || content_lower.contains("nobara") {
+            return ("Fedora", "sudo dnf install -y mpv-libs ffmpeg-free");
+        } else if content_lower.contains("suse") {
+            return ("openSUSE", "sudo zypper install -y mpv ffmpeg");
+        } else if content_lower.contains("void") {
+            return ("Void Linux", "sudo xbps-install -S mpv ffmpeg");
+        }
+    }
+    ("Linux", "sudo apt install -y libmpv2 ffmpeg || sudo pacman -S --needed mpv ffmpeg")
+}
+
+pub fn check_engine_health() -> EngineHealth {
+    let bin = resolve_mpvpaper_binary();
+    match Command::new(&bin).arg("-h").stdout(Stdio::null()).stderr(Stdio::piped()).output() {
+        Ok(output) => {
+            if output.status.success() {
+                EngineHealth::Ready
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                if output.status.code() == Some(127) || stderr.contains("libmpv") {
+                    EngineHealth::MissingLibrary("libmpv".to_string())
+                } else {
+                    EngineHealth::ExecutionError(stderr)
+                }
+            }
+        }
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                EngineHealth::MissingBinary
+            } else {
+                EngineHealth::ExecutionError(e.to_string())
+            }
+        }
+    }
+}
+
 pub struct WallpaperEngine {
     // Stores active process handle per output
     processes: HashMap<String, Child>,
@@ -184,6 +243,51 @@ impl WallpaperEngine {
             processes: HashMap::new(),
             sockets: HashMap::new(),
             is_paused: false,
+        }
+    }
+
+    pub fn processes_keys(&self) -> Vec<String> {
+        self.processes.keys().cloned().collect()
+    }
+
+    pub fn reap_dead_processes(&mut self) -> Vec<String> {
+        let mut dead = Vec::new();
+        self.processes.retain(|output, child| {
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    dead.push(output.clone());
+                    false
+                }
+                Ok(None) => true,
+                Err(_) => {
+                    dead.push(output.clone());
+                    false
+                }
+            }
+        });
+        for out in &dead {
+            if let Some(sock) = self.sockets.remove(out) {
+                let _ = std::fs::remove_file(sock);
+            }
+        }
+        dead
+    }
+
+    pub fn ensure_sockets_discovered(&mut self) {
+        if self.sockets.is_empty() {
+            let sock_dir = socket_dir();
+            if let Ok(entries) = std::fs::read_dir(&sock_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let p = entry.path();
+                    if p.extension().and_then(|e| e.to_str()) == Some("sock") {
+                        if ipc_is_alive(&p) {
+                            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+                            let out_name = name.strip_prefix("mpv_").unwrap_or(name);
+                            self.sockets.insert(out_name.to_string(), p);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -278,13 +382,38 @@ impl WallpaperEngine {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
-        let child = match cmd.spawn() {
+        let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[Aura Engine] Error al iniciar mpvpaper: {} (output: {}, video: {})", e, output, video_path);
-                return Err(e);
+                let (distro, cmd_str) = detect_distro_command();
+                let err_msg = if e.kind() == std::io::ErrorKind::NotFound {
+                    format!("No se encontró 'mpvpaper'. En {}, instala las dependencias con: {}", distro, cmd_str)
+                } else {
+                    format!("Error al iniciar mpvpaper: {} (output: {}, video: {})", e, output, video_path)
+                };
+                eprintln!("[Aura Engine] {}", err_msg);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
             }
         };
+
+        // Give dynamic linker 25ms to verify process didn't terminate immediately (e.g. exit 127: missing libmpv)
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        if let Ok(Some(status)) = child.try_wait() {
+            let (distro, cmd_str) = detect_distro_command();
+            let err_msg = if status.code() == Some(127) {
+                format!(
+                    "mpvpaper falló al cargar librerías multimedia (código 127). En {}, ejecuta: {}",
+                    distro, cmd_str
+                )
+            } else {
+                format!(
+                    "mpvpaper terminó inmediatamente con código {:?}. Verifica el formato y dependencias multimedia.",
+                    status.code()
+                )
+            };
+            eprintln!("[Aura Engine] {}", err_msg);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
+        }
 
         let pid = child.id();
         self.processes.insert(output.to_string(), child);
@@ -293,7 +422,8 @@ impl WallpaperEngine {
         Ok(pid)
     }
 
-    pub fn set_volume(&self, output: Option<&str>, volume: u8) -> bool {
+    pub fn set_volume(&mut self, output: Option<&str>, volume: u8) -> bool {
+        self.ensure_sockets_discovered();
         let mut success = false;
         let v = volume.min(100);
         if let Some(out) = output {
@@ -312,7 +442,8 @@ impl WallpaperEngine {
         success
     }
 
-    pub fn set_mute(&self, output: Option<&str>, mute: bool) -> bool {
+    pub fn set_mute(&mut self, output: Option<&str>, mute: bool) -> bool {
+        self.ensure_sockets_discovered();
         let mut success = false;
         if let Some(out) = output {
             if let Some(sock) = self.sockets.get(out) {
@@ -330,7 +461,8 @@ impl WallpaperEngine {
         success
     }
 
-    pub fn set_scaling(&self, output: &str, scaling: &str) -> bool {
+    pub fn set_scaling(&mut self, output: &str, scaling: &str) -> bool {
+        self.ensure_sockets_discovered();
         if let Some(sock) = self.sockets.get(output) {
             match scaling {
                 "fill" => {
@@ -370,21 +502,7 @@ impl WallpaperEngine {
 
     pub fn toggle_pause(&mut self) -> bool {
         // Ensure sockets has active sockets if started by an external or previous instance
-        if self.sockets.is_empty() {
-            let sock_dir = socket_dir();
-            if let Ok(entries) = std::fs::read_dir(&sock_dir) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let p = entry.path();
-                    if p.extension().and_then(|e| e.to_str()) == Some("sock") {
-                        if ipc_is_alive(&p) {
-                            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-                            let out_name = name.strip_prefix("mpv_").unwrap_or(name);
-                            self.sockets.insert(out_name.to_string(), p);
-                        }
-                    }
-                }
-            }
-        }
+        self.ensure_sockets_discovered();
 
         let mut any_toggled = false;
         let mut now_paused = false;
@@ -461,6 +579,23 @@ impl WallpaperEngine {
         for (_, mut child) in self.processes.drain() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        // Also terminate any running mpvpaper processes from other instances/PIDs
+        let pids = find_mpvpaper_pids();
+        for pid in pids {
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
+        // Clean up any stray sockets in socket_dir()
+        let sock_dir = socket_dir();
+        if let Ok(entries) = std::fs::read_dir(&sock_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("sock") {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
         }
         self.is_paused = false;
     }
@@ -627,4 +762,20 @@ mod tests {
         assert!(!is_pid_stopped(my_pid));
         assert!(!is_pid_stopped(9999999));
     }
+
+    #[test]
+    fn test_detect_distro_command() {
+        let (distro, cmd) = detect_distro_command();
+        assert!(!distro.is_empty());
+        assert!(!cmd.is_empty());
+    }
+
+    #[test]
+    fn test_reap_and_processes_keys() {
+        let mut engine = WallpaperEngine::new();
+        assert!(engine.processes_keys().is_empty());
+        let dead = engine.reap_dead_processes();
+        assert!(dead.is_empty());
+    }
 }
+

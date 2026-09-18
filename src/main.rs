@@ -58,6 +58,9 @@ fn main() -> cosmic::iced::Result {
     }
 
     let (hidden, action, action_args) = cli::parse_flags(&args);
+    if let Some(ref act) = action {
+        println!("🌌 Aura: Procesando acción '{}'...", act);
+    }
     let flags = app::AuraFlags {
         hidden,
         action,

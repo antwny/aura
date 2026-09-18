@@ -365,6 +365,19 @@ impl cosmic::Application for AuraApp {
             let _ = WallpaperEngine::write_autostart();
         }
 
+        // Cleanup any stale temporary download artifacts (.tmp / .tmp.jpg)
+        let online_dir = crate::online::wallpapers_online_dir();
+        if let Ok(entries) = std::fs::read_dir(&online_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if name.ends_with(".tmp") || name.ends_with(".tmp.jpg") {
+                        let _ = std::fs::remove_file(p);
+                    }
+                }
+            }
+        }
+
         let videos = scan_directories(&config.dirs, &config.custom_videos);
 
         // Spawn async background thumbnail generation
@@ -753,6 +766,12 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::TickSecond => {
+                let dead = self.engine.reap_dead_processes();
+                if !dead.is_empty() && self.engine.processes_keys().is_empty() {
+                    self.is_paused = false;
+                    self.tray_controller.update_state(String::new(), false, false);
+                }
+
                 if self.status_timer > 0 {
                     self.status_timer -= 1;
                     if self.status_timer == 0 {
@@ -862,7 +881,23 @@ impl cosmic::Application for AuraApp {
 
             Message::NextWallpaper => {
                 if !self.videos.is_empty() {
-                    let next_idx = (self.config.seq_index + 1) % self.videos.len();
+                    let next_idx = if self.config.order == "random" {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as usize;
+                        if self.videos.len() > 1 {
+                            let mut candidate = now % self.videos.len();
+                            if candidate == self.config.seq_index {
+                                candidate = (candidate + 1) % self.videos.len();
+                            }
+                            candidate
+                        } else {
+                            0
+                        }
+                    } else {
+                        (self.config.seq_index + 1) % self.videos.len()
+                    };
                     self.config.seq_index = next_idx;
                     let _ = self.config.save();
                     let video = &self.videos[next_idx];
@@ -1027,33 +1062,42 @@ impl cosmic::Application for AuraApp {
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
-                if let Ok(_) = self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause) {
-                    self.config.wallpapers.insert(output.clone(), path_str.clone());
-                    self.config.current = Some(path_str.clone());
-                    let _ = self.config.save();
-                    self.is_paused = false;
+                match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause) {
+                    Ok(_) => {
+                        self.config.wallpapers.insert(output.clone(), path_str.clone());
+                        self.config.current = Some(path_str.clone());
+                        let _ = self.config.save();
+                        self.is_paused = false;
 
-                    let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
-                    self.tray_controller.update_state(file_name.clone(), false, true);
+                        let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
+                        self.tray_controller.update_state(file_name.clone(), false, true);
 
-                    // COSMIC dynamic accent theme
-                    if self.config.auto_theme || self.config.auto_dark {
-                        if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
-                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
-                        } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
-                            if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.auto_dark);
+                        // COSMIC dynamic accent theme
+                        if self.config.auto_theme || self.config.auto_dark {
+                            if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
+                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
+                            } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
+                                if crate::scanner::is_supported_wallpaper_ext(ext) {
+                                    apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.auto_dark);
+                                }
                             }
                         }
-                    }
 
-                    let status_msg = self.language.status_applied(&output, &file_name);
-                    self.status_message = Some(status_msg.clone());
-                    return self.notify_applied(
-                        status_msg,
-                        self.language.toast_show_in_files(),
-                        Message::OpenWallpapersFolder,
-                    );
+                        let status_msg = self.language.status_applied(&output, &file_name);
+                        self.status_message = Some(status_msg.clone());
+                        return self.notify_applied(
+                            status_msg,
+                            self.language.toast_show_in_files(),
+                            Message::OpenWallpapersFolder,
+                        );
+                    }
+                    Err(e) => {
+                        let err_text = e.to_string();
+                        eprintln!("[Aura] Fallo al aplicar fondo: {}", err_text);
+                        self.status_message = Some(format!("Error: {}", err_text));
+                        self.status_timer = 8;
+                        return self.notify(format!("⚠️ {}", err_text));
+                    }
                 }
             }
 
@@ -1374,6 +1418,15 @@ impl cosmic::Application for AuraApp {
                 if current_outputs != self.outputs {
                     let new_count = current_outputs.len();
                     self.outputs = current_outputs;
+                    if self.selected_output != "*" && !self.outputs.iter().any(|o| o.name == self.selected_output) {
+                        self.selected_output = self.outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
+                    }
+                    let active = self.engine.processes_keys();
+                    for out in active {
+                        if out != "*" && !self.outputs.iter().any(|o| o.name == out) {
+                            self.engine.stop_output(&out);
+                        }
+                    }
                     self.status_message = Some(self.language.status_topology_updated(new_count));
                     self.status_timer = 5;
                 }
@@ -1381,6 +1434,15 @@ impl cosmic::Application for AuraApp {
 
             Message::OutputsUpdated(new_outs) => {
                 self.outputs = new_outs;
+                if self.selected_output != "*" && !self.outputs.iter().any(|o| o.name == self.selected_output) {
+                    self.selected_output = self.outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
+                }
+                let active = self.engine.processes_keys();
+                for out in active {
+                    if out != "*" && !self.outputs.iter().any(|o| o.name == out) {
+                        self.engine.stop_output(&out);
+                    }
+                }
             }
 
             Message::SmartPauseTick => {
@@ -1437,7 +1499,19 @@ impl cosmic::Application for AuraApp {
             Message::RotationTick => {
                 if !self.videos.is_empty() && self.config.rotation {
                     let next_idx = if self.config.order == "random" {
-                        (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as usize) % self.videos.len()
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as usize;
+                        if self.videos.len() > 1 {
+                            let mut candidate = now % self.videos.len();
+                            if candidate == self.config.seq_index {
+                                candidate = (candidate + 1) % self.videos.len();
+                            }
+                            candidate
+                        } else {
+                            0
+                        }
                     } else {
                         (self.config.seq_index + 1) % self.videos.len()
                     };
@@ -1657,6 +1731,20 @@ impl cosmic::Application for AuraApp {
                         return self.queue_thumbnails(&new_items);
                     }
                     Err(err) => {
+                        match self.explore_source {
+                            OnlineSource::MotionBGS => {
+                                if self.motionbgs_page > 1 { self.motionbgs_page -= 1; }
+                            }
+                            OnlineSource::Bing => {
+                                if self.bing_page > 1 { self.bing_page -= 1; }
+                            }
+                            OnlineSource::Wallhaven => {
+                                if self.wallhaven_page > 1 { self.wallhaven_page -= 1; }
+                            }
+                            OnlineSource::Minimalistic => {
+                                if self.minimalistic_page > 1 { self.minimalistic_page -= 1; }
+                            }
+                        }
                         self.status_message = Some(format!("Error: {}", err));
                         self.status_timer = 5;
                     }
@@ -1928,6 +2016,9 @@ impl cosmic::Application for AuraApp {
                 self.download_cancels.remove(&id);
                 let was_downloading = self.downloading_online_ids.remove(&id);
                 self.download_progress.remove(&id);
+                if self.pending_auto_apply_id.as_deref() == Some(&id) {
+                    self.pending_auto_apply_id = None;
+                }
                 if was_downloading && !error.contains("canceled by user") {
                     self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
                     self.status_timer = 5;

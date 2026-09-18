@@ -25,7 +25,13 @@ Run this single command in your terminal to install or update Aura with its vide
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-*No compiling or complex setup needed. Works right out of the box on Pop!_OS and Linux.*
+*Native Rust performance for Pop!_OS, CachyOS, Arch Linux, Fedora, openSUSE, and any distribution running COSMIC Desktop.*
+
+> **💡 Prerequisites for live video playback & video thumbnails:**
+> - **CachyOS / Arch Linux**: `sudo pacman -S --needed mpv ffmpeg`
+> - **Pop!_OS / Ubuntu / Debian**: `sudo apt install -y libmpv2 ffmpeg`
+> - **Fedora**: `sudo dnf install -y mpv-libs ffmpeg-free`
+> - **openSUSE**: `sudo zypper install -y mpv ffmpeg`
 
 <br/>
 
@@ -154,12 +160,12 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 ### Method 2: Precompiled Release Package
 
-1. Download `aura-v1.3.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
+1. Download `aura-v1.3.1-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
 2. Extract the archive and run the installer:
 
 ```bash
-tar -xzf aura-v1.3.0-x86_64-linux.tar.gz
-cd aura-v1.3.0-x86_64-linux
+tar -xzf aura-v1.3.1-x86_64-linux.tar.gz
+cd aura-v1.3.1-x86_64-linux
 ./install.sh
 ```
 

@@ -135,6 +135,33 @@ pub async fn perform_update(client: &reqwest::Client, download_url: &str) -> Res
     std::fs::rename(&tmp_target, &target_bin)
         .map_err(|e| format!("Failed to replace binary: {}", e))?;
 
+    // Also update bundled mpvpaper if present in the archive
+    let mut new_mpvpaper = tmp_extract.join("mpvpaper");
+    if !new_mpvpaper.exists() {
+        if let Ok(entries) = std::fs::read_dir(&tmp_extract) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let candidate = entry.path().join("mpvpaper");
+                if candidate.exists() {
+                    new_mpvpaper = candidate;
+                    break;
+                }
+            }
+        }
+    }
+
+    if new_mpvpaper.exists() {
+        let target_mpvpaper = PathBuf::from(&home).join(".local/bin/mpvpaper");
+        let tmp_mpv = target_mpvpaper.with_extension("new");
+        if std::fs::copy(&new_mpvpaper, &tmp_mpv).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&tmp_mpv, std::fs::Permissions::from_mode(0o755));
+            }
+            let _ = std::fs::rename(&tmp_mpv, &target_mpvpaper);
+        }
+    }
+
     let _ = tokio::fs::remove_file(&tmp_tar).await;
     let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
 

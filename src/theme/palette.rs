@@ -65,6 +65,16 @@ pub fn extract_palette(thumb_path: &Path) -> Option<PaletteResult> {
     let avg_lum = total_lum / count;
     let is_dark = avg_lum < 128.0;
 
+    // If no vibrant hue was found (monochrome, black & white, or grayscale image),
+    // use an elegant neutral slate tone instead of default neon orange
+    if best_vibrancy < 0.06 {
+        best_color = if is_dark {
+            RgbColor { r: 0.45, g: 0.55, b: 0.65 } // Slate blue-gray for dark wallpapers
+        } else {
+            RgbColor { r: 0.35, g: 0.45, b: 0.55 } // Deep slate gray for light wallpapers
+        };
+    }
+
     Some(PaletteResult {
         dominant_color: best_color,
         is_dark,

@@ -49,6 +49,15 @@ pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
                     eprintln!("Error: El archivo '{}' no existe.", target.display());
                     std::process::exit(1);
                 }
+                if !target.is_file() {
+                    eprintln!("Error: '{}' es un directorio o no es un archivo regular.", target.display());
+                    std::process::exit(1);
+                }
+                let ext = target.extension().and_then(|e| e.to_str()).unwrap_or_default();
+                if !crate::scanner::is_supported_wallpaper_ext(ext) {
+                    eprintln!("Error: El formato '.{}' no es compatible. Formatos soportados: mp4, mkv, webm, mov, avi, png, jpg, jpeg, webp, gif.", ext);
+                    std::process::exit(1);
+                }
                 (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
             } else {
                 eprintln!("Uso: aura apply <ruta_al_video_o_imagen>");
@@ -58,8 +67,14 @@ pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
         other => {
             let p = Path::new(other);
             if p.exists() && p.is_file() {
-                let target = resolve_path(other);
-                (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
+                if crate::scanner::is_supported_wallpaper_ext(ext) {
+                    let target = resolve_path(other);
+                    (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
+                } else {
+                    eprintln!("Comando desconocido: '{}'. Ejecuta 'aura help' para ver opciones.", other);
+                    std::process::exit(1);
+                }
             } else {
                 eprintln!("Comando desconocido: '{}'. Ejecuta 'aura help' para ver opciones.", other);
                 std::process::exit(1);
@@ -195,6 +210,17 @@ fn cmd_apply(path_arg: &str) {
         return;
     }
 
+    if !full_path.is_file() {
+        eprintln!("Error: '{}' es un directorio o no es un archivo regular.", full_path.display());
+        return;
+    }
+
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    if !crate::scanner::is_supported_wallpaper_ext(ext) {
+        eprintln!("Error: El formato '.{}' no es compatible. Formatos soportados: mp4, mkv, webm, mov, avi, png, jpg, jpeg, webp, gif.", ext);
+        return;
+    }
+
     let mut config = Config::load();
     let outputs = detect_outputs();
     let output = outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
@@ -203,22 +229,25 @@ fn cmd_apply(path_arg: &str) {
     let mut engine = WallpaperEngine::new();
     let path_str = full_path.to_string_lossy().to_string();
 
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
-        config.wallpapers.insert(output.clone(), path_str.clone());
-        config.current = Some(path_str.clone());
-        if !config.custom_videos.contains(&path_str) {
-            config.custom_videos.push(path_str.clone());
-        }
-        let _ = config.save();
+    match engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
+        Ok(pid) => {
+            config.wallpapers.insert(output.clone(), path_str.clone());
+            config.current = Some(path_str.clone());
+            if !config.custom_videos.contains(&path_str) {
+                config.custom_videos.push(path_str.clone());
+            }
+            let _ = config.save();
 
-        let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
-        if thumb.exists() && (config.auto_theme || config.auto_dark) {
-            apply_cosmic_theme(&thumb, config.auto_theme, config.auto_dark);
-        }
+            let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
+            if thumb.exists() && (config.auto_theme || config.auto_dark) {
+                apply_cosmic_theme(&thumb, config.auto_theme, config.auto_dark);
+            }
 
-        println!("✨ Aura: Fondo aplicado exitosamente (PID: {}) -> {}", pid, full_path.display());
-    } else {
-        eprintln!("Error: No se pudo iniciar mpvpaper con el video seleccionado.");
+            println!("✨ Aura: Fondo aplicado exitosamente (PID: {}) -> {}", pid, full_path.display());
+        }
+        Err(e) => {
+            eprintln!("Error al aplicar fondo: {}", e);
+        }
     }
 }
 
@@ -226,20 +255,58 @@ fn cmd_status() {
     let config = Config::load();
     println!("🌌 Aura Live Wallpaper — Estado del Sistema");
     println!("──────────────────────────────────────────");
-    if let Some(curr) = &config.current {
-        println!("Fondo activo: {}", curr);
-    } else {
-        println!("Fondo activo: Ninguno");
+
+    // Runtime engine health check
+    let health = crate::engine::mpvpaper::check_engine_health();
+    match &health {
+        crate::engine::mpvpaper::EngineHealth::Ready => {
+            println!("Motor multimedia:      Listo (mpvpaper + libmpv funcional)");
+        }
+        crate::engine::mpvpaper::EngineHealth::MissingBinary => {
+            let (distro, cmd) = crate::engine::mpvpaper::detect_distro_command();
+            println!("Motor multimedia:      ⚠️  mpvpaper no encontrado");
+            println!("                       En {}: {}", distro, cmd);
+        }
+        crate::engine::mpvpaper::EngineHealth::MissingLibrary(_) => {
+            let (distro, cmd) = crate::engine::mpvpaper::detect_distro_command();
+            println!("Motor multimedia:      ⚠️  Falta librería multimedia (libmpv)");
+            println!("                       👉 En {}: {}", distro, cmd);
+        }
+        crate::engine::mpvpaper::EngineHealth::ExecutionError(err) => {
+            println!("Motor multimedia:      ⚠️  Error de verificación: {}", err);
+        }
     }
+
+    // Check actual running processes
+    let pids = crate::engine::mpvpaper::find_mpvpaper_pids();
+    if !pids.is_empty() {
+        let paused_count = pids.iter().filter(|&&pid| crate::engine::mpvpaper::is_pid_stopped(pid)).count();
+        if paused_count == pids.len() {
+            println!("Estado de ejecución:   ⏸  Pausado (0% CPU/GPU, PIDs: {:?})", pids);
+        } else {
+            println!("Estado de ejecución:   ▶  En reproducción (PIDs: {:?})", pids);
+        }
+    } else {
+        println!("Estado de ejecución:   ⏹  Detenido (Sin procesos mpvpaper activos)");
+    }
+
+    if let Some(curr) = &config.current {
+        println!("Fondo configurado:     {}", curr);
+    } else {
+        println!("Fondo configurado:     Ninguno");
+    }
+
     println!("Pantallas configuradas:");
     for (out, wall) in &config.wallpapers {
         let sc = config.scaling.get(out).map(|s| s.as_str()).unwrap_or("fit");
         println!("  • {}: {} (Escala: {})", out, wall, sc);
     }
-    println!("Auto-Tema COSMIC: {}", if config.auto_theme { "Activado" } else { "Desactivado" });
-    println!("Silenciado: {}", if config.mute { "Sí" } else { "No" });
-    println!("Aceleración GPU: {}", config.hwdec);
-    println!("Inicio automático: {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
+    println!("Modo de rotación:      {} (cada {} min)", if config.order == "random" { "Aleatorio" } else { "Secuencial" }, config.interval);
+    println!("Auto-Tema COSMIC:      {}", if config.auto_theme { "Activado" } else { "Desactivado" });
+    println!("Silenciado:            {}", if config.mute { "Sí" } else { "No" });
+    println!("Volumen:               {}%", config.volume);
+    println!("Aceleración GPU:       {}", config.hwdec);
+    println!("Inicio automático:     {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
 }
 
 fn cmd_check_update() {

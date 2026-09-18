@@ -142,38 +142,110 @@ fi
 echo ""
 echo "Aura installed successfully to ${BIN_DIR}/aura"
 
+# Distro detection
+detect_distro() {
+    local id=""
+    local id_like=""
+    if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        id="${ID:-}"
+        id_like="${ID_LIKE:-}"
+    fi
+
+    if command -v pacman >/dev/null 2>&1 || [ "$id" = "cachyos" ] || [ "$id" = "arch" ] || [ "$id" = "manjaro" ] || [ "$id" = "endeavouros" ] || [[ "$id_like" == *"arch"* ]]; then
+        DISTRO_NAME="Arch / CachyOS"
+        INSTALL_CMD="sudo pacman -S --needed mpv ffmpeg"
+        PKG_MGR="pacman"
+    elif command -v apt-get >/dev/null 2>&1 || [ "$id" = "pop" ] || [ "$id" = "ubuntu" ] || [ "$id" = "debian" ] || [ "$id" = "linuxmint" ] || [[ "$id_like" == *"debian"* ]] || [[ "$id_like" == *"ubuntu"* ]]; then
+        DISTRO_NAME="Pop!_OS / Ubuntu / Debian"
+        INSTALL_CMD="sudo apt install -y libmpv2 ffmpeg"
+        PKG_MGR="apt"
+    elif command -v dnf >/dev/null 2>&1 || [ "$id" = "fedora" ] || [ "$id" = "nobara" ] || [[ "$id_like" == *"fedora"* ]]; then
+        DISTRO_NAME="Fedora"
+        INSTALL_CMD="sudo dnf install -y mpv-libs ffmpeg-free"
+        PKG_MGR="dnf"
+    elif command -v zypper >/dev/null 2>&1 || [ "$id" = "opensuse" ] || [ "$id" = "opensuse-tumbleweed" ] || [[ "$id_like" == *"suse"* ]]; then
+        DISTRO_NAME="openSUSE"
+        INSTALL_CMD="sudo zypper install -y mpv ffmpeg"
+        PKG_MGR="zypper"
+    elif command -v xbps-install >/dev/null 2>&1 || [ "$id" = "void" ]; then
+        DISTRO_NAME="Void Linux"
+        INSTALL_CMD="sudo xbps-install -S mpv ffmpeg"
+        PKG_MGR="xbps"
+    else
+        DISTRO_NAME="Linux"
+        INSTALL_CMD="sudo pacman -S mpv ffmpeg || sudo apt install libmpv2 ffmpeg"
+        PKG_MGR="unknown"
+    fi
+}
+
+detect_distro
+
 # Dependency check
 echo ""
-echo "Checking runtime dependencies:"
+echo "Verificando dependencias multimedia (${DISTRO_NAME}):"
 DEPS_MISSING=0
 
-# Check mpvpaper & libmpv2
-if [ -x "${BIN_DIR}/mpvpaper" ] || command -v mpvpaper >/dev/null 2>&1; then
-    # Verify libmpv2 shared library is available
-    if ! ldconfig -p 2>/dev/null | grep -q 'libmpv\.so\.2' && [ ! -f /lib/x86_64-linux-gnu/libmpv.so.2 ] && [ ! -f /usr/lib/x86_64-linux-gnu/libmpv.so.2 ]; then
-        echo "  [MISSING] libmpv2 (required by mpvpaper for live video playback)"
-        echo "            Install via: sudo apt install libmpv2"
-        DEPS_MISSING=1
+# Verify mpvpaper and dynamic linking to libmpv
+MPV_TARGET="${BIN_DIR}/mpvpaper"
+if [ ! -x "$MPV_TARGET" ]; then
+    MPV_TARGET="$(command -v mpvpaper 2>/dev/null || printf '')"
+fi
+
+if [ -n "$MPV_TARGET" ] && [ -x "$MPV_TARGET" ]; then
+    if "$MPV_TARGET" -h >/dev/null 2>&1; then
+        echo "  [OK] mpvpaper & libmpv (reproducción de fondos animados lista)"
     else
-        echo "  [OK] mpvpaper & libmpv2 (ready for live video wallpapers)"
+        echo "  [FALTA] libmpv / códecs de video (mpvpaper no pudo cargar librerías compartidas)"
+        DEPS_MISSING=1
     fi
 else
-    echo "  [MISSING] mpvpaper (required to display live video wallpapers)"
-    echo "            Note: mpvpaper is not in default Ubuntu/Pop!_OS apt repos."
+    echo "  [FALTA] mpvpaper (binario no disponible)"
     DEPS_MISSING=1
 fi
 
 if command -v ffmpeg >/dev/null 2>&1; then
-    echo "  [OK] ffmpeg (video thumbnail generation)"
+    echo "  [OK] ffmpeg (generación de miniaturas de video)"
 else
-    echo "  [MISSING] ffmpeg (required to generate video thumbnails in library)"
-    echo "            Install via: sudo apt install ffmpeg"
+    echo "  [FALTA] ffmpeg (requerido para miniaturas en la biblioteca)"
     DEPS_MISSING=1
+fi
+
+# If interactive and dependencies are missing, offer to install them now
+if [ "$DEPS_MISSING" -eq 1 ] && [ -t 0 ] && [ -t 1 ]; then
+    echo ""
+    echo "💡 Se detectaron dependencias multimedia pendientes para tu distribución (${DISTRO_NAME})."
+    read -r -p "¿Deseas instalarlas automáticamente con sudo ahora? [S/n] " prompt_ans </dev/tty || prompt_ans="n"
+    case "$prompt_ans" in
+        [sS]|[yY]|"")
+            echo "Ejecutando: ${INSTALL_CMD}"
+            if eval "$INSTALL_CMD"; then
+                echo "✅ Dependencias instaladas exitosamente."
+                DEPS_MISSING=0
+            else
+                echo "⚠️  No se pudo completar la instalación automática."
+            fi
+            ;;
+        *)
+            echo "Instalación de dependencias omitida por el usuario."
+            ;;
+    esac
 fi
 
 if [ "$DEPS_MISSING" -eq 1 ]; then
     echo ""
-    echo "Tip: Aura will open and function normally for static wallpapers,"
-    echo "but to enable live video wallpapers and video thumbnails, run:"
-    echo "  sudo apt install libmpv2 ffmpeg"
+    echo "════════════════════════════════════════════════════════════════════════"
+    echo "⚠️   ACCIÓN REQUERIDA PARA ACTIVAR FONDOS ANIMADOS (${DISTRO_NAME})"
+    echo "────────────────────────────────────────────────────────────────────────"
+    echo "Aura se instaló correctamente, pero tu sistema aún necesita las"
+    echo "librerías de video para reproducir fondos animados."
+    echo ""
+    echo "👉 Ejecuta este comando en tu terminal:"
+    echo "   ${INSTALL_CMD}"
+    echo "════════════════════════════════════════════════════════════════════════"
+    # Create marker file for parent install.sh if invoked through web installer
+    touch "${SCRIPT_DIR}/.deps_missing" 2>/dev/null || true
+else
+    rm -f "${SCRIPT_DIR}/.deps_missing" 2>/dev/null || true
 fi

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-09-17
+
+### Added
+- **Multi-Distribution COSMIC Support (CachyOS, Arch Linux, Fedora, openSUSE, Pop!_OS)**:
+  - Added smart distro detection (`/etc/os-release` and package manager probes) across both installation scripts and the application runtime.
+  - Tailored installation instructions for Arch Linux & CachyOS (`sudo pacman -S --needed mpv ffmpeg`), Debian/Pop!_OS (`sudo apt install -y libmpv2 ffmpeg`), Fedora (`sudo dnf install -y mpv-libs ffmpeg-free`), and openSUSE (`sudo zypper install -y mpv ffmpeg`).
+  - Interactive dependency installer: when run interactively, the installer prompts to automatically install missing multimedia dependencies with `sudo`.
+  - Unmissable end-of-terminal alert box ensuring dependency commands are never lost in terminal scrollback.
+- **Engine Diagnostics & Health Verification**:
+  - `aura status` now checks and reports true multimedia runtime health (verifying `mpvpaper` executable and `libmpv` shared library linkage).
+  - Dynamic detection of active `mpvpaper` PIDs in `/proc` to report genuine playback vs paused vs stopped engine states.
+  - Startup verification in `set_wallpaper`: catches early dynamic linker failures (exit 127) within 25ms and displays actionable distro-specific install hints via desktop toasts instead of silent failures.
+
+### Fixed & Improved
+- **Robust Process Management & Zombie Elimination**:
+  - `stop_all` now cleans up running `mpvpaper` processes discovered via `/proc` and wipes orphaned IPC sockets even when invoked from separate CLI instances.
+  - Added periodic process reaping in the 1-second tick loop (`reap_dead_processes`), automatically synchronizing tray and UI state if an external process terminates.
+  - Added automatic IPC socket auto-discovery to `set_volume`, `set_mute`, and `set_scaling`.
+- **CLI & Input Validation**:
+  - `aura apply` and flag parsing now strictly validate that target files are regular files (`is_file()`) and match supported video/image extensions, preventing crashes or invalid arguments when given directories.
+- **Atomic Configuration & Filesystem Reliability**:
+  - `Config::save()` upgraded to atomic write via temporary file (`config.json.tmp.<pid>`) and POSIX `rename`, preventing 0-byte corrupt configs on unexpected reboot or termination.
+  - Startup sweep to automatically clean orphaned partial download artifacts (`.tmp`, `.tmp.jpg`) in the online wallpapers directory.
+- **Display Hotplug Resilience**:
+  - Monitor hotplug handler now resets `selected_output` if a connected monitor is unplugged and terminates engine processes associated with disconnected displays.
+- **Theme Palette & Explore Improvements**:
+  - Low-vibrancy and monochrome/black-and-white wallpapers now produce an elegant neutral slate tone instead of default neon orange.
+  - Online catalog pagination rolled back safely on network/API failure to avoid drifted page offsets.
+  - Bundled `mpvpaper` binary is now automatically kept up to date alongside `aura` during `aura update`.
+
 ## [1.3.0] - 2026-09-13
 
 ### Added

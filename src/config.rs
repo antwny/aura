@@ -195,7 +195,11 @@ impl Config {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)?;
         let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(Self::config_file(), content)?;
+        let target = Self::config_file();
+        let pid = std::process::id();
+        let tmp = dir.join(format!("config.json.tmp.{}", pid));
+        std::fs::write(&tmp, content)?;
+        std::fs::rename(&tmp, &target)?;
         Ok(())
     }
 }

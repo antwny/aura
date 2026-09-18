@@ -82,7 +82,7 @@ if [ -z "$TARGET_VERSION" ]; then
     fi
 
     if [ -z "$LATEST_TAG" ]; then
-        LATEST_TAG="v1.3.0"
+        LATEST_TAG="v1.3.1"
     fi
     VERSION="${LATEST_TAG#v}"
 else
@@ -128,6 +128,7 @@ fi
 
 # 6. Execute internal installer
 echo "⚙️  Instalando Aura y motor de video..."
+DEPS_MISSING_FLAG=0
 if [ -f "${EXTRACTED_DIR}/install.sh" ]; then
     chmod +x "${EXTRACTED_DIR}/install.sh"
     cd "$EXTRACTED_DIR"
@@ -136,13 +137,64 @@ if [ -f "${EXTRACTED_DIR}/install.sh" ]; then
     else
         ./install.sh --user
     fi
+    if [ -f "${EXTRACTED_DIR}/.deps_missing" ]; then
+        DEPS_MISSING_FLAG=1
+    fi
 else
     echo "${RED}Error: El script de instalación interno no fue encontrado en el archivo descargado.${RESET}"
     exit 1
 fi
 
+# Distro detection for final banner
+detect_distro() {
+    local id=""
+    local id_like=""
+    if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        id="${ID:-}"
+        id_like="${ID_LIKE:-}"
+    fi
+
+    if command -v pacman >/dev/null 2>&1 || [ "$id" = "cachyos" ] || [ "$id" = "arch" ] || [ "$id" = "manjaro" ] || [ "$id" = "endeavouros" ] || [[ "$id_like" == *"arch"* ]]; then
+        DISTRO_NAME="Arch / CachyOS"
+        INSTALL_CMD="sudo pacman -S --needed mpv ffmpeg"
+    elif command -v apt-get >/dev/null 2>&1 || [ "$id" = "pop" ] || [ "$id" = "ubuntu" ] || [ "$id" = "debian" ] || [ "$id" = "linuxmint" ] || [[ "$id_like" == *"debian"* ]] || [[ "$id_like" == *"ubuntu"* ]]; then
+        DISTRO_NAME="Pop!_OS / Ubuntu / Debian"
+        INSTALL_CMD="sudo apt install -y libmpv2 ffmpeg"
+    elif command -v dnf >/dev/null 2>&1 || [ "$id" = "fedora" ] || [ "$id" = "nobara" ] || [[ "$id_like" == *"fedora"* ]]; then
+        DISTRO_NAME="Fedora"
+        INSTALL_CMD="sudo dnf install -y mpv-libs ffmpeg-free"
+    elif command -v zypper >/dev/null 2>&1 || [ "$id" = "opensuse" ] || [ "$id" = "opensuse-tumbleweed" ] || [[ "$id_like" == *"suse"* ]]; then
+        DISTRO_NAME="openSUSE"
+        INSTALL_CMD="sudo zypper install -y mpv ffmpeg"
+    elif command -v xbps-install >/dev/null 2>&1 || [ "$id" = "void" ]; then
+        DISTRO_NAME="Void Linux"
+        INSTALL_CMD="sudo xbps-install -S mpv ffmpeg"
+    else
+        DISTRO_NAME="Linux"
+        INSTALL_CMD="sudo pacman -S mpv ffmpeg || sudo apt install libmpv2 ffmpeg"
+    fi
+}
+
+detect_distro
+
+# Check if mpvpaper runs without dynamic linker failure
+INSTALLED_MPV="${HOME}/.local/bin/mpvpaper"
+if [ ! -x "$INSTALLED_MPV" ]; then
+    INSTALLED_MPV="/usr/local/bin/mpvpaper"
+fi
+if [ -x "$INSTALLED_MPV" ]; then
+    if ! "$INSTALLED_MPV" -h >/dev/null 2>&1; then
+        DEPS_MISSING_FLAG=1
+    fi
+fi
+if ! command -v ffmpeg >/dev/null 2>&1; then
+    DEPS_MISSING_FLAG=1
+fi
+
 echo ""
-echo "${GREEN}${BOLD}✨ ¡Aura v${VERSION} instalado con éxito y listo para usar!${RESET}"
+echo "${GREEN}${BOLD}✨ ¡Aura v${VERSION} instalado con éxito!${RESET}"
 echo "────────────────────────────────────────────────────────────"
 echo "🚀 Para abrir Aura:"
 echo "  • Desde la terminal: ${BOLD}aura${RESET}"
@@ -150,6 +202,23 @@ echo "  • O búscalo como '${BOLD}Aura${RESET}' en el lanzador de aplicaciones
 echo ""
 echo "🌌 Atajos y comandos útiles:"
 echo "  • Ver estado actual:    ${BOLD}aura status${RESET}"
-echo "  • Cambiar fondo:        ${BOLD}aura next${RESET}  (¡Puedes asignarlo a Super + W en Ajustes de COSMIC!)"
+echo "  • Cambiar fondo:        ${BOLD}aura next${RESET}  (¡Asígnalo a Super + W en Ajustes de COSMIC!)"
 echo "  • Pausar/Reanudar (0%): ${BOLD}aura toggle-pause${RESET}"
+
+# If dependencies are missing, the VERY LAST output in the terminal must be this impossible-to-miss alert:
+if [ "$DEPS_MISSING_FLAG" -eq 1 ]; then
+    echo ""
+    echo "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════════════════╗${RESET}"
+    echo "${YELLOW}${BOLD}║  ⚠️   ACCIÓN REQUERIDA PARA ACTIVAR FONDOS ANIMADOS (${DISTRO_NAME})${RESET}"
+    echo "${YELLOW}${BOLD}╠══════════════════════════════════════════════════════════════════════════╣${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET} Aura necesita librerías de video que aún no están en tu sistema.         ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET} Sin ellas, solo funcionarán fondos estáticos.                            ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET}                                                                          ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET} 👉 ${BOLD}Copia y ejecuta este comando para habilitarlas:${RESET}                      ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET}                                                                          ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET}    ${GREEN}${BOLD}${INSTALL_CMD}${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET}                                                                          ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET} ¡Listo! Después de ejecutarlo, tus fondos cobrarán vida en COSMIC. 🌌     ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════════════════════╝${RESET}"
+fi
 echo ""
