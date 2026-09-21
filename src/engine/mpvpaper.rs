@@ -392,7 +392,11 @@ impl WallpaperEngine {
         opts.push_str(&format!(" --input-ipc-server={}", sock_path.display()));
 
         let mut cmd = Command::new(resolve_mpvpaper_binary());
-        cmd.arg("-l").arg("bottom");
+        // COSMIC renders the desktop (`cosmic-files-applet`) on the `bottom`
+        // layer, so the wallpaper must stay on `background` to keep desktop
+        // icons and interactions usable. `cosmic-bg` also uses `background`,
+        // but it is mapped before mpvpaper starts, so the video renders above.
+        cmd.arg("-l").arg("background");
 
         if auto_pause {
             cmd.arg("-p");
