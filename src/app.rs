@@ -2249,11 +2249,15 @@ impl cosmic::Application for AuraApp {
         };
 
         let mut main_col = widget::column::with_capacity(2)
-            .spacing(12)
+            .spacing(10)
             .width(Length::Fill)
             .height(Length::Fill);
 
-        main_col = main_col.push(content);
+        main_col = main_col.push(
+            widget::container(content)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        );
 
         // Fixed Global "Now Playing" Bottom Bar
         main_col = main_col.push(self.view_now_playing_bar());

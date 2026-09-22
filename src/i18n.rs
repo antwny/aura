@@ -1464,6 +1464,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn bar_volume(&self) -> &'static str {
         match self {
             Language::Es => "Volumen",
