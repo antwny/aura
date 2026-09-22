@@ -1299,6 +1299,115 @@ impl Language {
         }
     }
 
+    pub fn settings_rotation_source_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondos a rotar:",
+            Language::En => "Wallpapers to rotate:",
+        }
+    }
+
+    pub fn settings_rotation_source_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Toda la biblioteca",
+            Language::En => "All wallpapers",
+        }
+    }
+
+    pub fn settings_rotation_source_favs(&self) -> &'static str {
+        match self {
+            Language::Es => "Solo favoritos",
+            Language::En => "Only favorites",
+        }
+    }
+
+    pub fn settings_rotation_favs_empty_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "⚠️ No tienes favoritos guardados. Se rotará toda la biblioteca hasta que marques fondos con el corazón.",
+            Language::En => "⚠️ No favorites saved yet. All wallpapers will cycle until you mark favorites with the heart.",
+        }
+    }
+
+    pub fn settings_rotation_favs_active_hint(&self, count: usize) -> String {
+        match self {
+            Language::Es => format!("✓ Rotando únicamente entre tus {} fondos favoritos.", count),
+            Language::En => format!("✓ Cycling only between your {} favorite wallpapers.", count),
+        }
+    }
+
+    pub fn status_rotation_source_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación configurada: toda la biblioteca",
+            Language::En => "Rotation set: all wallpapers",
+        }
+    }
+
+    pub fn status_rotation_source_favs(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación configurada: solo favoritos",
+            Language::En => "Rotation set: only favorites",
+        }
+    }
+
+    pub fn status_favs_rotation_started(&self, mins: u64) -> String {
+        match self {
+            Language::Es => format!("Rotación de favoritos activada (cada {} min)", mins),
+            Language::En => format!("Favorites rotation enabled (every {} min)", mins),
+        }
+    }
+
+    pub fn library_favs_rotation_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotación de Favoritos",
+            Language::En => "Favorites Rotation",
+        }
+    }
+
+    pub fn library_favs_banner_desc_idle(&self, count: usize) -> String {
+        match self {
+            Language::Es => format!("Reproduce automáticamente solo tus {} fondos favoritos en bucle", count),
+            Language::En => format!("Automatically cycle only through your {} favorite wallpapers", count),
+        }
+    }
+
+    pub fn library_favs_banner_desc_active(&self, count: usize, interval: u64, is_random: bool) -> String {
+        let order_str = if is_random {
+            match self {
+                Language::Es => "Aleatorio",
+                Language::En => "Random",
+            }
+        } else {
+            match self {
+                Language::Es => "Secuencial",
+                Language::En => "Sequential",
+            }
+        };
+        match self {
+            Language::Es => format!("Rotando {} favoritos: cada {} min • {}", count, interval, order_str),
+            Language::En => format!("Rotating {} favorites: every {} min • {}", count, interval, order_str),
+        }
+    }
+
+    pub fn library_favs_start_rotation(&self) -> &'static str {
+        match self {
+            Language::Es => "Rotar favoritos",
+            Language::En => "Rotate favorites",
+        }
+    }
+
+    pub fn library_favs_stop_rotation(&self) -> &'static str {
+        match self {
+            Language::Es => "Detener rotación",
+            Language::En => "Stop rotation",
+        }
+    }
+
+    pub fn library_favs_rotation_settings(&self) -> &'static str {
+        match self {
+            Language::Es => "Ajustes de rotación",
+            Language::En => "Rotation settings",
+        }
+    }
+
     pub fn settings_hwdec_title(&self) -> &'static str {
         match self {
             Language::Es => "Aceleración de Hardware (GPU)",
@@ -1443,6 +1552,17 @@ mod tests {
             assert!(!lang.settings_order_label().is_empty());
             assert!(!lang.settings_order_random().is_empty());
             assert!(!lang.settings_order_seq().is_empty());
+            assert!(!lang.settings_rotation_source_label().is_empty());
+            assert!(!lang.settings_rotation_source_all().is_empty());
+            assert!(!lang.settings_rotation_source_favs().is_empty());
+            assert!(!lang.settings_rotation_favs_empty_hint().is_empty());
+            assert!(!lang.status_rotation_source_all().is_empty());
+            assert!(!lang.status_rotation_source_favs().is_empty());
+            assert!(!lang.library_favs_rotation_title().is_empty());
+            assert!(!lang.library_favs_banner_desc_idle(1).is_empty());
+            assert!(!lang.library_favs_start_rotation().is_empty());
+            assert!(!lang.library_favs_stop_rotation().is_empty());
+            assert!(!lang.library_favs_rotation_settings().is_empty());
             assert!(!lang.settings_hwdec_title().is_empty());
             assert!(!lang.settings_hwdec_desc().is_empty());
             assert!(!lang.settings_battery_title().is_empty());

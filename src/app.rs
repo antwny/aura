@@ -53,6 +53,9 @@ pub enum Message {
     SelectOutput(String),
     SelectHwdec(String),
     ToggleRotation(bool),
+    ToggleRotationOnlyFavorites(bool),
+    StartFavoritesRotation,
+    NavigateToPage(Page),
     SelectInterval(u64),
     SelectRotationOrder(String),
     TogglePauseOnBattery(bool),
@@ -342,6 +345,19 @@ impl AuraApp {
         } else {
             Task::none()
         }
+    }
+
+    pub(crate) fn rotation_pool(&self) -> Vec<PathBuf> {
+        if self.config.rotation_only_favorites {
+            let favs: Vec<PathBuf> = self.videos.iter()
+                .filter(|v| self.config.is_favorite(&v.path.to_string_lossy()))
+                .map(|v| v.path.clone())
+                .collect();
+            if !favs.is_empty() {
+                return favs;
+            }
+        }
+        self.videos.iter().map(|v| v.path.clone()).collect()
     }
 }
 
@@ -729,6 +745,56 @@ impl cosmic::Application for AuraApp {
                 return self.set_status(status_msg);
             }
 
+            Message::ToggleRotationOnlyFavorites(active) => {
+                self.config.rotation_only_favorites = active;
+                let _ = self.config.save();
+                let status_msg = if active {
+                    self.language.status_rotation_source_favs()
+                } else {
+                    self.language.status_rotation_source_all()
+                };
+                return self.set_status(status_msg);
+            }
+
+            Message::StartFavoritesRotation => {
+                self.config.rotation = true;
+                self.config.rotation_only_favorites = true;
+                if self.config.interval == 0 {
+                    self.config.interval = 15;
+                }
+                let _ = self.config.save();
+
+                let pool = self.rotation_pool();
+                let mut tasks = Vec::new();
+                if let Some(first_path) = pool.first() {
+                    let path_str = first_path.to_string_lossy();
+                    let current_is_fav = self.config.current.as_deref().map(|c| c == path_str).unwrap_or(false);
+                    if !current_is_fav {
+                        let output = self.selected_output.clone();
+                        tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                            video_path: first_path.clone(),
+                            output,
+                        })));
+                    }
+                }
+                let status_msg = self.language.status_favs_rotation_started(self.config.interval);
+                tasks.push(self.set_status(status_msg));
+                return Task::batch(tasks);
+            }
+
+            Message::NavigateToPage(page) => {
+                let pos = match page {
+                    Page::Library => 0,
+                    Page::Explore => 1,
+                    Page::Monitors => 2,
+                    Page::Settings => 3,
+                    Page::About => 4,
+                };
+                self.nav.activate_position(pos);
+                self.active_page = page;
+                return Task::none();
+            }
+
             Message::SelectInterval(interval) => {
                 self.config.interval = interval;
                 let _ = self.config.save();
@@ -896,48 +962,50 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::NextWallpaper => {
-                if !self.videos.is_empty() {
+                let pool = self.rotation_pool();
+                if !pool.is_empty() {
                     let next_idx = if self.config.order == "random" {
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as usize;
-                        if self.videos.len() > 1 {
-                            let mut candidate = now % self.videos.len();
-                            if candidate == self.config.seq_index {
-                                candidate = (candidate + 1) % self.videos.len();
+                        if pool.len() > 1 {
+                            let mut candidate = now % pool.len();
+                            if candidate == self.config.seq_index % pool.len() {
+                                candidate = (candidate + 1) % pool.len();
                             }
                             candidate
                         } else {
                             0
                         }
                     } else {
-                        (self.config.seq_index + 1) % self.videos.len()
+                        (self.config.seq_index + 1) % pool.len()
                     };
+                    let video_path = pool[next_idx].clone();
                     self.config.seq_index = next_idx;
                     let _ = self.config.save();
-                    let video = &self.videos[next_idx];
                     let output = self.selected_output.clone();
                     return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
-                        video_path: video.path.clone(),
+                        video_path,
                         output,
                     }));
                 }
             }
 
             Message::PrevWallpaper => {
-                if !self.videos.is_empty() {
-                    let prev_idx = if self.config.seq_index == 0 {
-                        self.videos.len() - 1
+                let pool = self.rotation_pool();
+                if !pool.is_empty() {
+                    let prev_idx = if self.config.seq_index == 0 || self.config.seq_index >= pool.len() {
+                        pool.len() - 1
                     } else {
                         self.config.seq_index - 1
                     };
+                    let video_path = pool[prev_idx].clone();
                     self.config.seq_index = prev_idx;
                     let _ = self.config.save();
-                    let video = &self.videos[prev_idx];
                     let output = self.selected_output.clone();
                     return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
-                        video_path: video.path.clone(),
+                        video_path,
                         output,
                     }));
                 }
@@ -1531,30 +1599,31 @@ impl cosmic::Application for AuraApp {
             Message::BatteryStateChanged(None) => {}
 
             Message::RotationTick => {
-                if !self.videos.is_empty() && self.config.rotation {
+                let pool = self.rotation_pool();
+                if !pool.is_empty() && self.config.rotation {
                     let next_idx = if self.config.order == "random" {
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as usize;
-                        if self.videos.len() > 1 {
-                            let mut candidate = now % self.videos.len();
-                            if candidate == self.config.seq_index {
-                                candidate = (candidate + 1) % self.videos.len();
+                        if pool.len() > 1 {
+                            let mut candidate = now % pool.len();
+                            if candidate == self.config.seq_index % pool.len() {
+                                candidate = (candidate + 1) % pool.len();
                             }
                             candidate
                         } else {
                             0
                         }
                     } else {
-                        (self.config.seq_index + 1) % self.videos.len()
+                        (self.config.seq_index + 1) % pool.len()
                     };
+                    let video_path = pool[next_idx].clone();
                     self.config.seq_index = next_idx;
                     let _ = self.config.save();
-                    let video = &self.videos[next_idx];
                     let output = self.selected_output.clone();
                     return Task::done(cosmic::Action::App(Message::ApplyWallpaper {
-                        video_path: video.path.clone(),
+                        video_path,
                         output,
                     }));
                 }

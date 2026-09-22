@@ -101,10 +101,67 @@ impl AuraApp {
             .push(favorites_btn)
             .push(open_folder_btn);
 
-        let mut top_section = widget::column::with_capacity(3)
+        let mut top_section = widget::column::with_capacity(4)
             .spacing(10)
             .push(search_row)
             .push(widget::scrollable::horizontal(filter_bar));
+
+        // Favorites quick-rotation banner when browsing Favorites filter tab
+        if self.library_filter == LibraryFilter::Favorites && count_favorites > 0 {
+            let is_fav_rotation = self.config.rotation && self.config.rotation_only_favorites;
+            let heart_icon = widget::icon::from_name("emblem-favorite-symbolic").size(24);
+
+            let banner_info = if is_fav_rotation {
+                let is_random = self.config.order == "random";
+                widget::column::with_capacity(2)
+                    .spacing(2)
+                    .push(widget::text::title3(self.language.library_favs_rotation_title()))
+                    .push(widget::text::caption(self.language.library_favs_banner_desc_active(count_favorites, self.config.interval, is_random)))
+            } else {
+                widget::column::with_capacity(2)
+                    .spacing(2)
+                    .push(widget::text::title3(self.language.library_favs_rotation_title()))
+                    .push(widget::text::caption(self.language.library_favs_banner_desc_idle(count_favorites)))
+            };
+
+            let mut banner_actions = widget::row::with_capacity(2)
+                .spacing(8)
+                .align_y(Alignment::Center);
+
+            if is_fav_rotation {
+                banner_actions = banner_actions.push(
+                    widget::button::standard(self.language.library_favs_stop_rotation())
+                        .leading_icon(widget::icon::from_name("media-playback-pause-symbolic"))
+                        .on_press(Message::ToggleRotation(false))
+                );
+            } else {
+                banner_actions = banner_actions.push(
+                    widget::button::suggested(self.language.library_favs_start_rotation())
+                        .leading_icon(widget::icon::from_name("media-playlist-repeat-symbolic"))
+                        .on_press(Message::StartFavoritesRotation)
+                );
+            }
+
+            banner_actions = banner_actions.push(
+                widget::button::icon(widget::icon::from_name("preferences-system-symbolic"))
+                    .tooltip(self.language.library_favs_rotation_settings())
+                    .on_press(Message::NavigateToPage(crate::app::Page::Settings))
+            );
+
+            let banner_row = widget::row::with_capacity(3)
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .width(Length::Fill)
+                .push(heart_icon)
+                .push(widget::container(banner_info).width(Length::Fill))
+                .push(banner_actions);
+
+            let banner_box = widget::container(banner_row)
+                .padding(12)
+                .width(Length::Fill);
+
+            top_section = top_section.push(banner_box);
+        }
 
         // Target display selector chips
         if self.outputs.len() > 1 {

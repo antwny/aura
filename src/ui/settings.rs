@@ -163,7 +163,42 @@ impl AuraApp {
                     .on_press(Message::SelectRotationOrder("sequential".into()))
                 );
 
-            rotation_section = rotation_section.push(interval_row).push(order_row);
+            // Source options: All wallpapers vs Only favorites
+            let count_favs = self.config.favorites.len();
+            let source_row = widget::row::with_capacity(3)
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(widget::text::body(self.language.settings_rotation_source_label()))
+                .push(
+                    if !self.config.rotation_only_favorites {
+                        widget::button::suggested(self.language.settings_rotation_source_all())
+                    } else {
+                        widget::button::standard(self.language.settings_rotation_source_all())
+                    }
+                    .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                    .on_press(Message::ToggleRotationOnlyFavorites(false))
+                )
+                .push(
+                    if self.config.rotation_only_favorites {
+                        widget::button::suggested(format!("{} ({})", self.language.settings_rotation_source_favs(), count_favs))
+                    } else {
+                        widget::button::standard(format!("{} ({})", self.language.settings_rotation_source_favs(), count_favs))
+                    }
+                    .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
+                    .on_press(Message::ToggleRotationOnlyFavorites(true))
+                );
+
+            let hint_caption = if self.config.rotation_only_favorites {
+                if count_favs == 0 {
+                    widget::text::caption(self.language.settings_rotation_favs_empty_hint())
+                } else {
+                    widget::text::caption(self.language.settings_rotation_favs_active_hint(count_favs))
+                }
+            } else {
+                widget::text::caption(self.language.settings_rotation_desc())
+            };
+
+            rotation_section = rotation_section.push(source_row).push(hint_caption).push(interval_row).push(order_row);
         }
 
         col = col.push(widget::container(rotation_section).width(Length::Fill));

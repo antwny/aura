@@ -12,7 +12,17 @@ impl AuraApp {
             let p = std::path::Path::new(curr);
             let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| self.language.bar_active_title_default().into());
             let out = self.config.wallpapers.keys().cloned().collect::<Vec<_>>().join(", ");
-            (name, self.language.bar_display_label(&out))
+            let base_label = self.language.bar_display_label(&out);
+            let rot_badge = if self.config.rotation {
+                if self.config.rotation_only_favorites {
+                    format!(" • ♥ {}m", self.config.interval)
+                } else {
+                    format!(" • ⟳ {}m", self.config.interval)
+                }
+            } else {
+                String::new()
+            };
+            (name, format!("{}{}", base_label, rot_badge))
         } else {
             (self.language.bar_idle_title().into(), self.language.bar_idle_desc().into())
         };

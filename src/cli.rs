@@ -101,14 +101,25 @@ fn cmd_next() {
         return;
     }
 
-    let next_idx = if config.order == "random" {
-        (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as usize) % videos.len()
+    let pool: Vec<_> = if config.rotation_only_favorites {
+        let favs: Vec<_> = videos.iter().filter(|v| config.is_favorite(&v.path.to_string_lossy())).collect();
+        if favs.is_empty() {
+            videos.iter().collect()
+        } else {
+            favs
+        }
     } else {
-        (config.seq_index + 1) % videos.len()
+        videos.iter().collect()
+    };
+
+    let next_idx = if config.order == "random" {
+        (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as usize) % pool.len()
+    } else {
+        (config.seq_index + 1) % pool.len()
     };
 
     config.seq_index = next_idx;
-    let video = &videos[next_idx];
+    let video = pool[next_idx];
     let output = if config.output.is_empty() { "*".into() } else { config.output.clone() };
     let scaling = config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
 
@@ -140,14 +151,25 @@ fn cmd_prev() {
         return;
     }
 
-    let prev_idx = if config.seq_index == 0 {
-        videos.len() - 1
+    let pool: Vec<_> = if config.rotation_only_favorites {
+        let favs: Vec<_> = videos.iter().filter(|v| config.is_favorite(&v.path.to_string_lossy())).collect();
+        if favs.is_empty() {
+            videos.iter().collect()
+        } else {
+            favs
+        }
+    } else {
+        videos.iter().collect()
+    };
+
+    let prev_idx = if config.seq_index == 0 || config.seq_index >= pool.len() {
+        pool.len() - 1
     } else {
         config.seq_index - 1
     };
 
     config.seq_index = prev_idx;
-    let video = &videos[prev_idx];
+    let video = pool[prev_idx];
     let output = if config.output.is_empty() { "*".into() } else { config.output.clone() };
     let scaling = config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
 
@@ -301,7 +323,17 @@ fn cmd_status() {
         let sc = config.scaling.get(out).map(|s| s.as_str()).unwrap_or("fit");
         println!("  • {}: {} (Escala: {})", out, wall, sc);
     }
-    println!("Modo de rotación:      {} (cada {} min)", if config.order == "random" { "Aleatorio" } else { "Secuencial" }, config.interval);
+    let pool_str = if config.rotation_only_favorites {
+        format!("Solo favoritos [{}]", config.favorites.len())
+    } else {
+        "Toda la biblioteca".to_string()
+    };
+    println!("Rotación de fondos:    {} ({}, {}, cada {} min)",
+        if config.rotation { "Activada" } else { "Desactivada" },
+        pool_str,
+        if config.order == "random" { "Aleatorio" } else { "Secuencial" },
+        config.interval
+    );
     println!("Auto-Tema COSMIC:      {}", if config.auto_theme { "Activado" } else { "Desactivado" });
     println!("Silenciado:            {}", if config.mute { "Sí" } else { "No" });
     println!("Volumen:               {}%", config.volume);

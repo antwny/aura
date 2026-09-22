@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.3] - 2026-09-21
 
-### Added
-- **Wallpaper Favorites System**:
+- **Wallpaper Favorites System & Dedicated Auto-Rotation**:
   - Added favorite heart toggle button on library cards with COSMIC accent color highlighting (`Button::Suggested`) when active.
   - Dedicated "Favoritos" category filter in the Library toolbar with real-time count.
+  - Quick-action Favorites rotation banner in Library: 1-click start/stop auto-rotation exclusively for favorite wallpapers (`StartFavoritesRotation`).
+  - Settings rotation source selector: choose between "Toda la biblioteca" (All wallpapers) and "Solo favoritos" (Favorites only) with live count badge and helpful empty state guidance.
+  - Safe pool fallback: if favorite rotation is enabled but no favorites are marked, auto-rotation gracefully falls back to all wallpapers without interruption.
+  - Now playing bar rotation indicator: shows interval and active pool badge (e.g. `• ♥ 15m` for favorites or `• ⟳ 15m` for library).
+  - CLI `aura next`, `prev`, and `status` support for favorite rotation pools.
   - Silent, instant state toggling with persistent configuration in `config.json`.
 - **Library Sorting & Responsive Navigation**:
   - Added sorting toggle by "Más recientes" (newest first) and "Más antiguos" (oldest first).

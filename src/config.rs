@@ -34,6 +34,8 @@ pub struct Config {
     pub favorites: Vec<String>,
     #[serde(default = "default_library_sort")]
     pub library_sort: String,
+    #[serde(default)]
+    pub rotation_only_favorites: bool,
 }
 
 fn default_library_sort() -> String {
@@ -147,6 +149,7 @@ impl Default for Config {
             language: default_language(),
             favorites: Vec::new(),
             library_sort: default_library_sort(),
+            rotation_only_favorites: false,
         }
     }
 }
@@ -249,6 +252,7 @@ mod tests {
         assert!(!cfg.dirs.is_empty());
         assert!(!cfg.dirs.iter().any(|d| d.to_lowercase().ends_with("downloads") || d.to_lowercase().ends_with("descargas")));
         assert!(!cfg.autostart);
+        assert!(!cfg.rotation_only_favorites);
     }
 
     #[test]
@@ -258,6 +262,7 @@ mod tests {
         cfg.scaling.insert("DP-1".into(), "fill".into());
         cfg.current = Some("/path/to/vid.mp4".into());
         cfg.language = "en".into();
+        cfg.rotation_only_favorites = true;
 
         let json = serde_json::to_string_pretty(&cfg).expect("serialize config");
         let deserialized: Config = serde_json::from_str(&json).expect("deserialize config");
@@ -266,6 +271,7 @@ mod tests {
         assert_eq!(deserialized.wallpapers.get("DP-1").unwrap(), "/path/to/vid.mp4");
         assert_eq!(deserialized.scaling.get("DP-1").unwrap(), "fill");
         assert_eq!(deserialized.language, "en");
+        assert!(deserialized.rotation_only_favorites);
     }
 
     #[test]
@@ -316,5 +322,50 @@ mod tests {
 
         assert!(!cfg.toggle_favorite("/path/to/test.mp4"));
         assert!(!cfg.is_favorite("/path/to/test.mp4"));
+
+        assert!(!cfg.rotation_only_favorites);
+        cfg.rotation_only_favorites = true;
+        assert!(cfg.rotation_only_favorites);
+    }
+
+    #[test]
+    fn test_rotation_only_favorites_pool() {
+        let mut cfg = Config::default();
+        let paths = vec![
+            "/wallpapers/1.mp4".to_string(),
+            "/wallpapers/2.mp4".to_string(),
+            "/wallpapers/3.mp4".to_string(),
+        ];
+
+        // 1. When rotation_only_favorites is false: pool includes all
+        let pool: Vec<&String> = if cfg.rotation_only_favorites {
+            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
+            if favs.is_empty() { paths.iter().collect() } else { favs }
+        } else {
+            paths.iter().collect()
+        };
+        assert_eq!(pool.len(), 3);
+
+        // 2. When rotation_only_favorites is true, but no favorites: falls back to all
+        cfg.rotation_only_favorites = true;
+        let pool: Vec<&String> = if cfg.rotation_only_favorites {
+            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
+            if favs.is_empty() { paths.iter().collect() } else { favs }
+        } else {
+            paths.iter().collect()
+        };
+        assert_eq!(pool.len(), 3);
+
+        // 3. When favorites are added: filters strictly to favorites
+        cfg.toggle_favorite("/wallpapers/2.mp4");
+        assert!(cfg.is_favorite("/wallpapers/2.mp4"));
+        let pool: Vec<&String> = if cfg.rotation_only_favorites {
+            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
+            if favs.is_empty() { paths.iter().collect() } else { favs }
+        } else {
+            paths.iter().collect()
+        };
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool[0], "/wallpapers/2.mp4");
     }
 }
