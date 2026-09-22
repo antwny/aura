@@ -196,6 +196,20 @@ impl Language {
         }
     }
 
+    pub fn library_fav_add(&self) -> &'static str {
+        match self {
+            Language::Es => "Añadir a favoritos",
+            Language::En => "Add to favorites",
+        }
+    }
+
+    pub fn library_fav_remove(&self) -> &'static str {
+        match self {
+            Language::Es => "Quitar de favoritos",
+            Language::En => "Remove from favorites",
+        }
+    }
+
     pub fn library_sort_newest(&self) -> &'static str {
         match self {
             Language::Es => "Más recientes",

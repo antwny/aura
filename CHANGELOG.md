@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.3] - 2026-09-21
 
+### Added
+- **Wallpaper Favorites System**:
+  - Added favorite heart toggle button on library cards with COSMIC accent color highlighting (`Button::Suggested`) when active.
+  - Dedicated "Favoritos" category filter in the Library toolbar with real-time count.
+  - Silent, instant state toggling with persistent configuration in `config.json`.
+- **Library Sorting & Responsive Navigation**:
+  - Added sorting toggle by "Más recientes" (newest first) and "Más antiguos" (oldest first).
+  - Horizontal smooth scrolling for category chips and monitor selectors across Library and Explore views.
+  - Centered responsive card grid alignment across ultra-wide, standard, and tiled window dimensions.
+
 ### Fixed
+- **COSMIC Desktop Icons & Right-Click Accessibility (PR #3)**:
+  - Switched `mpvpaper` layer-shell target from `bottom` to `background`.
+  - Ensures COSMIC desktop icons (`cosmic-files-applet`) and desktop context menus remain fully visible and clickable above video wallpapers (thanks to @gavindsouza).
 - **Persistent Background Wallpaper Process (Fedora, Pop!_OS, CachyOS, Arch Linux)**:
   - Resolved an issue where closing the Aura application window or terminal tab terminated active video wallpapers on Fedora and other distributions.
   - Decoupled `mpvpaper` execution into an independent user-level systemd scope (`systemd-run --user --scope --quiet`) with automatic fallback to direct execution on non-systemd systems, isolating the wallpaper engine from transient desktop cgroups and `KillMode=control-group`.

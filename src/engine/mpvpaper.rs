@@ -445,7 +445,9 @@ impl WallpaperEngine {
             Command::new(&mpv_bin)
         };
 
-        cmd.arg("-l").arg("bottom");
+        // Run mpvpaper on `background` layer so COSMIC desktop icons (`cosmic-files-applet`)
+        // and right-click desktop interactions remain fully accessible on the `bottom` layer.
+        cmd.arg("-l").arg("background");
 
         if auto_pause {
             cmd.arg("-p");
@@ -476,7 +478,7 @@ impl WallpaperEngine {
             Err(e) => {
                 if use_systemd_run {
                     let mut fallback = Command::new(&mpv_bin);
-                    fallback.arg("-l").arg("bottom");
+                    fallback.arg("-l").arg("background");
                     if auto_pause {
                         fallback.arg("-p");
                     }

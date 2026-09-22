@@ -316,9 +316,19 @@ impl AuraApp {
                     };
 
                     let is_fav = self.config.is_favorite(&path_str);
-                    let fav_btn = widget::button::icon(widget::icon::from_name("emblem-favorite-symbolic"))
-                        .selected(is_fav)
+                    let fav_tooltip = if is_fav {
+                        self.language.library_fav_remove()
+                    } else {
+                        self.language.library_fav_add()
+                    };
+
+                    let mut fav_btn = widget::button::icon(widget::icon::from_name("emblem-favorite-symbolic"))
+                        .tooltip(fav_tooltip)
                         .on_press(Message::ToggleFavorite(video.path.clone()));
+
+                    if is_fav {
+                        fav_btn = fav_btn.class(cosmic::theme::Button::Suggested);
+                    }
 
                     let mut action_row = widget::row::with_capacity(3)
                         .spacing(8)
