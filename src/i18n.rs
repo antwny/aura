@@ -325,6 +325,20 @@ impl Language {
         }
     }
 
+    pub fn bar_prev(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondo anterior",
+            Language::En => "Previous wallpaper",
+        }
+    }
+
+    pub fn bar_next(&self) -> &'static str {
+        match self {
+            Language::Es => "Siguiente fondo",
+            Language::En => "Next wallpaper",
+        }
+    }
+
     pub fn bar_muted(&self) -> &'static str {
         match self {
             Language::Es => "Silenciado",
@@ -1572,6 +1586,8 @@ mod tests {
             assert!(!lang.settings_auto_pause().is_empty());
             assert!(!lang.settings_auto_pause_desc().is_empty());
             assert!(!lang.bar_volume().is_empty());
+            assert!(!lang.bar_prev().is_empty());
+            assert!(!lang.bar_next().is_empty());
         }
     }
 

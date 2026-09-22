@@ -67,6 +67,7 @@
           <li>Switched wallpaper rendering layer to 'background', ensuring COSMIC desktop icons and right-click menus remain accessible (PR #3).</li>
           <li>Wallpaper favorites system with dynamic COSMIC accent-colored heart button and dedicated filter tab.</li>
           <li>Dedicated favorites auto-rotation workflow with 1-click start/stop banner in Library and Settings source selector.</li>
+          <li>Adaptive responsive bottom status bar with 3-tier layout dynamically adapting to wide, standard, and narrow tiled windows.</li>
           <li>Library sorting toggle by newest and oldest wallpapers, with responsive horizontal scrolling navigation.</li>
           <li>Decoupled wallpaper engine execution via user-level systemd scopes, isolating playback from application cgroups on Fedora and systemd-based distributions.</li>
           <li>Added POSIX session detachment and SIGHUP ignoring, preventing terminal closures from interrupting active wallpapers.</li>

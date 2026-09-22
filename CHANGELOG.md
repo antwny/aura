@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now playing bar rotation indicator: shows interval and active pool badge (e.g. `• ♥ 15m` for favorites or `• ⟳ 15m` for library).
   - CLI `aura next`, `prev`, and `status` support for favorite rotation pools.
   - Silent, instant state toggling with persistent configuration in `config.json`.
+- **Responsive Now-Playing Status Bar**:
+  - Re-architected the global bottom status bar with adaptive 3-tier breakpoint sizing:
+    - *Wide Desktop (>= 960px)*: Spacious 3-column layout with full labeled buttons, volume percentage, and comprehensive hardware/Wayland badges.
+    - *Standard Window (680px - 959px)*: Streamlined 3-column single row with compact icon buttons and tooltips, ensuring the wallpaper title never gets crushed.
+    - *Compact / Tiled / Narrow (< 680px)*: Adaptive 2-row layout with wallpaper title and GPU status on top, and centered touch-friendly playback and volume controls below, completely eliminating clipping and horizontal overflow.
+  - Added bilingual tooltips for previous and next wallpaper buttons (`Fondo anterior` / `Siguiente fondo`).
 - **Library Sorting & Responsive Navigation**:
   - Added sorting toggle by "Más recientes" (newest first) and "Más antiguos" (oldest first).
   - Horizontal smooth scrolling for category chips and monitor selectors across Library and Explore views.
