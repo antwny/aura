@@ -16,14 +16,23 @@ pub struct VideoItem {
     pub path: PathBuf,
     pub name: String,
     pub name_lower: String,
+    pub size_bytes: u64,
     pub size_formatted: String,
+    pub modified: u64,
     pub thumb_path: Option<PathBuf>,
     pub is_video: bool,
     pub is_downloaded: bool,
 }
 
 impl VideoItem {
-    pub fn new(path: PathBuf, name: String, size_formatted: String, thumb_path: Option<PathBuf>) -> Self {
+    pub fn new(
+        path: PathBuf,
+        name: String,
+        size_bytes: u64,
+        size_formatted: String,
+        modified: u64,
+        thumb_path: Option<PathBuf>,
+    ) -> Self {
         let is_video = path
             .extension()
             .and_then(|e| e.to_str())
@@ -36,7 +45,9 @@ impl VideoItem {
             path,
             name,
             name_lower,
+            size_bytes,
             size_formatted,
+            modified,
             thumb_path,
             is_video,
             is_downloaded,
@@ -133,15 +144,23 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
                         let canonical = path.to_path_buf();
                         if seen_paths.insert(canonical.clone()) {
                             let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Wallpaper".into());
-                            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            let meta = entry.metadata().ok();
+                            let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
                             let size_formatted = format_file_size(size_bytes);
+                            let modified = meta
+                                .and_then(|m| m.modified().ok())
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
 
                             let thumb_path = resolve_or_link_thumb(path);
 
                             items.push(VideoItem::new(
                                 canonical,
                                 name,
+                                size_bytes,
                                 size_formatted,
+                                modified,
                                 thumb_path,
                             ));
                         }
@@ -158,15 +177,23 @@ pub fn scan_directories(dirs: &[String], extra_files: &[String]) -> Vec<VideoIte
             let canonical = path.to_path_buf();
             if seen_paths.insert(canonical.clone()) {
                 let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Wallpaper".into());
-                let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
+                let meta = path.metadata().ok();
+                let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
                 let size_formatted = format_file_size(size_bytes);
+                let modified = meta
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
 
                 let thumb_path = resolve_or_link_thumb(path);
 
                 items.push(VideoItem::new(
                     canonical,
                     name,
+                    size_bytes,
                     size_formatted,
+                    modified,
                     thumb_path,
                 ));
             }
@@ -233,17 +260,23 @@ mod tests {
         let vid = VideoItem::new(
             PathBuf::from("/home/antwny/Videos/cool.mp4"),
             "cool".into(),
+            10_000_000,
             "10 MB".into(),
+            1700000000,
             None,
         );
         assert!(vid.is_video());
         assert!(!vid.is_image());
         assert!(!vid.is_downloaded());
+        assert_eq!(vid.size_bytes, 10_000_000);
+        assert_eq!(vid.modified, 1700000000);
 
         let img = VideoItem::new(
             crate::online::wallpapers_online_dir().join("bing_123.jpg"),
             "bing_123".into(),
+            2_000_000,
             "2 MB".into(),
+            1700000500,
             None,
         );
         assert!(!img.is_video());
@@ -268,8 +301,48 @@ mod tests {
 
         // Clean up test file
         let _ = std::fs::remove_file(&online_thumb);
-        let potential_thumb = thumbs::thumb_path_for_video(&wallpaper_file);
-        let _ = std::fs::remove_file(&potential_thumb);
+    }
+
+    #[test]
+    fn test_video_items_sorting() {
+        let v1 = VideoItem::new(
+            PathBuf::from("/a.mp4"),
+            "A".into(),
+            100,
+            "100 B".into(),
+            1000,
+            None,
+        );
+        let v2 = VideoItem::new(
+            PathBuf::from("/b.mp4"),
+            "B".into(),
+            200,
+            "200 B".into(),
+            2000,
+            None,
+        );
+        let v3 = VideoItem::new(
+            PathBuf::from("/c.mp4"),
+            "C".into(),
+            300,
+            "300 B".into(),
+            1500,
+            None,
+        );
+
+        let mut list = vec![v1, v2, v3];
+
+        // Sort by newest
+        list.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+        assert_eq!(list[0].name, "B");
+        assert_eq!(list[1].name, "C");
+        assert_eq!(list[2].name, "A");
+
+        // Sort by oldest
+        list.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+        assert_eq!(list[0].name, "A");
+        assert_eq!(list[1].name, "C");
+        assert_eq!(list[2].name, "B");
     }
 }
 

@@ -76,7 +76,7 @@ impl AuraApp {
 
             let mut header_col = widget::column::with_capacity(5)
                 .spacing(8)
-                .push(top_bar)
+                .push(widget::scrollable::horizontal(top_bar))
                 .push(widget::text::caption(subtitle));
 
             if current_source == OnlineSource::MotionBGS {
@@ -188,7 +188,7 @@ impl AuraApp {
                     .push(res_4k)
                     .push(res_hd);
 
-                header_col = header_col.push(search_row).push(filters_row).push(res_row);
+                header_col = header_col.push(search_row).push(widget::scrollable::horizontal(filters_row)).push(res_row);
             }
 
             if current_source == OnlineSource::Wallhaven {
@@ -294,7 +294,7 @@ impl AuraApp {
                     .push(res_2k)
                     .push(res_uw);
 
-                header_col = header_col.push(search_row).push(filters_row).push(res_row);
+                header_col = header_col.push(search_row).push(widget::scrollable::horizontal(filters_row)).push(widget::scrollable::horizontal(res_row));
             }
 
             if current_source == OnlineSource::Minimalistic {
@@ -413,10 +413,13 @@ impl AuraApp {
 
             let mut cards_column = widget::column::with_capacity(items.len() / cols + 1)
                 .spacing(gap)
-                .width(Length::Fill);
+                .width(Length::Fill)
+                .align_x(Horizontal::Center);
 
             for chunk in items.chunks(cols) {
-                let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
+                let mut card_row = widget::row::with_capacity(chunk.len())
+                    .spacing(gap)
+                    .align_y(Alignment::Center);
                 for item in chunk {
                     let is_downloading = downloading_ids.contains(&item.id);
                     let downloaded_path = item.is_downloaded();

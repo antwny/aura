@@ -1,4 +1,4 @@
-use crate::app::{AuraApp, LibraryFilter, Message};
+use crate::app::{AuraApp, LibraryFilter, LibrarySort, Message};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -6,15 +6,31 @@ use cosmic::Element;
 
 impl AuraApp {
     pub(crate) fn view_library(&self) -> Element<'_, Message> {
-        let search_bar = widget::text_input::search_input(self.language.library_search_placeholder(), &self.search_query)
+        let search_input = widget::text_input::search_input(self.language.library_search_placeholder(), &self.search_query)
             .on_input(Message::SearchChanged)
             .width(Length::Fill);
+
+        let (sort_icon, sort_label) = match self.library_sort {
+            LibrarySort::Newest => ("view-sort-descending-symbolic", self.language.library_sort_newest()),
+            LibrarySort::Oldest => ("view-sort-ascending-symbolic", self.language.library_sort_oldest()),
+        };
+
+        let sort_btn = widget::button::standard(sort_label)
+            .leading_icon(widget::icon::from_name(sort_icon))
+            .on_press(Message::ToggleLibrarySort);
+
+        let search_row = widget::row::with_capacity(2)
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(search_input)
+            .push(sort_btn);
 
         // Quick category filter counts
         let mut count_all = 0;
         let mut count_live = 0;
         let mut count_static = 0;
         let mut count_downloaded = 0;
+        let mut count_favorites = 0;
 
         for v in &self.videos {
             count_all += 1;
@@ -25,6 +41,9 @@ impl AuraApp {
             }
             if v.is_downloaded {
                 count_downloaded += 1;
+            }
+            if self.config.is_favorite(&v.path.to_string_lossy()) {
+                count_favorites += 1;
             }
         }
 
@@ -60,23 +79,32 @@ impl AuraApp {
         .leading_icon(widget::icon::from_name("folder-download-symbolic"))
         .on_press(Message::SelectLibraryFilter(LibraryFilter::Downloaded));
 
+        let favorites_btn = if self.library_filter == LibraryFilter::Favorites {
+            widget::button::suggested(format!("{} ({})", self.language.library_filter_favorites(), count_favorites))
+        } else {
+            widget::button::standard(format!("{} ({})", self.language.library_filter_favorites(), count_favorites))
+        }
+        .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
+        .on_press(Message::SelectLibraryFilter(LibraryFilter::Favorites));
+
         let open_folder_btn = widget::button::standard(self.language.open_in_file_manager())
             .leading_icon(widget::icon::from_name("folder-open-symbolic"))
             .on_press(Message::OpenWallpapersFolder);
 
-        let filter_bar = widget::row::with_capacity(5)
+        let filter_bar = widget::row::with_capacity(6)
             .spacing(8)
             .align_y(Alignment::Center)
             .push(all_btn)
             .push(live_btn)
             .push(static_btn)
             .push(downloaded_btn)
+            .push(favorites_btn)
             .push(open_folder_btn);
 
         let mut top_section = widget::column::with_capacity(3)
             .spacing(10)
-            .push(search_bar)
-            .push(filter_bar);
+            .push(search_row)
+            .push(widget::scrollable::horizontal(filter_bar));
 
         // Target display selector chips
         if self.outputs.len() > 1 {
@@ -108,7 +136,7 @@ impl AuraApp {
                 out_row = out_row.push(chip);
             }
 
-            top_section = top_section.push(out_row);
+            top_section = top_section.push(widget::scrollable::horizontal(out_row));
         }
 
         if self.videos.is_empty() {
@@ -148,12 +176,14 @@ impl AuraApp {
             Some(search_trimmed.to_lowercase())
         };
 
-        let filtered_videos: Vec<_> = self.videos.iter().filter(|v| {
+        let mut filtered_videos: Vec<_> = self.videos.iter().filter(|v| {
+            let path_str = v.path.to_string_lossy();
             let match_type = match self.library_filter {
                 LibraryFilter::All => true,
                 LibraryFilter::Live => v.is_video,
                 LibraryFilter::Static => !v.is_video,
                 LibraryFilter::Downloaded => v.is_downloaded,
+                LibraryFilter::Favorites => self.config.is_favorite(&path_str),
             };
 
             if !match_type {
@@ -167,8 +197,29 @@ impl AuraApp {
             }
         }).collect();
 
+        match self.library_sort {
+            LibrarySort::Newest => {
+                filtered_videos.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+            }
+            LibrarySort::Oldest => {
+                filtered_videos.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+            }
+        }
+
         if filtered_videos.is_empty() {
-            let empty_filter_msg = widget::container(
+            let empty_content = if self.library_filter == LibraryFilter::Favorites {
+                widget::column::with_capacity(4)
+                    .spacing(10)
+                    .align_x(Horizontal::Center)
+                    .push(widget::icon::from_name("emblem-favorite-symbolic").size(48))
+                    .push(widget::text::title3(self.language.library_favorites_empty()))
+                    .push(widget::text::caption(self.language.library_favorites_empty_desc()))
+                    .push(
+                        widget::button::standard(self.language.library_filter_all())
+                            .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                            .on_press(Message::SelectLibraryFilter(LibraryFilter::All))
+                    )
+            } else {
                 widget::column::with_capacity(2)
                     .spacing(8)
                     .align_x(Horizontal::Center)
@@ -178,11 +229,13 @@ impl AuraApp {
                             .leading_icon(widget::icon::from_name("view-grid-symbolic"))
                             .on_press(Message::SelectLibraryFilter(LibraryFilter::All))
                     )
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center);
+            };
+
+            let empty_filter_msg = widget::container(empty_content)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
 
             return Element::from(
                 widget::column::with_capacity(2)
@@ -212,10 +265,14 @@ impl AuraApp {
 
             let mut cards_column = widget::column::with_capacity(filtered_videos.len() / cols + 1)
                 .spacing(gap)
-                .width(Length::Fill);
+                .width(Length::Fill)
+                .align_x(Horizontal::Center);
 
             for chunk in filtered_videos.chunks(cols) {
-                let mut card_row = widget::row::with_capacity(chunk.len()).spacing(gap);
+                let mut card_row = widget::row::with_capacity(chunk.len())
+                    .spacing(gap)
+                    .align_y(Alignment::Center);
+
                 for video in chunk {
                     let path_str = video.path.to_string_lossy().to_string();
                     let is_active = active_paths.contains(path_str.as_str());
@@ -258,16 +315,16 @@ impl AuraApp {
                             })
                     };
 
+                    let is_fav = self.config.is_favorite(&path_str);
+                    let fav_btn = widget::button::icon(widget::icon::from_name("emblem-favorite-symbolic"))
+                        .selected(is_fav)
+                        .on_press(Message::ToggleFavorite(video.path.clone()));
+
                     let mut action_row = widget::row::with_capacity(3)
                         .spacing(8)
                         .align_y(Alignment::Center)
-                        .push(apply_btn);
-
-                    // Show in file manager
-                    action_row = action_row.push(
-                        widget::button::icon(widget::icon::from_name("folder-symbolic"))
-                            .on_press(Message::ShowInFileManager(video.path.clone()))
-                    );
+                        .push(apply_btn)
+                        .push(fav_btn);
 
                     // Safe delete vs remove: distinguish online download vs user file
                     if video.is_downloaded {

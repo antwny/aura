@@ -31,6 +31,14 @@ pub enum LibraryFilter {
     Live,
     Static,
     Downloaded,
+    Favorites,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LibrarySort {
+    #[default]
+    Newest,
+    Oldest,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +46,9 @@ pub enum LibraryFilter {
 pub enum Message {
     SelectPage(nav_bar::Id),
     SelectLibraryFilter(LibraryFilter),
+    ToggleFavorite(PathBuf),
+    ToggleLibrarySort,
+    SelectLibrarySort(LibrarySort),
     SetLanguage(crate::i18n::Language),
     SelectOutput(String),
     SelectHwdec(String),
@@ -221,6 +232,7 @@ pub struct AuraApp {
     pub(crate) wallhaven_resolution: String,
     pub(crate) wallhaven_search: String,
     pub(crate) library_filter: LibraryFilter,
+    pub(crate) library_sort: LibrarySort,
     pub(crate) update_status: UpdateStatus,
     pub(crate) pending_auto_apply_id: Option<String>,
     pub(crate) last_update_check: Option<Instant>,
@@ -453,6 +465,10 @@ impl cosmic::Application for AuraApp {
         }
 
         let is_window_open = !flags.hidden;
+        let library_sort = match config.library_sort.as_str() {
+            "oldest" => LibrarySort::Oldest,
+            _ => LibrarySort::Newest,
+        };
 
         let app = Self {
             core,
@@ -501,6 +517,7 @@ impl cosmic::Application for AuraApp {
             wallhaven_resolution: "all".into(),
             wallhaven_search: String::new(),
             library_filter: LibraryFilter::All,
+            library_sort,
             update_status: UpdateStatus::Idle,
             pending_auto_apply_id: None,
             last_update_check: None,
@@ -1545,6 +1562,33 @@ impl cosmic::Application for AuraApp {
 
             Message::SelectLibraryFilter(filter) => {
                 self.library_filter = filter;
+            }
+
+            Message::ToggleFavorite(path) => {
+                let path_str = path.to_string_lossy().to_string();
+                self.config.toggle_favorite(&path_str);
+                let _ = self.config.save();
+            }
+
+            Message::ToggleLibrarySort => {
+                self.library_sort = match self.library_sort {
+                    LibrarySort::Newest => LibrarySort::Oldest,
+                    LibrarySort::Oldest => LibrarySort::Newest,
+                };
+                self.config.library_sort = match self.library_sort {
+                    LibrarySort::Newest => "newest".into(),
+                    LibrarySort::Oldest => "oldest".into(),
+                };
+                let _ = self.config.save();
+            }
+
+            Message::SelectLibrarySort(sort) => {
+                self.library_sort = sort;
+                self.config.library_sort = match sort {
+                    LibrarySort::Newest => "newest".into(),
+                    LibrarySort::Oldest => "oldest".into(),
+                };
+                let _ = self.config.save();
             }
 
             Message::SelectExploreSource(source) => {

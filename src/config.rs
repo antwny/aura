@@ -30,6 +30,14 @@ pub struct Config {
     pub autostart: bool,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default)]
+    pub favorites: Vec<String>,
+    #[serde(default = "default_library_sort")]
+    pub library_sort: String,
+}
+
+fn default_library_sort() -> String {
+    "newest".to_string()
 }
 
 fn default_auto_pause() -> bool {
@@ -137,6 +145,8 @@ impl Default for Config {
             keep_running_on_close: true,
             autostart: false,
             language: default_language(),
+            favorites: Vec::new(),
+            library_sort: default_library_sort(),
         }
     }
 }
@@ -201,6 +211,20 @@ impl Config {
         std::fs::write(&tmp, content)?;
         std::fs::rename(&tmp, &target)?;
         Ok(())
+    }
+
+    pub fn is_favorite(&self, path: &str) -> bool {
+        self.favorites.iter().any(|f| f == path)
+    }
+
+    pub fn toggle_favorite(&mut self, path: &str) -> bool {
+        if let Some(pos) = self.favorites.iter().position(|f| f == path) {
+            self.favorites.remove(pos);
+            false
+        } else {
+            self.favorites.push(path.to_string());
+            true
+        }
     }
 }
 
@@ -279,5 +303,18 @@ mod tests {
         let file = Config::config_file();
         assert!(dir.ends_with(".config/aura"));
         assert!(file.ends_with(".config/aura/config.json"));
+    }
+
+    #[test]
+    fn test_favorites_and_sort() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.library_sort, "newest");
+        assert!(!cfg.is_favorite("/path/to/test.mp4"));
+
+        assert!(cfg.toggle_favorite("/path/to/test.mp4"));
+        assert!(cfg.is_favorite("/path/to/test.mp4"));
+
+        assert!(!cfg.toggle_favorite("/path/to/test.mp4"));
+        assert!(!cfg.is_favorite("/path/to/test.mp4"));
     }
 }

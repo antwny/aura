@@ -175,6 +175,41 @@ impl Language {
         }
     }
 
+    pub fn library_filter_favorites(&self) -> &'static str {
+        match self {
+            Language::Es => "Favoritos",
+            Language::En => "Favorites",
+        }
+    }
+
+    pub fn library_favorites_empty(&self) -> &'static str {
+        match self {
+            Language::Es => "No tienes fondos favoritos aún",
+            Language::En => "No favorite wallpapers yet",
+        }
+    }
+
+    pub fn library_favorites_empty_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Haz clic en el corazón de cualquier fondo para guardarlo aquí",
+            Language::En => "Click the heart icon on any wallpaper to add it here",
+        }
+    }
+
+    pub fn library_sort_newest(&self) -> &'static str {
+        match self {
+            Language::Es => "Más recientes",
+            Language::En => "Newest",
+        }
+    }
+
+    pub fn library_sort_oldest(&self) -> &'static str {
+        match self {
+            Language::Es => "Más antiguos",
+            Language::En => "Oldest",
+        }
+    }
+
     pub fn library_filter_empty(&self) -> &'static str {
         match self {
             Language::Es => "No se encontraron fondos en esta categoría o búsqueda",
