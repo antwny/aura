@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.3.3" date="2026-09-21">
+      <description>
+        <p>Aura 1.3.3 ensures live wallpapers run reliably in the background independently of the application window:</p>
+        <ul>
+          <li>Decoupled wallpaper engine execution via user-level systemd scopes, isolating playback from application cgroups on Fedora and systemd-based distributions.</li>
+          <li>Added POSIX session detachment and SIGHUP ignoring, preventing terminal closures from interrupting active wallpapers.</li>
+          <li>Window close no longer terminates the wallpaper engine, allowing continuous desktop playback after closing the Aura window.</li>
+          <li>Seamless IPC socket re-adoption to recognize and control existing wallpaper processes without interrupting playback.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.2" date="2026-09-18">
       <description>
         <p>Aura 1.3.2 broadens support across the entire COSMIC Desktop ecosystem and resolves in-app restart behavior:</p>

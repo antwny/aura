@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-09-21
+
+### Fixed
+- **Persistent Background Wallpaper Process (Fedora, Pop!_OS, CachyOS, Arch Linux)**:
+  - Resolved an issue where closing the Aura application window or terminal tab terminated active video wallpapers on Fedora and other distributions.
+  - Decoupled `mpvpaper` execution into an independent user-level systemd scope (`systemd-run --user --scope --quiet`) with automatic fallback to direct execution on non-systemd systems, isolating the wallpaper engine from transient desktop cgroups and `KillMode=control-group`.
+  - Added POSIX session detachment (`pre_exec` with `setsid()` and `SIGHUP` signal ignoring), ensuring that closing the terminal or shell tab from which Aura was launched never interrupts active wallpapers.
+  - Removed explicit engine termination (`stop_all()`) on window close (`WindowCloseRequested`), maintaining live wallpaper playback continuously while closing the GUI.
+  - Implemented seamless IPC socket re-adoption (`ipc_is_alive` and `ipc_get_pid`), allowing subsequent Aura sessions to detect and control active wallpapers without restarting them or causing display flicker.
+  - Added graceful `quit` command signaling via IPC in `stop_output` and `stop_all` for adopted background processes.
+
 ## [1.3.2] - 2026-09-18
 
 ### Added

@@ -862,12 +862,11 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::WindowCloseRequested(id) => {
+                self.is_window_open = false;
+                self.core_mut().set_main_window_id(None);
                 if self.config.keep_running_on_close {
-                    self.is_window_open = false;
-                    self.core_mut().set_main_window_id(None);
                     return cosmic::iced::window::close(id);
                 } else {
-                    self.engine.stop_all();
                     std::process::exit(0);
                 }
             }

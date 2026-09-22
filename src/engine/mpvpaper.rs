@@ -126,7 +126,6 @@ pub fn ipc_cycle_pause(sock_path: &Path) -> Result<bool, String> {
     Ok(false)
 }
 
-#[allow(dead_code)]
 pub fn ipc_get_pause(sock_path: &Path) -> Option<bool> {
     let get_cmd = r#"{"command": ["get_property", "pause"]}"#;
     if let Ok(resp) = send_ipc_command(sock_path, get_cmd) {
@@ -135,6 +134,40 @@ pub fn ipc_get_pause(sock_path: &Path) -> Option<bool> {
         }
     }
     None
+}
+
+pub fn ipc_get_pid(sock_path: &Path) -> Option<u32> {
+    let get_cmd = r#"{"command": ["get_property", "pid"]}"#;
+    if let Ok(resp) = send_ipc_command(sock_path, get_cmd) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&resp) {
+            return val.get("data").and_then(|d| d.as_u64()).map(|p| p as u32);
+        }
+    }
+    None
+}
+
+pub fn can_use_systemd_run() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        if std::path::Path::new("/.flatpak-info").exists()
+            || std::env::var_os("FLATPAK_ID").is_some()
+            || std::env::var_os("SNAP").is_some()
+        {
+            return false;
+        }
+        if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none()
+            && std::env::var_os("XDG_RUNTIME_DIR").is_none()
+        {
+            return false;
+        }
+        Command::new("systemd-run")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
 }
 
 pub fn is_pid_stopped(pid: u32) -> bool {
@@ -356,6 +389,8 @@ impl WallpaperEngine {
                     can_reuse = true;
                 }
             }
+        } else if ipc_is_alive(&sock_path) {
+            can_reuse = true;
         }
 
         if can_reuse {
@@ -378,8 +413,13 @@ impl WallpaperEngine {
 
             if ipc_loadfile(&sock_path, &effective_path_str).is_ok() {
                 self.is_paused = false;
+                self.sockets.insert(output.to_string(), sock_path.clone());
                 if let Some(child) = self.processes.get(output) {
                     return Ok(child.id());
+                } else if let Some(pid) = ipc_get_pid(&sock_path) {
+                    return Ok(pid);
+                } else {
+                    return Ok(0);
                 }
             }
         }
@@ -391,7 +431,20 @@ impl WallpaperEngine {
         let mut opts = Self::build_mpv_options(scaling, mute, volume, hwdec, is_image);
         opts.push_str(&format!(" --input-ipc-server={}", sock_path.display()));
 
-        let mut cmd = Command::new(resolve_mpvpaper_binary());
+        let mpv_bin = resolve_mpvpaper_binary();
+        let use_systemd_run = can_use_systemd_run();
+
+        let mut cmd = if use_systemd_run {
+            let mut c = Command::new("systemd-run");
+            c.arg("--user")
+                .arg("--scope")
+                .arg("--quiet")
+                .arg(&mpv_bin);
+            c
+        } else {
+            Command::new(&mpv_bin)
+        };
+
         cmd.arg("-l").arg("bottom");
 
         if auto_pause {
@@ -406,17 +459,69 @@ impl WallpaperEngine {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            unsafe {
+                cmd.pre_exec(|| {
+                    libc::setsid();
+                    libc::signal(libc::SIGHUP, libc::SIG_IGN);
+                    Ok(())
+                });
+            }
+        }
+
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                let (distro, cmd_str) = detect_distro_command();
-                let err_msg = if e.kind() == std::io::ErrorKind::NotFound {
-                    format!("No se encontró 'mpvpaper'. En {}, instala las dependencias con: {}", distro, cmd_str)
+                if use_systemd_run {
+                    let mut fallback = Command::new(&mpv_bin);
+                    fallback.arg("-l").arg("bottom");
+                    if auto_pause {
+                        fallback.arg("-p");
+                    }
+                    fallback.arg("-o")
+                        .arg(&opts)
+                        .arg(output)
+                        .arg(&effective_path_str)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::CommandExt;
+                        unsafe {
+                            fallback.pre_exec(|| {
+                                libc::setsid();
+                                libc::signal(libc::SIGHUP, libc::SIG_IGN);
+                                Ok(())
+                            });
+                        }
+                    }
+                    match fallback.spawn() {
+                        Ok(c) => c,
+                        Err(fe) => {
+                            let (distro, cmd_str) = detect_distro_command();
+                            let err_msg = if fe.kind() == std::io::ErrorKind::NotFound {
+                                format!("No se encontró 'mpvpaper'. En {}, instala las dependencias con: {}", distro, cmd_str)
+                            } else {
+                                format!("Error al iniciar mpvpaper: {} (output: {}, video: {})", fe, output, video_path)
+                            };
+                            eprintln!("[Aura Engine] {}", err_msg);
+                            return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
+                        }
+                    }
                 } else {
-                    format!("Error al iniciar mpvpaper: {} (output: {}, video: {})", e, output, video_path)
-                };
-                eprintln!("[Aura Engine] {}", err_msg);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
+                    let (distro, cmd_str) = detect_distro_command();
+                    let err_msg = if e.kind() == std::io::ErrorKind::NotFound {
+                        format!("No se encontró 'mpvpaper'. En {}, instala las dependencias con: {}", distro, cmd_str)
+                    } else {
+                        format!("Error al iniciar mpvpaper: {} (output: {}, video: {})", e, output, video_path)
+                    };
+                    eprintln!("[Aura Engine] {}", err_msg);
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
+                }
             }
         };
 
@@ -587,9 +692,14 @@ impl WallpaperEngine {
     }
 
     pub fn stop_output(&mut self, output: &str) {
+        let sock_path = socket_path_for_output(output);
+        if ipc_is_alive(&sock_path) {
+            let _ = send_ipc_command(&sock_path, r#"{"command": ["quit"]}"#);
+        }
         if let Some(sock) = self.sockets.remove(output) {
             let _ = std::fs::remove_file(sock);
         }
+        let _ = std::fs::remove_file(&sock_path);
         if let Some(mut child) = self.processes.remove(output) {
             let _ = child.kill();
             let _ = child.wait();
@@ -598,6 +708,9 @@ impl WallpaperEngine {
 
     pub fn stop_all(&mut self) {
         for (_, sock) in self.sockets.drain() {
+            if ipc_is_alive(&sock) {
+                let _ = send_ipc_command(&sock, r#"{"command": ["quit"]}"#);
+            }
             let _ = std::fs::remove_file(sock);
         }
         for (_, mut child) in self.processes.drain() {
@@ -798,6 +911,18 @@ mod tests {
     fn test_detect_os_pretty_name() {
         let os = detect_os_pretty_name();
         assert!(!os.is_empty());
+    }
+
+    #[test]
+    fn test_can_use_systemd_run() {
+        // Must return bool without panicking
+        let _ = can_use_systemd_run();
+    }
+
+    #[test]
+    fn test_ipc_get_pid_non_existent() {
+        let dummy = PathBuf::from("/tmp/non_existent_sock_123456.sock");
+        assert_eq!(ipc_get_pid(&dummy), None);
     }
 
     #[test]
