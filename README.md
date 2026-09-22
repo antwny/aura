@@ -160,12 +160,12 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 ### Method 2: Precompiled Release Package
 
-1. Download `aura-v1.3.1-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
+1. Download `aura-v1.3.3-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
 2. Extract the archive and run the installer:
 
 ```bash
-tar -xzf aura-v1.3.1-x86_64-linux.tar.gz
-cd aura-v1.3.1-x86_64-linux
+tar -xzf aura-v1.3.3-x86_64-linux.tar.gz
+cd aura-v1.3.3-x86_64-linux
 ./install.sh
 ```
 
