@@ -1020,8 +1020,8 @@ impl cosmic::Application for AuraApp {
 
                 let mut win_settings = cosmic::iced::window::Settings::default();
                 win_settings.position = cosmic::iced::window::Position::Centered;
-                win_settings.size = cosmic::iced::Size::new(1040.0, 380.0);
-                win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 300.0));
+                win_settings.size = cosmic::iced::Size::new(1006.0, 226.0);
+                win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 200.0));
                 win_settings.resizable = false;
                 win_settings.decorations = false;
                 win_settings.transparent = true;
@@ -1181,13 +1181,16 @@ impl cosmic::Application for AuraApp {
                     self.switcher_window_id = None;
                     return cosmic::iced::window::close(id);
                 }
-                self.is_window_open = false;
-                self.core_mut().set_main_window_id(None);
-                if self.config.keep_running_on_close {
-                    return cosmic::iced::window::close(id);
-                } else {
-                    std::process::exit(0);
+                if self.core().main_window_id() == Some(id) {
+                    self.is_window_open = false;
+                    self.core_mut().set_main_window_id(None);
+                    if self.config.keep_running_on_close {
+                        return cosmic::iced::window::close(id);
+                    } else {
+                        std::process::exit(0);
+                    }
                 }
+                return cosmic::iced::window::close(id);
             }
 
             Message::WindowClosed(id) => {
@@ -1195,10 +1198,11 @@ impl cosmic::Application for AuraApp {
                     self.switcher_window_id = None;
                     return Task::none();
                 }
-                self.is_window_open = false;
                 if self.core().main_window_id() == Some(id) {
+                    self.is_window_open = false;
                     self.core_mut().set_main_window_id(None);
                 }
+                return Task::none();
             }
 
             Message::NextWallpaper => {
