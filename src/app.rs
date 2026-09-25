@@ -666,12 +666,17 @@ impl cosmic::Application for AuraApp {
     }
 
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        let theme = cosmic::theme::active();
-        Some(cosmic::iced::theme::Style {
-            background_color: cosmic::iced::Color::TRANSPARENT,
-            icon_color: theme.cosmic().on_bg_color().into(),
-            text_color: theme.cosmic().on_bg_color().into(),
-        })
+        if self.switcher_window_id.is_some() {
+            let theme = cosmic::theme::active();
+            if theme.transparent {
+                return Some(cosmic::iced::theme::Style {
+                    background_color: cosmic::iced::Color::TRANSPARENT,
+                    icon_color: theme.cosmic().on_bg_color().into(),
+                    text_color: theme.cosmic().on_bg_color().into(),
+                });
+            }
+        }
+        None
     }
 
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
@@ -1029,7 +1034,7 @@ impl cosmic::Application for AuraApp {
 
                 let mut win_settings = cosmic::iced::window::Settings::default();
                 win_settings.position = cosmic::iced::window::Position::Centered;
-                win_settings.size = cosmic::iced::Size::new(1006.0, 262.0);
+                win_settings.size = cosmic::iced::Size::new(1006.0, 226.0);
                 win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 200.0));
                 win_settings.resizable = false;
                 win_settings.decorations = false;
@@ -1042,10 +1047,15 @@ impl cosmic::Application for AuraApp {
 
                 let (new_id, open_task) = cosmic::iced::window::open(win_settings);
                 self.switcher_window_id = Some(new_id);
-                return Task::batch([
+                let theme = cosmic::theme::active();
+                let mut tasks = vec![
                     open_task.discard(),
                     cosmic::iced::window::gain_focus(new_id),
-                ]);
+                ];
+                if theme.transparent {
+                    tasks.push(cosmic::iced::window::enable_blur(new_id));
+                }
+                return Task::batch(tasks);
             }
 
             Message::CloseQuickSwitcher => {
