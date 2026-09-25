@@ -1084,6 +1084,67 @@ a {
   display: block;
 }
 
+/* Quick Switcher HUD Split Showcase */
+.hud-split-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: clamp(32px, 5vw, 64px);
+  align-items: center;
+  margin-top: 12px;
+}
+
+.hud-media-container {
+  border: 1px solid var(--border-strong);
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+.hud-video-element {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  display: block;
+  background: #05070c;
+}
+
+.hud-feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.hud-feature-item {
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: 4px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.hud-feature-item:hover {
+  border-color: var(--border-strong);
+}
+
+.hud-feature-item h4 {
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-pure);
+  margin-bottom: 6px;
+}
+
+.hud-feature-item p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
 .showcase-gallery-editorial {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1442,6 +1503,10 @@ a {
   .why-aura-visual-grid {
     grid-template-columns: 1fr;
     gap: 28px;
+  }
+  .hud-split-layout {
+    grid-template-columns: 1fr;
+    gap: 36px;
   }
   .premise-cards-grid {
     grid-template-columns: 1fr;
