@@ -1566,6 +1566,41 @@ impl Language {
             Language::En => "Command copied to clipboard: aura switcher",
         }
     }
+
+    pub fn settings_switcher_position_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Posición en pantalla:",
+            Language::En => "Screen position:",
+        }
+    }
+
+    pub fn settings_switcher_pos_top(&self) -> &'static str {
+        match self {
+            Language::Es => "Arriba",
+            Language::En => "Top",
+        }
+    }
+
+    pub fn settings_switcher_pos_bottom(&self) -> &'static str {
+        match self {
+            Language::Es => "Abajo",
+            Language::En => "Bottom",
+        }
+    }
+
+    pub fn settings_switcher_pos_left(&self) -> &'static str {
+        match self {
+            Language::Es => "Izquierda",
+            Language::En => "Left",
+        }
+    }
+
+    pub fn settings_switcher_pos_right(&self) -> &'static str {
+        match self {
+            Language::Es => "Derecha",
+            Language::En => "Right",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1697,6 +1732,11 @@ mod tests {
             assert!(!lang.settings_switcher_shortcut_desc().is_empty());
             assert!(!lang.settings_switcher_copy_cmd().is_empty());
             assert!(!lang.settings_switcher_copied().is_empty());
+            assert!(!lang.settings_switcher_position_label().is_empty());
+            assert!(!lang.settings_switcher_pos_top().is_empty());
+            assert!(!lang.settings_switcher_pos_bottom().is_empty());
+            assert!(!lang.settings_switcher_pos_left().is_empty());
+            assert!(!lang.settings_switcher_pos_right().is_empty());
         }
     }
 

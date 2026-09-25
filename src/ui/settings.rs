@@ -259,6 +259,48 @@ impl AuraApp {
                     )
             )
             .push(
+                widget::row::with_capacity(5)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::body(self.language.settings_switcher_position_label()))
+                    .push(
+                        if self.config.switcher_position == "top" || (self.config.switcher_position != "bottom" && self.config.switcher_position != "left" && self.config.switcher_position != "right") {
+                            widget::button::suggested(self.language.settings_switcher_pos_top())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_top())
+                        }
+                        .leading_icon(widget::icon::from_name("go-up-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("top".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "bottom" {
+                            widget::button::suggested(self.language.settings_switcher_pos_bottom())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_bottom())
+                        }
+                        .leading_icon(widget::icon::from_name("go-down-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("bottom".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "left" {
+                            widget::button::suggested(self.language.settings_switcher_pos_left())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_left())
+                        }
+                        .leading_icon(widget::icon::from_name("go-previous-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("left".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "right" {
+                            widget::button::suggested(self.language.settings_switcher_pos_right())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_right())
+                        }
+                        .leading_icon(widget::icon::from_name("go-next-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("right".into()))
+                    )
+            )
+            .push(
                 widget::column::with_capacity(3)
                     .spacing(6)
                     .push(widget::text::body(self.language.settings_switcher_shortcut_title()))

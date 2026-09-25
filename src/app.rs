@@ -10,6 +10,9 @@ use crate::online::{
 
 use cosmic::app::Core;
 use cosmic::iced::{Length, Subscription, Task};
+use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
+use cosmic::iced::platform_specific::shell::commands::layer_surface::{Anchor, KeyboardInteractivity, Layer};
+use cosmic::surface::action::{app_layer_shell, destroy_layer_shell, LiveSettings};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
 use std::path::PathBuf;
@@ -150,6 +153,7 @@ pub enum Message {
     SwitcherWheelScrolled { window: cosmic::iced::window::Id, delta: cosmic::iced::mouse::ScrollDelta },
     SelectTrayClickAction(String),
     ToggleSwitcherOnlyFavorites(bool),
+    SelectSwitcherPosition(String),
     CopySwitcherCommand,
 }
 
@@ -1032,35 +1036,64 @@ impl cosmic::Application for AuraApp {
                     return cosmic::iced::window::gain_focus(id);
                 }
 
-                let mut win_settings = cosmic::iced::window::Settings::default();
-                win_settings.position = cosmic::iced::window::Position::Centered;
-                win_settings.size = cosmic::iced::Size::new(1006.0, 226.0);
-                win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 200.0));
-                win_settings.resizable = false;
-                win_settings.decorations = false;
-                win_settings.transparent = true;
-                win_settings.exit_on_close_request = false;
-                #[cfg(target_os = "linux")]
-                {
-                    win_settings.platform_specific.application_id = "io.github.antwny.aura.switcher".to_string();
-                }
+                let id = cosmic::iced::window::Id::unique();
+                self.switcher_window_id = Some(id);
 
-                let (new_id, open_task) = cosmic::iced::window::open(win_settings);
-                self.switcher_window_id = Some(new_id);
-                let theme = cosmic::theme::active();
-                let mut tasks = vec![
-                    open_task.discard(),
-                    cosmic::iced::window::gain_focus(new_id),
-                ];
-                if theme.transparent {
-                    tasks.push(cosmic::iced::window::enable_blur(new_id));
-                }
-                return Task::batch(tasks);
+                let pos = self.config.switcher_position.clone();
+                let (anchor, margin, size) = match pos.as_str() {
+                    "bottom" => (
+                        Anchor::BOTTOM,
+                        IcedMargin { top: 0, right: 0, bottom: 12, left: 0 },
+                        Some((Some(1006), Some(226))),
+                    ),
+                    "left" => (
+                        Anchor::LEFT,
+                        IcedMargin { top: 0, right: 0, bottom: 0, left: 14 },
+                        Some((Some(280), Some(640))),
+                    ),
+                    "right" => (
+                        Anchor::RIGHT,
+                        IcedMargin { top: 0, right: 14, bottom: 0, left: 0 },
+                        Some((Some(280), Some(640))),
+                    ),
+                    _ => ( // "top" default
+                        Anchor::TOP,
+                        IcedMargin { top: 12, right: 0, bottom: 0, left: 0 },
+                        Some((Some(1006), Some(226))),
+                    ),
+                };
+
+                let surface_action = app_layer_shell(
+                    move |_app: &AuraApp| {
+                        LiveSettings {
+                            blur: Some(true),
+                            ..Default::default()
+                        }
+                    },
+                    move |_app: &mut AuraApp| {
+                        SctkLayerSurfaceSettings {
+                            id,
+                            layer: Layer::Overlay,
+                            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+                            anchor,
+                            margin,
+                            size,
+                            namespace: "aura-switcher".to_string(),
+                            ..Default::default()
+                        }
+                    },
+                    None,
+                );
+
+                return Task::batch([
+                    Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(surface_action))),
+                    cosmic::iced::window::gain_focus(id),
+                ]);
             }
 
             Message::CloseQuickSwitcher => {
                 if let Some(id) = self.switcher_window_id.take() {
-                    return cosmic::iced::window::close(id);
+                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
             }
 
@@ -1103,7 +1136,7 @@ impl cosmic::Application for AuraApp {
                     })));
                 }
                 if let Some(id) = self.switcher_window_id.take() {
-                    tasks.push(cosmic::iced::window::close(id));
+                    tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
                 }
                 return Task::batch(tasks);
             }
@@ -1128,10 +1161,12 @@ impl cosmic::Application for AuraApp {
             Message::SwitcherKeyPressed { window, key } => {
                 if self.switcher_window_id == Some(window) {
                     match key {
-                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowLeft) => {
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowLeft)
+                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowUp) => {
                             return Task::done(cosmic::Action::App(Message::SwitcherPrev));
                         }
-                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight) => {
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight)
+                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowDown) => {
                             return Task::done(cosmic::Action::App(Message::SwitcherNext));
                         }
                         cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::Enter) => {
@@ -1146,10 +1181,10 @@ impl cosmic::Application for AuraApp {
                         cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("f") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherToggleFavorite));
                         }
-                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") => {
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") || c.eq_ignore_ascii_case("w") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherPrev));
                         }
-                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") => {
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") || c.eq_ignore_ascii_case("s") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherNext));
                         }
                         _ => {}
@@ -1187,6 +1222,11 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
             }
 
+            Message::SelectSwitcherPosition(pos) => {
+                self.config.switcher_position = pos;
+                let _ = self.config.save();
+            }
+
             Message::CopySwitcherCommand => {
                 let msg = self.language.settings_switcher_copied().to_string();
                 return Task::batch([
@@ -1198,7 +1238,7 @@ impl cosmic::Application for AuraApp {
             Message::WindowCloseRequested(id) => {
                 if self.switcher_window_id == Some(id) {
                     self.switcher_window_id = None;
-                    return cosmic::iced::window::close(id);
+                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
                 if self.core().main_window_id() == Some(id) {
                     self.is_window_open = false;

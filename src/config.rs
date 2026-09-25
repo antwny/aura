@@ -40,6 +40,12 @@ pub struct Config {
     pub tray_click_action: String,
     #[serde(default)]
     pub switcher_only_favorites: bool,
+    #[serde(default = "default_switcher_position")]
+    pub switcher_position: String,
+}
+
+fn default_switcher_position() -> String {
+    "top".to_string()
 }
 
 fn default_tray_click_action() -> String {
@@ -160,6 +166,7 @@ impl Default for Config {
             rotation_only_favorites: false,
             tray_click_action: default_tray_click_action(),
             switcher_only_favorites: false,
+            switcher_position: default_switcher_position(),
         }
     }
 }
@@ -384,10 +391,13 @@ mod tests {
         let mut cfg = Config::default();
         assert_eq!(cfg.tray_click_action, "switcher");
         assert!(!cfg.switcher_only_favorites);
+        assert_eq!(cfg.switcher_position, "top");
 
         cfg.tray_click_action = "main_window".to_string();
         cfg.switcher_only_favorites = true;
+        cfg.switcher_position = "left".to_string();
         assert_eq!(cfg.tray_click_action, "main_window");
         assert!(cfg.switcher_only_favorites);
+        assert_eq!(cfg.switcher_position, "left");
     }
 }

@@ -24,41 +24,73 @@ impl AuraApp {
 
         let curr_idx = self.switcher_index % n;
 
+        let is_vertical = matches!(self.config.switcher_position.as_str(), "left" | "right");
+
         // Cards configuration for up to 5 slots: [-2, -1, 0, +1, +2]
         // (offset, width, height, is_center)
-        let slots: Vec<(i32, f32, f32, bool)> = if n >= 5 {
-            vec![
-                (-2, 120.0, 75.0, false),
-                (-1, 180.0, 112.0, false),
-                (0, 300.0, 188.0, true),
-                (1, 180.0, 112.0, false),
-                (2, 120.0, 75.0, false),
-            ]
-        } else if n == 4 {
-            vec![
-                (-2, 120.0, 75.0, false),
-                (-1, 180.0, 112.0, false),
-                (0, 300.0, 188.0, true),
-                (1, 180.0, 112.0, false),
-            ]
-        } else if n == 3 {
-            vec![
-                (-1, 180.0, 112.0, false),
-                (0, 300.0, 188.0, true),
-                (1, 180.0, 112.0, false),
-            ]
-        } else if n == 2 {
-            vec![
-                (0, 300.0, 188.0, true),
-                (1, 180.0, 112.0, false),
-            ]
+        let slots: Vec<(i32, f32, f32, bool)> = if is_vertical {
+            if n >= 5 {
+                vec![
+                    (-2, 120.0, 75.0, false),
+                    (-1, 170.0, 106.0, false),
+                    (0, 240.0, 150.0, true),
+                    (1, 170.0, 106.0, false),
+                    (2, 120.0, 75.0, false),
+                ]
+            } else if n == 4 {
+                vec![
+                    (-2, 120.0, 75.0, false),
+                    (-1, 170.0, 106.0, false),
+                    (0, 240.0, 150.0, true),
+                    (1, 170.0, 106.0, false),
+                ]
+            } else if n == 3 {
+                vec![
+                    (-1, 170.0, 106.0, false),
+                    (0, 240.0, 150.0, true),
+                    (1, 170.0, 106.0, false),
+                ]
+            } else if n == 2 {
+                vec![
+                    (0, 240.0, 150.0, true),
+                    (1, 170.0, 106.0, false),
+                ]
+            } else {
+                vec![(0, 240.0, 150.0, true)]
+            }
         } else {
-            vec![(0, 300.0, 188.0, true)]
+            if n >= 5 {
+                vec![
+                    (-2, 120.0, 75.0, false),
+                    (-1, 180.0, 112.0, false),
+                    (0, 300.0, 188.0, true),
+                    (1, 180.0, 112.0, false),
+                    (2, 120.0, 75.0, false),
+                ]
+            } else if n == 4 {
+                vec![
+                    (-2, 120.0, 75.0, false),
+                    (-1, 180.0, 112.0, false),
+                    (0, 300.0, 188.0, true),
+                    (1, 180.0, 112.0, false),
+                ]
+            } else if n == 3 {
+                vec![
+                    (-1, 180.0, 112.0, false),
+                    (0, 300.0, 188.0, true),
+                    (1, 180.0, 112.0, false),
+                ]
+            } else if n == 2 {
+                vec![
+                    (0, 300.0, 188.0, true),
+                    (1, 180.0, 112.0, false),
+                ]
+            } else {
+                vec![(0, 300.0, 188.0, true)]
+            }
         };
 
-        let mut row = widget::row::with_capacity(slots.len())
-            .spacing(14)
-            .align_y(Alignment::Center);
+        let mut elements: Vec<Element<'_, Message>> = Vec::with_capacity(slots.len());
 
         for (offset, w, h, is_center) in slots {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
@@ -112,16 +144,33 @@ impl AuraApp {
                             ..Default::default()
                         }
                     }));
-                row = row.push(bordered_center);
+                elements.push(bordered_center.into());
             } else {
-                row = row.push(card_widget);
+                elements.push(card_widget);
             }
         }
 
-        // Minimalist floating pod: only the carousel
-        let floating_pod = widget::container(row)
-            .padding([14, 18])
-            .class(cosmic::theme::Container::Card);
+        let floating_pod = if is_vertical {
+            let mut col = widget::column::with_capacity(elements.len())
+                .spacing(12)
+                .align_x(Alignment::Center);
+            for el in elements {
+                col = col.push(el);
+            }
+            widget::container(col)
+                .padding([18, 14])
+                .class(cosmic::theme::Container::Card)
+        } else {
+            let mut row = widget::row::with_capacity(elements.len())
+                .spacing(14)
+                .align_y(Alignment::Center);
+            for el in elements {
+                row = row.push(el);
+            }
+            widget::container(row)
+                .padding([14, 18])
+                .class(cosmic::theme::Container::Card)
+        };
 
         widget::container(floating_pod)
             .width(Length::Fill)
