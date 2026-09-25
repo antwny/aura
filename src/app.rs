@@ -273,6 +273,7 @@ pub struct AuraApp {
     pub(crate) pending_auto_apply_id: Option<String>,
     pub(crate) last_update_check: Option<Instant>,
     pub(crate) switcher_window_id: Option<cosmic::iced::window::Id>,
+    pub(crate) closing_switcher_window_id: Option<cosmic::iced::window::Id>,
     pub(crate) switcher_index: usize,
 }
 
@@ -586,6 +587,7 @@ impl cosmic::Application for AuraApp {
             pending_auto_apply_id: None,
             last_update_check: None,
             switcher_window_id: None,
+            closing_switcher_window_id: None,
             switcher_index: 0,
         };
 
@@ -666,13 +668,19 @@ impl cosmic::Application for AuraApp {
     fn view_window(&self, id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
         if self.switcher_window_id == Some(id) {
             self.view_quick_switcher()
-        } else {
+        } else if self.core().main_window_id() == Some(id) {
             self.view()
+        } else {
+            widget::container(widget::Space::new())
+                .width(cosmic::iced::Length::Fill)
+                .height(cosmic::iced::Length::Fill)
+                .class(cosmic::theme::Container::Transparent)
+                .into()
         }
     }
 
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        if self.switcher_window_id.is_some() {
+        if self.switcher_window_id.is_some() || self.closing_switcher_window_id.is_some() {
             let theme = cosmic::theme::active();
             return Some(cosmic::iced::theme::Style {
                 background_color: cosmic::iced::Color::TRANSPARENT,
@@ -1036,6 +1044,8 @@ impl cosmic::Application for AuraApp {
                     return cosmic::iced::window::gain_focus(id);
                 }
 
+                self.closing_switcher_window_id = None;
+
                 let id = cosmic::iced::window::Id::unique();
                 self.switcher_window_id = Some(id);
 
@@ -1066,6 +1076,7 @@ impl cosmic::Application for AuraApp {
 
             Message::CloseQuickSwitcher => {
                 if let Some(id) = self.switcher_window_id.take() {
+                    self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
             }
@@ -1109,6 +1120,7 @@ impl cosmic::Application for AuraApp {
                     })));
                 }
                 if let Some(id) = self.switcher_window_id.take() {
+                    self.closing_switcher_window_id = Some(id);
                     tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
                 }
                 return Task::batch(tasks);
@@ -1217,8 +1229,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::WindowCloseRequested(id) => {
-                if self.switcher_window_id == Some(id) {
+                if self.switcher_window_id == Some(id) || self.closing_switcher_window_id == Some(id) {
                     self.switcher_window_id = None;
+                    self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
                 if self.core().main_window_id() == Some(id) {
@@ -1238,7 +1251,9 @@ impl cosmic::Application for AuraApp {
             Message::WindowClosed(id) => {
                 if self.switcher_window_id == Some(id) {
                     self.switcher_window_id = None;
-                    return Task::none();
+                }
+                if self.closing_switcher_window_id == Some(id) {
+                    self.closing_switcher_window_id = None;
                 }
                 if self.core().main_window_id() == Some(id) {
                     self.is_window_open = false;
