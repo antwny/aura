@@ -146,6 +146,8 @@ pub enum Message {
     SwitcherNext,
     SwitcherSelect(usize),
     SwitcherApply,
+    SwitcherApplyIndex(usize),
+    SwitcherNoop,
     SwitcherTogglePause,
     SwitcherToggleFavorite,
     SwitcherKeyPressed { window: cosmic::iced::window::Id, key: cosmic::iced::keyboard::Key },
@@ -672,13 +674,11 @@ impl cosmic::Application for AuraApp {
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
         if self.switcher_window_id.is_some() {
             let theme = cosmic::theme::active();
-            if theme.transparent {
-                return Some(cosmic::iced::theme::Style {
-                    background_color: cosmic::iced::Color::TRANSPARENT,
-                    icon_color: theme.cosmic().on_bg_color().into(),
-                    text_color: theme.cosmic().on_bg_color().into(),
-                });
-            }
+            return Some(cosmic::iced::theme::Style {
+                background_color: cosmic::iced::Color::TRANSPARENT,
+                icon_color: theme.cosmic().on_bg_color().into(),
+                text_color: theme.cosmic().on_bg_color().into(),
+            });
         }
         None
     }
@@ -1039,34 +1039,10 @@ impl cosmic::Application for AuraApp {
                 let id = cosmic::iced::window::Id::unique();
                 self.switcher_window_id = Some(id);
 
-                let pos = self.config.switcher_position.clone();
-                let (anchor, margin, size) = match pos.as_str() {
-                    "bottom" => (
-                        Anchor::BOTTOM,
-                        IcedMargin { top: 0, right: 0, bottom: 12, left: 0 },
-                        Some((Some(1006), Some(226))),
-                    ),
-                    "left" => (
-                        Anchor::LEFT,
-                        IcedMargin { top: 0, right: 0, bottom: 0, left: 14 },
-                        Some((Some(280), Some(640))),
-                    ),
-                    "right" => (
-                        Anchor::RIGHT,
-                        IcedMargin { top: 0, right: 14, bottom: 0, left: 0 },
-                        Some((Some(280), Some(640))),
-                    ),
-                    _ => ( // "top" default
-                        Anchor::TOP,
-                        IcedMargin { top: 12, right: 0, bottom: 0, left: 0 },
-                        Some((Some(1006), Some(226))),
-                    ),
-                };
-
                 let surface_action = app_layer_shell(
                     move |_app: &AuraApp| {
                         LiveSettings {
-                            blur: Some(true),
+                            blur: Some(false),
                             ..Default::default()
                         }
                     },
@@ -1074,10 +1050,10 @@ impl cosmic::Application for AuraApp {
                         SctkLayerSurfaceSettings {
                             id,
                             layer: Layer::Overlay,
-                            keyboard_interactivity: KeyboardInteractivity::OnDemand,
-                            anchor,
-                            margin,
-                            size,
+                            keyboard_interactivity: KeyboardInteractivity::Exclusive,
+                            anchor: Anchor::TOP.union(Anchor::BOTTOM).union(Anchor::LEFT).union(Anchor::RIGHT),
+                            margin: IcedMargin::default(),
+                            size: None,
                             namespace: "aura-switcher".to_string(),
                             ..Default::default()
                         }
@@ -1085,10 +1061,7 @@ impl cosmic::Application for AuraApp {
                     None,
                 );
 
-                return Task::batch([
-                    Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(surface_action))),
-                    cosmic::iced::window::gain_focus(id),
-                ]);
+                return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(surface_action)));
             }
 
             Message::CloseQuickSwitcher => {
@@ -1126,10 +1099,10 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::SwitcherApply => {
+            Message::SwitcherApplyIndex(idx) => {
                 let mut tasks = Vec::new();
                 let pool = self.switcher_pool();
-                if let Some(video) = pool.get(self.switcher_index) {
+                if let Some(video) = pool.get(idx) {
                     tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
                         output: self.selected_output.clone(),
@@ -1139,6 +1112,14 @@ impl cosmic::Application for AuraApp {
                     tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
                 }
                 return Task::batch(tasks);
+            }
+
+            Message::SwitcherApply => {
+                return Task::done(cosmic::Action::App(Message::SwitcherApplyIndex(self.switcher_index)));
+            }
+
+            Message::SwitcherNoop => {
+                return Task::none();
             }
 
             Message::SwitcherTogglePause => {

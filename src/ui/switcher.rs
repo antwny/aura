@@ -13,12 +13,15 @@ impl AuraApp {
             let empty_container = widget::container(empty_text)
                 .padding(24)
                 .class(cosmic::theme::Container::Card);
-            return widget::container(empty_container)
+            let pod_mouse_area = widget::mouse_area(empty_container).on_press(Message::SwitcherNoop);
+            let positioned = widget::container(pod_mouse_area)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .align_x(Horizontal::Center)
                 .align_y(Vertical::Center)
-                .class(cosmic::theme::Container::Transparent)
+                .class(cosmic::theme::Container::Transparent);
+            return widget::mouse_area(positioned)
+                .on_press(Message::CloseQuickSwitcher)
                 .into();
         }
 
@@ -97,15 +100,11 @@ impl AuraApp {
             let video = pool[item_idx];
 
             let card_widget: Element<'_, Message> = if let Some(thumb) = &video.thumb_path {
-                let img_btn = widget::button::image(thumb.clone())
+                widget::button::image(thumb.clone())
                     .width(w)
-                    .height(h);
-
-                if is_center {
-                    img_btn.on_press(Message::SwitcherApply).into()
-                } else {
-                    img_btn.on_press(Message::SwitcherSelect(item_idx)).into()
-                }
+                    .height(h)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
             } else {
                 let icon_name = if video.is_video {
                     "video-x-generic-symbolic"
@@ -118,15 +117,9 @@ impl AuraApp {
                     .align_x(Horizontal::Center)
                     .align_y(Vertical::Center);
 
-                if is_center {
-                    widget::button::custom(placeholder)
-                        .on_press(Message::SwitcherApply)
-                        .into()
-                } else {
-                    widget::button::custom(placeholder)
-                        .on_press(Message::SwitcherSelect(item_idx))
-                        .into()
-                }
+                widget::button::custom(placeholder)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
             };
 
             if is_center {
@@ -172,12 +165,41 @@ impl AuraApp {
                 .class(cosmic::theme::Container::Card)
         };
 
-        widget::container(floating_pod)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center)
-            .class(cosmic::theme::Container::Transparent)
-            .into()
+        // Prevent clicks inside the pod from triggering the outside close
+        let pod_mouse_area = widget::mouse_area(floating_pod).on_press(Message::SwitcherNoop);
+
+        let pos = self.config.switcher_position.as_str();
+        let positioned = match pos {
+            "bottom" => widget::container(pod_mouse_area)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Bottom)
+                .padding([0, 0, 14, 0]),
+            "left" => widget::container(pod_mouse_area)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Left)
+                .align_y(Vertical::Center)
+                .padding([0, 0, 0, 14]),
+            "right" => widget::container(pod_mouse_area)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Right)
+                .align_y(Vertical::Center)
+                .padding([0, 14, 0, 0]),
+            _ => widget::container(pod_mouse_area) // "top" default
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Top)
+                .padding([14, 0, 0, 0]),
+        };
+
+        widget::mouse_area(
+            positioned.class(cosmic::theme::Container::Transparent)
+        )
+        .on_press(Message::CloseQuickSwitcher)
+        .into()
     }
 }
