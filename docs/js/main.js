@@ -115,6 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (copyCliBtn) {
     copyCliBtn.addEventListener('click', () => {
       const cliCommands = [
+        'aura',
+        'aura switcher',
         'aura next',
         'aura prev',
         'aura toggle-pause',
@@ -123,10 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
         'aura status',
         'aura check-update',
         'aura update',
-        'aura --daemon'
+        'aura --daemon',
+        'aura --version',
+        'aura help'
       ].join('\n');
       navigator.clipboard.writeText(cliCommands).then(() => {
-        showToast('COPIED 9 CLI COMMANDS');
+        showToast('COPIED 13 CLI COMMANDS');
       });
     });
   }

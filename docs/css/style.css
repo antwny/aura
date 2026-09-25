@@ -812,6 +812,46 @@ a {
   overflow: hidden;
 }
 
+.theming-interactive-card {
+  border: 1px solid var(--border-strong);
+  background: var(--color-surface);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+.theming-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-hairline);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theming-card-footer {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--border-hairline);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.hud-media-column .why-aura-screenshot-card {
+  border-radius: 6px;
+  border-color: var(--border-strong);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+.section-catalogs {
+  padding: clamp(80px, 10vw, 140px) 0;
+  border-top: 1px solid var(--border-hairline);
+}
+
 .motion-screenshot-img {
   width: 100%;
   height: auto;

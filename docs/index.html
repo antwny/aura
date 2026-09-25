@@ -232,7 +232,7 @@
           <div class="why-aura-screenshot-card">
             <picture>
               <source srcset="assets/img/settings-performance.webp" type="image/webp" />
-              <img src="assets/img/settings-performance.png" alt="Aura Settings: Smart Pause and Performance Controls" class="inspectable-image" loading="lazy" />
+              <img src="assets/img/settings-performance.png" alt="Aura Settings: Smart Pause and Performance Controls" class="inspectable-image" />
             </picture>
             <div class="gallery-caption">
               <span>SETTINGS VIEW &bull; SMART PAUSE &amp; BATTERY SAVER</span>
@@ -278,73 +278,73 @@
          ==================================================================== -->
     <section class="section-motion" id="theming" aria-labelledby="theming-heading">
       <div class="container">
-        <div class="editorial-split-layout">
 
-          <div class="editorial-column-meta">
-            <span class="editorial-num">03 / REAL-TIME SYNC</span>
-            <span class="mono-label">DYNAMIC AUTO-THEMING</span>
-          </div>
-
-          <div>
-            <h2 id="theming-heading" class="editorial-headline-large">
+        <div class="hud-split-layout">
+          <!-- Left Column: Editorial Text & Technical Highlights -->
+          <div class="hud-content-column">
+            <div class="editorial-column-meta" style="margin-bottom: 16px;">
+              <span class="editorial-num">03 / REAL-TIME SYNC</span>
+              <span class="mono-label">DYNAMIC AUTO-THEMING</span>
+            </div>
+            <h2 id="theming-heading" class="editorial-headline-large" style="margin-bottom: 20px;">
               Your desktop changes color with your wallpaper.
             </h2>
-            <p class="editorial-prose">
-              Aura analyzes your active animated wallpaper in real time. When the scene shifts from warm sunlight to deep night,
-              your desktop theme and accent colors adapt along with it — tinting your dock, active window highlights, and buttons automatically.
+            <p class="editorial-prose" style="margin-bottom: 24px;">
+              Aura analyzes your active animated wallpaper in real time. When the scene shifts from warm sunlight to deep night, your desktop theme and accent colors adapt along with it &mdash; tinting your dock, active window highlights, and buttons automatically.
             </p>
-          </div>
 
-        </div>
-
-        <!-- Interactive Demonstration of the Two Real Screenshots -->
-        <div class="motion-dual-preview">
-
-          <div class="motion-toggle-bar">
-            <div class="theme-switch-group">
-              <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); margin-right: 6px;">COMPARE PALETTES:</span>
-              <button class="theme-switch-btn active" data-theme-mode="amber" aria-pressed="true">
-                <span class="swatch-pip amber"></span>
-                <span>Solar Field (Amber)</span>
-              </button>
-              <button class="theme-switch-btn" data-theme-mode="violet" aria-pressed="false">
-                <span class="swatch-pip violet"></span>
-                <span>Night Portrait (Violet)</span>
-              </button>
-              <span class="theme-switch-hint">👆 Click buttons to preview live</span>
-            </div>
-            <span id="motion-theme-caption" style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim);">
-              State: Solar field wallpaper active &rarr; Desktop accent dynamically shifted to warm gold (RGB: 245, 158, 11).
-            </span>
-          </div>
-
-          <div class="motion-frame-wrapper">
-            <picture>
-              <source srcset="assets/img/library-amber.webp" type="image/webp" />
-              <img id="motion-img-amber" src="assets/img/library-amber.png" alt="Aura with Solar Amber Auto-Theming" class="motion-screenshot-img inspectable-image" loading="lazy" />
-            </picture>
-            <picture>
-              <source srcset="assets/img/library-violet.webp" type="image/webp" />
-              <img id="motion-img-violet" src="assets/img/library-violet.png" alt="Aura with Cyber Violet Auto-Theming" class="motion-screenshot-img inspectable-image" style="display: none;" loading="lazy" />
-            </picture>
-          </div>
-
-          <!-- Editorial Technical Annotations (User-Centric) -->
-          <div class="motion-annotations-grid">
-            <div class="annotation-item">
-              <h4>Real-Time Color Match</h4>
-              <p>Extracts dominant tones from the video as it plays, without causing lag or dropping frames.</p>
-            </div>
-            <div class="annotation-item">
-              <h4>Always Easy to Read</h4>
-              <p>Intelligent contrast protection ensures your text, button labels, and system icons stay sharp and legible.</p>
-            </div>
-            <div class="annotation-item">
-              <h4>System-Wide Sync</h4>
-              <p>Integrates directly with COSMIC Desktop themes. Color shifts apply instantly across all open apps.</p>
+            <div class="hud-feature-list">
+              <div class="hud-feature-item">
+                <h4>Real-Time Color Match</h4>
+                <p>Extracts dominant tones from the video as it plays, without causing lag or dropping frames.</p>
+              </div>
+              <div class="hud-feature-item">
+                <h4>Always Easy to Read</h4>
+                <p>Intelligent contrast protection ensures your text, button labels, and system icons stay sharp and legible.</p>
+              </div>
+              <div class="hud-feature-item">
+                <h4>System-Wide Sync</h4>
+                <p>Integrates directly with COSMIC Desktop themes. Color shifts apply instantly across all open apps.</p>
+              </div>
             </div>
           </div>
 
+          <!-- Right Column: Interactive Palette Showcase (Compact Card) -->
+          <div class="hud-media-column">
+            <div class="theming-interactive-card">
+              <div class="theming-card-header">
+                <div class="theme-switch-group">
+                  <span style="font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim); margin-right: 4px;">COMPARE:</span>
+                  <button class="theme-switch-btn active" data-theme-mode="amber" aria-pressed="true">
+                    <span class="swatch-pip amber"></span>
+                    <span>Solar Field (Amber)</span>
+                  </button>
+                  <button class="theme-switch-btn" data-theme-mode="violet" aria-pressed="false">
+                    <span class="swatch-pip violet"></span>
+                    <span>Night Portrait (Violet)</span>
+                  </button>
+                </div>
+                <span class="theme-switch-hint">👆 Click to preview</span>
+              </div>
+
+              <div class="motion-frame-wrapper">
+                <picture>
+                  <source srcset="assets/img/library-amber.webp" type="image/webp" />
+                  <img id="motion-img-amber" src="assets/img/library-amber.png" alt="Aura with Solar Amber Auto-Theming" class="motion-screenshot-img inspectable-image" />
+                </picture>
+                <picture>
+                  <source srcset="assets/img/library-violet.webp" type="image/webp" />
+                  <img id="motion-img-violet" src="assets/img/library-violet.png" alt="Aura with Cyber Violet Auto-Theming" class="motion-screenshot-img inspectable-image" style="display: none;" />
+                </picture>
+              </div>
+
+              <div class="theming-card-footer">
+                <span id="motion-theme-caption">
+                  State: Solar field wallpaper active &rarr; Desktop accent dynamically shifted to warm gold (RGB: 245, 158, 11).
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -353,7 +353,7 @@
     <hr class="hairline-divider" />
 
     <!-- ====================================================================
-         03 — QUICK SWITCHER HUD (Wayland Overlay)
+         04 — QUICK SWITCHER HUD (Wayland Overlay)
          ==================================================================== -->
     <section class="section-showcase" id="switcher" aria-labelledby="switcher-heading">
       <div class="container">
@@ -362,7 +362,7 @@
           <!-- Left Column: Editorial Text & Feature Highlights -->
           <div class="hud-content-column">
             <div class="editorial-column-meta" style="margin-bottom: 16px;">
-              <span class="editorial-num">03 / INSTANT WORKFLOW</span>
+              <span class="editorial-num">04 / INSTANT WORKFLOW</span>
               <span class="mono-label">QUICK SWITCHER HUD</span>
             </div>
             <h2 id="switcher-heading" class="editorial-headline-large" style="margin-bottom: 20px;">
@@ -418,51 +418,53 @@
     <hr class="hairline-divider" />
 
     <!-- ====================================================================
-         04 — ONLINE CATALOGS (Discover & 1-Click Apply)
+         05 — ONLINE CATALOGS (Discover & 1-Click Apply)
          ==================================================================== -->
-    <section class="section-catalogs" id="catalogs" aria-labelledby="catalogs-heading" style="padding: clamp(60px, 8vw, 120px) 0;">
+    <section class="section-catalogs" id="catalogs" aria-labelledby="catalogs-heading">
       <div class="container">
 
-        <div class="editorial-split-layout">
-          <div class="editorial-column-meta">
-            <span class="editorial-num">04 / BUILT-IN LIBRARIES</span>
-            <span class="mono-label">DISCOVER &bull; 9,400+ WALLPAPERS</span>
-          </div>
-          <div>
-            <h2 id="catalogs-heading" class="editorial-headline-large">
+        <div class="hud-split-layout">
+          <!-- Left Column: Editorial Text & Catalog Features -->
+          <div class="hud-content-column">
+            <div class="editorial-column-meta" style="margin-bottom: 16px;">
+              <span class="editorial-num">05 / BUILT-IN LIBRARIES</span>
+              <span class="mono-label">DISCOVER &bull; 9,400+ WALLPAPERS</span>
+            </div>
+            <h2 id="catalogs-heading" class="editorial-headline-large" style="margin-bottom: 20px;">
               Over 9,400 wallpapers. Zero file hunting.
             </h2>
-            <p class="editorial-prose">
+            <p class="editorial-prose" style="margin-bottom: 24px;">
               Discover, preview, and apply gorgeous animated loops directly inside Aura. No browser searching, no downloading from sketchy websites, and no manual video conversion.
             </p>
-          </div>
-        </div>
 
-        <!-- High-Impact Catalog Screenshot Showcase -->
-        <div class="why-aura-screenshot-card" style="margin-top: 36px;">
-          <picture>
-            <source srcset="assets/img/explore-catalogs.webp" type="image/webp" />
-            <img src="assets/img/explore-catalogs.png" alt="Aura Online Catalogs Interface" class="inspectable-image" loading="lazy" />
-          </picture>
-          <div class="gallery-caption">
-            <span>EXPLORE VIEW &bull; MOTIONBGS, WALLHAVEN &amp; BING DAILY REPOSITORIES</span>
-            <span>CLICK TO EXPAND</span>
+            <div class="hud-feature-list">
+              <div class="hud-feature-item">
+                <h4>MotionBGS Library</h4>
+                <p>Thousands of handpicked anime, cyberpunk, nature, and ambient looping wallpapers in 4K and 1080p ready with one click.</p>
+              </div>
+              <div class="hud-feature-item">
+                <h4>Wallhaven &amp; Bing Daily</h4>
+                <p>Direct access to Wallhaven's top-rated 4K community gallery and daily Bing UHD landscape photography.</p>
+              </div>
+              <div class="hud-feature-item">
+                <h4>One-Click Instant Apply</h4>
+                <p>Preview in high resolution and set any background immediately with fast background async downloads.</p>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <!-- 3 Feature Highlights -->
-        <div class="premise-cards-grid" style="margin-top: 24px;">
-          <div class="premise-card">
-            <h4>MotionBGS Library</h4>
-            <p>Thousands of handpicked anime, cyberpunk, nature, and ambient looping wallpapers in 4K and 1080p ready with one click.</p>
-          </div>
-          <div class="premise-card">
-            <h4>Wallhaven &amp; Bing Daily</h4>
-            <p>Direct access to Wallhaven's top-rated 4K community gallery and daily Bing UHD landscape photography.</p>
-          </div>
-          <div class="premise-card">
-            <h4>One-Click Instant Apply</h4>
-            <p>Preview in high resolution and set any background immediately with fast background async downloads.</p>
+          <!-- Right Column: Compact Catalog Showcase Card -->
+          <div class="hud-media-column">
+            <div class="why-aura-screenshot-card">
+              <picture>
+                <source srcset="assets/img/explore-catalogs.webp" type="image/webp" />
+                <img src="assets/img/explore-catalogs.png" alt="Aura Online Catalogs Interface" class="inspectable-image" />
+              </picture>
+              <div class="gallery-caption">
+                <span>EXPLORE VIEW &bull; MOTIONBGS, WALLHAVEN &amp; BING DAILY</span>
+                <span>CLICK TO EXPAND</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -472,14 +474,14 @@
     <hr class="hairline-divider" />
 
     <!-- ====================================================================
-         05 — MULTI-MONITOR SETUP (Hardware in Use)
+         06 — MULTI-MONITOR SETUP (Hardware in Use)
          ==================================================================== -->
     <section class="section-showcase" id="multimonitor" aria-labelledby="multimonitor-heading">
       <div class="container">
 
         <div class="editorial-split-layout">
           <div class="editorial-column-meta">
-            <span class="editorial-num">05 / HARDWARE IN USE</span>
+            <span class="editorial-num">06 / HARDWARE IN USE</span>
             <span class="mono-label">MULTI-SCREEN TOPOLOGY</span>
           </div>
           <div>
@@ -509,7 +511,7 @@
           <div class="why-aura-screenshot-card">
             <picture>
               <source srcset="assets/img/displays-visualizer.webp" type="image/webp" />
-              <img src="assets/img/displays-visualizer.png" alt="Aura Multi-Monitor Visualizer" class="inspectable-image" loading="lazy" />
+              <img src="assets/img/displays-visualizer.png" alt="Aura Multi-Monitor Visualizer" class="inspectable-image" />
             </picture>
             <div class="gallery-caption">
               <span>DISPLAY VIEW &bull; PER-MONITOR TARGETING</span>
@@ -539,14 +541,14 @@
     <hr class="hairline-divider" />
 
     <!-- ====================================================================
-         06 — PERFORMANCE & BENCHMARKS (Verified Real Metrics)
+         07 — PERFORMANCE & BENCHMARKS (Verified Real Metrics)
          ==================================================================== -->
     <section class="section-perf" id="benchmarks" aria-labelledby="benchmarks-heading">
       <div class="container">
 
         <div class="editorial-split-layout">
           <div class="editorial-column-meta">
-            <span class="editorial-num">06 / BENCHMARKS</span>
+            <span class="editorial-num">07 / BENCHMARKS</span>
             <span class="mono-label">VERIFIED METRICS</span>
           </div>
           <div>
@@ -797,12 +799,20 @@
           </div>
           <div class="cli-commands-list">
             <div class="cli-row">
+              <span class="cli-cmd">aura</span>
+              <span class="cli-comment"># Launch the COSMIC graphical application (or 'aura gui')</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura switcher</span>
+              <span class="cli-comment"># Summon floating Quick Switcher HUD overlay (bind to Super+Alt+W)</span>
+            </div>
+            <div class="cli-row">
               <span class="cli-cmd">aura next</span>
-              <span class="cli-comment"># Switch to the next wallpaper in your playlist</span>
+              <span class="cli-comment"># Switch to the next wallpaper in active pool or playlist</span>
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura prev</span>
-              <span class="cli-comment"># Switch to the previous wallpaper</span>
+              <span class="cli-comment"># Switch to the previous wallpaper in active pool</span>
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura toggle-pause</span>
@@ -814,7 +824,7 @@
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura stop</span>
-              <span class="cli-comment"># Stop wallpaper playback completely</span>
+              <span class="cli-comment"># Stop wallpaper playback completely and terminate engine</span>
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura status</span>
@@ -822,15 +832,23 @@
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura check-update</span>
-              <span class="cli-comment"># Check GitHub Releases for newer versions</span>
+              <span class="cli-comment"># Check GitHub Releases for newer available versions</span>
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura update</span>
-              <span class="cli-comment"># Atomically update Aura to the latest release</span>
+              <span class="cli-comment"># Atomically download and self-update to the latest release</span>
             </div>
             <div class="cli-row">
               <span class="cli-cmd">aura --daemon</span>
-              <span class="cli-comment"># Run headless in background on system startup</span>
+              <span class="cli-comment"># Run headless in background on system startup (or '--hidden')</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura --version</span>
+              <span class="cli-comment"># Display current installed version (or '-v')</span>
+            </div>
+            <div class="cli-row">
+              <span class="cli-cmd">aura help</span>
+              <span class="cli-comment"># Display command-line manual and usage options (or '-h')</span>
             </div>
           </div>
         </div>
