@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-25
+
+### Added
+- **Quick Switcher HUD (Wayland Layer-Shell Overlay)**:
+  - Floating heads-up display overlay (`Layer::Overlay`) with live multi-card carousel preview, allowing rapid background cycling without interrupting open applications.
+  - Global shortcut integration: registered CLI command `aura switcher` designed to bind in COSMIC Settings (e.g. `Super+Alt+W`).
+  - 4 Dock Screen Positions: customizable placement in Settings for **Arriba** (Top), **Abajo** (Bottom), **Izquierda** (Left vertical dock), and **Derecha** (Right vertical dock).
+  - Multi-input navigation: keyboard navigation (Arrow keys, `WASD`, `Enter` to apply, `Space` to toggle pause/play, `F` to toggle favorite, `Esc` to dismiss) and mouse scroll wheel support.
+  - 1-Click apply on any card: clicking any preview card in the carousel immediately applies the wallpaper and dismisses the HUD.
+  - Transparent outside-click dismiss area: clicking anywhere outside the floating card pod seamlessly closes the overlay.
+  - Instant opening: opens immediately upon trigger without artificial animation delays.
+- **Dual-Pillar Kinetic A Official Branding**:
+  - High-resolution official vector logo with dual pillar geometry, luminous apex bridge, and rounded squircle container.
+  - Synchronized across the application (`src/ui/about.rs`), desktop launcher entries, online documentation, web app manifest, and hicolor icon themes (SVG and PNG formats from 16x16 to 512x512).
+
+### Fixed
+- **Visual Teardown Protection**:
+  - Eliminated transient single-frame flash of the Aura main window during layer-shell destruction.
+  - Added dedicated window ID lifecycle tracking (`closing_switcher_window_id`) and strict container transparency guarantees preventing iced from falling back to `self.view()` while Wayland unmaps the surface.
+
 ## [1.3.3] - 2026-09-21
 
 - **Wallpaper Favorites System & Dedicated Auto-Rotation**:
