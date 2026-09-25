@@ -946,6 +946,13 @@ impl Language {
     }
 
     // --- Tray (StatusNotifierItem) ---
+    pub fn tray_switcher(&self) -> &'static str {
+        match self {
+            Language::Es => "Selector Rápido de Fondos...",
+            Language::En => "Quick Wallpaper Switcher...",
+        }
+    }
+
     pub fn tray_open(&self) -> &'static str {
         match self {
             Language::Es => "Abrir Aura",
@@ -1510,6 +1517,7 @@ mod tests {
             assert!(!lang.library_empty_title().is_empty());
             assert!(!lang.settings_title().is_empty());
             assert!(!lang.about_tagline().is_empty());
+            assert!(!lang.tray_switcher().is_empty());
             assert!(!lang.tray_open().is_empty());
             assert!(!lang.tray_quit().is_empty());
             assert!(!lang.status_paused().is_empty());

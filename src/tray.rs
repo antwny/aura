@@ -7,6 +7,7 @@ use tokio::sync::Mutex as TokioMutex;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
     ShowApp,
+    OpenSwitcher,
     TogglePause,
     NextWallpaper,
     StopWallpaper,
@@ -52,7 +53,7 @@ impl Tray for AuraTray {
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
-        let _ = self.tx.send(TrayAction::ShowApp);
+        let _ = self.tx.send(TrayAction::OpenSwitcher);
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
@@ -61,6 +62,14 @@ impl Tray for AuraTray {
         let has_wall = *self.has_wallpaper.lock().unwrap();
 
         vec![
+            StandardItem {
+                label: lang.tray_switcher().into(),
+                activate: Box::new(|tray: &mut AuraTray| {
+                    let _ = tray.tx.send(TrayAction::OpenSwitcher);
+                }),
+                ..Default::default()
+            }
+            .into(),
             StandardItem {
                 label: lang.tray_open().into(),
                 activate: Box::new(|tray: &mut AuraTray| {
