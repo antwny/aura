@@ -6,6 +6,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
+    Activate,
     ShowApp,
     OpenSwitcher,
     TogglePause,
@@ -53,7 +54,7 @@ impl Tray for AuraTray {
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
-        let _ = self.tx.send(TrayAction::OpenSwitcher);
+        let _ = self.tx.send(TrayAction::Activate);
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {

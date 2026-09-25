@@ -1478,6 +1478,91 @@ impl Language {
             Language::En => "Volume",
         }
     }
+
+    // --- Quick Switcher HUD Settings ---
+    pub fn settings_switcher_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Selector Rápido HUD",
+            Language::En => "Quick Switcher HUD",
+        }
+    }
+
+    pub fn settings_switcher_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Ventana emergente minimalista centrada para cambiar fondos al instante",
+            Language::En => "Minimalist centered popup window to switch wallpapers instantly",
+        }
+    }
+
+    pub fn settings_switcher_tray_click_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Clic en el icono de la barra:",
+            Language::En => "Panel icon click action:",
+        }
+    }
+
+    pub fn settings_switcher_tray_opt_switcher(&self) -> &'static str {
+        match self {
+            Language::Es => "Selector Rápido HUD",
+            Language::En => "Quick Switcher HUD",
+        }
+    }
+
+    pub fn settings_switcher_tray_opt_main(&self) -> &'static str {
+        match self {
+            Language::Es => "Ventana Principal",
+            Language::En => "Main Window",
+        }
+    }
+
+    pub fn settings_switcher_filter_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondos en el carrusel:",
+            Language::En => "Wallpapers in carousel:",
+        }
+    }
+
+    pub fn settings_switcher_filter_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Toda la biblioteca",
+            Language::En => "All wallpapers",
+        }
+    }
+
+    pub fn settings_switcher_filter_favs(&self) -> &'static str {
+        match self {
+            Language::Es => "Solo favoritos",
+            Language::En => "Only favorites",
+        }
+    }
+
+    pub fn settings_switcher_shortcut_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Atajo global en COSMIC Desktop",
+            Language::En => "Global shortcut in COSMIC Desktop",
+        }
+    }
+
+    pub fn settings_switcher_shortcut_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Puedes abrir el HUD con una combinación de teclas añadiendo en Configuración de COSMIC → Teclado → Atajos personalizados:",
+            Language::En => "You can open the HUD with a key combo by adding in COSMIC Settings → Keyboard → Custom shortcuts:",
+        }
+    }
+
+    pub fn settings_switcher_copy_cmd(&self) -> &'static str {
+        match self {
+            Language::Es => "Copiar comando",
+            Language::En => "Copy command",
+        }
+    }
+
+    pub fn settings_switcher_copied(&self) -> &'static str {
+        match self {
+            Language::Es => "Comando copiado al portapapeles: aura switcher",
+            Language::En => "Command copied to clipboard: aura switcher",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1597,6 +1682,18 @@ mod tests {
             assert!(!lang.bar_volume().is_empty());
             assert!(!lang.bar_prev().is_empty());
             assert!(!lang.bar_next().is_empty());
+            assert!(!lang.settings_switcher_title().is_empty());
+            assert!(!lang.settings_switcher_desc().is_empty());
+            assert!(!lang.settings_switcher_tray_click_label().is_empty());
+            assert!(!lang.settings_switcher_tray_opt_switcher().is_empty());
+            assert!(!lang.settings_switcher_tray_opt_main().is_empty());
+            assert!(!lang.settings_switcher_filter_label().is_empty());
+            assert!(!lang.settings_switcher_filter_all().is_empty());
+            assert!(!lang.settings_switcher_filter_favs().is_empty());
+            assert!(!lang.settings_switcher_shortcut_title().is_empty());
+            assert!(!lang.settings_switcher_shortcut_desc().is_empty());
+            assert!(!lang.settings_switcher_copy_cmd().is_empty());
+            assert!(!lang.settings_switcher_copied().is_empty());
         }
     }
 

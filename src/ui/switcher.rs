@@ -6,7 +6,8 @@ use cosmic::Element;
 
 impl AuraApp {
     pub(crate) fn view_quick_switcher(&self) -> Element<'_, Message> {
-        let n = self.videos.len();
+        let pool = self.switcher_pool();
+        let n = pool.len();
         if n == 0 {
             let empty_text = widget::text::body(self.language.library_empty_title()).size(16);
             let empty_container = widget::container(empty_text)
@@ -60,7 +61,7 @@ impl AuraApp {
 
         for (offset, w, h, is_center) in slots {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
-            let video = &self.videos[item_idx];
+            let video = pool[item_idx];
 
             let card_widget: Element<'_, Message> = if let Some(thumb) = &video.thumb_path {
                 let img_btn = widget::button::image(thumb.clone())

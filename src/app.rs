@@ -142,7 +142,14 @@ pub enum Message {
     SwitcherNext,
     SwitcherSelect(usize),
     SwitcherApply,
+    SwitcherTogglePause,
+    SwitcherToggleFavorite,
     SwitcherKeyPressed { window: cosmic::iced::window::Id, key: cosmic::iced::keyboard::Key },
+    SwitcherUnfocused(cosmic::iced::window::Id),
+    SwitcherWheelScrolled { window: cosmic::iced::window::Id, delta: cosmic::iced::mouse::ScrollDelta },
+    SelectTrayClickAction(String),
+    ToggleSwitcherOnlyFavorites(bool),
+    CopySwitcherCommand,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -170,6 +177,12 @@ fn handle_window_events(
         }
         cosmic::iced::Event::Window(cosmic::iced::window::Event::Closed) => {
             Some(Message::WindowClosed(window))
+        }
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::Unfocused) => {
+            Some(Message::SwitcherUnfocused(window))
+        }
+        cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::WheelScrolled { delta }) => {
+            Some(Message::SwitcherWheelScrolled { window, delta })
         }
         cosmic::iced::Event::Keyboard(cosmic::iced::keyboard::Event::KeyPressed {
             key,
@@ -373,6 +386,18 @@ impl AuraApp {
             }
         }
         self.videos.iter().map(|v| v.path.clone()).collect()
+    }
+
+    pub(crate) fn switcher_pool(&self) -> Vec<&VideoItem> {
+        if self.config.switcher_only_favorites {
+            let favs: Vec<&VideoItem> = self.videos.iter()
+                .filter(|v| self.config.is_favorite(&v.path.to_string_lossy()))
+                .collect();
+            if !favs.is_empty() {
+                return favs;
+            }
+        }
+        self.videos.iter().collect()
     }
 }
 
@@ -892,6 +917,13 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::TrayAction(action) => match action {
+                crate::tray::TrayAction::Activate => {
+                    if self.config.tray_click_action == "main_window" {
+                        return Task::done(cosmic::Action::App(Message::ShowMainWindow));
+                    } else {
+                        return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
+                    }
+                }
                 crate::tray::TrayAction::OpenSwitcher => {
                     return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
                 }
@@ -971,9 +1003,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::OpenQuickSwitcher => {
+                let pool = self.switcher_pool();
                 let curr_idx = if let Some(curr) = &self.config.current {
-                    self.videos
-                        .iter()
+                    pool.iter()
                         .position(|v| v.path.to_string_lossy() == *curr)
                         .unwrap_or(0)
                 } else {
@@ -986,6 +1018,7 @@ impl cosmic::Application for AuraApp {
                 }
 
                 let mut win_settings = cosmic::iced::window::Settings::default();
+                win_settings.position = cosmic::iced::window::Position::Centered;
                 win_settings.size = cosmic::iced::Size::new(1020.0, 260.0);
                 win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 220.0));
                 win_settings.resizable = false;
@@ -1012,28 +1045,30 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::SwitcherPrev => {
-                let n = self.videos.len();
+                let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + n - 1) % n;
                 }
             }
 
             Message::SwitcherNext => {
-                let n = self.videos.len();
+                let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + 1) % n;
                 }
             }
 
             Message::SwitcherSelect(idx) => {
-                if idx < self.videos.len() {
+                let pool = self.switcher_pool();
+                if idx < pool.len() {
                     self.switcher_index = idx;
                 }
             }
 
             Message::SwitcherApply => {
                 let mut tasks = Vec::new();
-                if let Some(video) = self.videos.get(self.switcher_index) {
+                let pool = self.switcher_pool();
+                if let Some(video) = pool.get(self.switcher_index) {
                     tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
                         output: self.selected_output.clone(),
@@ -1043,6 +1078,23 @@ impl cosmic::Application for AuraApp {
                     tasks.push(cosmic::iced::window::close(id));
                 }
                 return Task::batch(tasks);
+            }
+
+            Message::SwitcherTogglePause => {
+                let now_paused = self.engine.toggle_pause();
+                self.is_paused = now_paused;
+                let current_title = self.config.current.as_ref()
+                    .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .unwrap_or_else(|| "Video".into());
+                self.tray_controller.update_state(current_title, now_paused, self.config.current.is_some());
+            }
+
+            Message::SwitcherToggleFavorite => {
+                let pool = self.switcher_pool();
+                if let Some(video) = pool.get(self.switcher_index) {
+                    let path = video.path.clone();
+                    return Task::done(cosmic::Action::App(Message::ToggleFavorite(path)));
+                }
             }
 
             Message::SwitcherKeyPressed { window, key } => {
@@ -1060,9 +1112,59 @@ impl cosmic::Application for AuraApp {
                         cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::Escape) => {
                             return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
                         }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c == " " => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherTogglePause));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("f") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherToggleFavorite));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                        }
                         _ => {}
                     }
                 }
+            }
+
+            Message::SwitcherUnfocused(id) => {
+                if self.switcher_window_id == Some(id) {
+                    return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                }
+            }
+
+            Message::SwitcherWheelScrolled { window, delta } => {
+                if self.switcher_window_id == Some(window) {
+                    let (dx, dy) = match delta {
+                        cosmic::iced::mouse::ScrollDelta::Lines { x, y } => (x, y),
+                        cosmic::iced::mouse::ScrollDelta::Pixels { x, y } => (x, y),
+                    };
+                    if dy > 0.0 || dx < 0.0 {
+                        return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                    } else if dy < 0.0 || dx > 0.0 {
+                        return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                    }
+                }
+            }
+
+            Message::SelectTrayClickAction(action) => {
+                self.config.tray_click_action = action;
+                let _ = self.config.save();
+            }
+
+            Message::ToggleSwitcherOnlyFavorites(only_favs) => {
+                self.config.switcher_only_favorites = only_favs;
+                let _ = self.config.save();
+            }
+
+            Message::CopySwitcherCommand => {
+                let msg = self.language.settings_switcher_copied().to_string();
+                return Task::batch([
+                    cosmic::iced::clipboard::write("aura switcher".to_string()),
+                    self.notify(msg),
+                ]);
             }
 
             Message::WindowCloseRequested(id) => {
@@ -1302,6 +1404,14 @@ impl cosmic::Application for AuraApp {
 
                         let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
                         self.tray_controller.update_state(file_name.clone(), false, true);
+
+                        // Live sync with quick switcher HUD if it is open
+                        if self.switcher_window_id.is_some() {
+                            let pool = self.switcher_pool();
+                            if let Some(pos) = pool.iter().position(|v| v.path == video_path) {
+                                self.switcher_index = pos;
+                            }
+                        }
 
                         // COSMIC dynamic accent theme
                         if self.config.auto_theme || self.config.auto_dark {
