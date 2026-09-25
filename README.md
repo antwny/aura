@@ -90,6 +90,26 @@ Bring your entire desktop into harmony. Aura automatically analyzes the colors i
 
 ---
 
+### ⚡ Quick Switcher HUD: Instant Desktop Overlay
+
+Switch wallpapers without interrupting your focus. Summon a floating heads-up display overlay anywhere on your desktop with a global shortcut (`aura switcher`):
+
+<p align="center">
+  <a href="https://antwny.github.io/aura/assets/video/hud-showcase.mp4">
+    <img src="docs/assets/video/hud-poster.webp" alt="Aura Quick Switcher HUD Demo" width="94%" />
+  </a>
+</p>
+<p align="center"><sub><i>Live recording: Floating Quick Switcher HUD on COSMIC Wayland • 4 dock screen positions — click image to watch full 60 FPS video</i></sub></p>
+
+- **Global Shortcut Summon**: Bind `aura switcher` in COSMIC Settings to `Super+Alt+W` (or your preferred shortcut) for instant desktop access.
+- **4 Screen Placements**: Dock the floating HUD at the **Top**, **Bottom**, or as a sleek vertical sidebar on the **Left** or **Right** screen edges.
+- **Fluid Keyboard & Mouse Navigation**: Cycle seamlessly with Arrow Keys, `WASD`, or your mouse scroll wheel.
+- **1-Click Apply**: Click any wallpaper card in the carousel to apply it immediately and auto-dismiss.
+- **Zero-Flicker Native Compositing**: Engineered with the Wayland Layer-Shell protocol (`Layer::Overlay`) featuring exclusive keyboard focus and instant outside-click dismissal.
+- **In-HUD Shortcuts**: Toggle Pause/Resume with <kbd>Space</kbd>, toggle Favorites with <kbd>F</kbd>, or dismiss with <kbd>Esc</kbd>.
+
+---
+
 ### 🖥️ Multi-Screen Studio
 
 Have dual monitors or an ultrawide setup? Aura gives you complete independent control over every display:
@@ -160,12 +180,12 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 ### Method 2: Precompiled Release Package
 
-1. Download `aura-v1.3.3-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
+1. Download `aura-v1.4.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
 2. Extract the archive and run the installer:
 
 ```bash
-tar -xzf aura-v1.3.3-x86_64-linux.tar.gz
-cd aura-v1.3.3-x86_64-linux
+tar -xzf aura-v1.4.0-x86_64-linux.tar.gz
+cd aura-v1.4.0-x86_64-linux
 ./install.sh
 ```
 

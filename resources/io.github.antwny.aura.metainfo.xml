@@ -60,6 +60,21 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.4.0" date="2026-09-25">
+      <description>
+        <p>Aura 1.4.0 introduces the Quick Switcher HUD overlay, new official Dual Pillar branding, and visual layer-shell teardown safeguards:</p>
+        <ul>
+          <li>Quick Switcher HUD: A lightweight, floating Wayland Layer-Shell heads-up display overlay for instant wallpaper cycling and preview without leaving open windows.</li>
+          <li>Global shortcut integration: Summon the switcher on any active workspace with 'aura switcher' (bindable to Super+Alt+W or custom shortcut).</li>
+          <li>4 Dock Screen Positions: Place the switcher at Top, Bottom, or vertical sidebars on Left and Right screen edges.</li>
+          <li>Fluid Navigation: Cycle smoothly with Arrow keys, WASD, or mouse scroll wheel, with active system accent border highlights.</li>
+          <li>1-Click Apply: Click any wallpaper card in the carousel to apply it immediately and auto-dismiss.</li>
+          <li>Click-Outside Dismissal: Clicking anywhere outside the switcher dismisses the overlay with zero desktop latency.</li>
+          <li>Eliminated transient window flash race condition during layer-shell surface teardown.</li>
+          <li>Dual-Pillar Kinetic A Branding: High-resolution official vector logo with dual pillar geometry and squircle frame across the app, desktop entries, web page, and icon themes.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.3.3" date="2026-09-22">
       <description>
         <p>Aura 1.3.3 introduces wallpaper favorites, sorting controls, COSMIC desktop icon integration, and decoupled background playback:</p>

@@ -4,3 +4,4 @@ pub mod monitors;
 pub mod settings;
 pub mod bar;
 pub mod about;
+pub mod switcher;

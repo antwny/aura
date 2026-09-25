@@ -203,7 +203,128 @@ impl AuraApp {
 
         col = col.push(widget::container(rotation_section).width(Length::Fill));
 
-        // 4. Hardware Acceleration (GPU) section
+        // 4. Quick Switcher HUD section
+        let count_favs = self.config.favorites.len();
+        let switcher_section = widget::column::with_capacity(6)
+            .spacing(14)
+            .padding(16)
+            .push(widget::text::title3(self.language.settings_switcher_title()))
+            .push(widget::text::caption(self.language.settings_switcher_desc()))
+            .push(
+                widget::row::with_capacity(3)
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::body(self.language.settings_switcher_tray_click_label()))
+                    .push(
+                        if self.config.tray_click_action != "main_window" {
+                            widget::button::suggested(self.language.settings_switcher_tray_opt_switcher())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_tray_opt_switcher())
+                        }
+                        .leading_icon(widget::icon::from_name("view-carousel-symbolic"))
+                        .on_press(Message::SelectTrayClickAction("switcher".into()))
+                    )
+                    .push(
+                        if self.config.tray_click_action == "main_window" {
+                            widget::button::suggested(self.language.settings_switcher_tray_opt_main())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_tray_opt_main())
+                        }
+                        .leading_icon(widget::icon::from_name("window-symbolic"))
+                        .on_press(Message::SelectTrayClickAction("main_window".into()))
+                    )
+            )
+            .push(
+                widget::row::with_capacity(3)
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::body(self.language.settings_switcher_filter_label()))
+                    .push(
+                        if !self.config.switcher_only_favorites {
+                            widget::button::suggested(self.language.settings_switcher_filter_all())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_filter_all())
+                        }
+                        .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                        .on_press(Message::ToggleSwitcherOnlyFavorites(false))
+                    )
+                    .push(
+                        if self.config.switcher_only_favorites {
+                            widget::button::suggested(format!("{} ({})", self.language.settings_switcher_filter_favs(), count_favs))
+                        } else {
+                            widget::button::standard(format!("{} ({})", self.language.settings_switcher_filter_favs(), count_favs))
+                        }
+                        .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
+                        .on_press(Message::ToggleSwitcherOnlyFavorites(true))
+                    )
+            )
+            .push(
+                widget::row::with_capacity(5)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::body(self.language.settings_switcher_position_label()))
+                    .push(
+                        if self.config.switcher_position == "top" || (self.config.switcher_position != "bottom" && self.config.switcher_position != "left" && self.config.switcher_position != "right") {
+                            widget::button::suggested(self.language.settings_switcher_pos_top())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_top())
+                        }
+                        .leading_icon(widget::icon::from_name("go-up-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("top".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "bottom" {
+                            widget::button::suggested(self.language.settings_switcher_pos_bottom())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_bottom())
+                        }
+                        .leading_icon(widget::icon::from_name("go-down-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("bottom".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "left" {
+                            widget::button::suggested(self.language.settings_switcher_pos_left())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_left())
+                        }
+                        .leading_icon(widget::icon::from_name("go-previous-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("left".into()))
+                    )
+                    .push(
+                        if self.config.switcher_position == "right" {
+                            widget::button::suggested(self.language.settings_switcher_pos_right())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_pos_right())
+                        }
+                        .leading_icon(widget::icon::from_name("go-next-symbolic"))
+                        .on_press(Message::SelectSwitcherPosition("right".into()))
+                    )
+            )
+            .push(
+                widget::column::with_capacity(3)
+                    .spacing(6)
+                    .push(widget::text::body(self.language.settings_switcher_shortcut_title()))
+                    .push(widget::text::caption(self.language.settings_switcher_shortcut_desc()))
+                    .push(
+                        widget::row::with_capacity(2)
+                            .spacing(12)
+                            .align_y(Alignment::Center)
+                            .push(
+                                widget::container(widget::text::body("aura switcher").size(13))
+                                    .padding([6, 12])
+                                    .class(cosmic::theme::Container::Card)
+                            )
+                            .push(
+                                widget::button::standard(self.language.settings_switcher_copy_cmd())
+                                    .leading_icon(widget::icon::from_name("edit-copy-symbolic"))
+                                    .on_press(Message::CopySwitcherCommand)
+                            )
+                    )
+            );
+
+        col = col.push(widget::container(switcher_section).width(Length::Fill));
+
+        // 5. Hardware Acceleration (GPU) section
         let hwdec_section = widget::column::with_capacity(3)
             .spacing(12)
             .padding(16)

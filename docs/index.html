@@ -78,6 +78,7 @@
         <ul class="nav-links">
           <li class="nav-item"><a href="#why-aura">Why Aura</a></li>
           <li class="nav-item"><a href="#theming">Auto-Theming</a></li>
+          <li class="nav-item"><a href="#switcher">Quick Switcher</a></li>
           <li class="nav-item"><a href="#catalogs">Catalogs</a></li>
           <li class="nav-item"><a href="#multimonitor">Multi-Screen</a></li>
           <li class="nav-item"><a href="#benchmarks">Benchmarks</a></li>
@@ -104,6 +105,7 @@
   <div class="mobile-nav-overlay" id="mobile-nav-overlay" role="navigation" aria-label="Mobile Navigation">
     <a href="#why-aura">Why Aura</a>
     <a href="#theming">Motion &amp; Auto-Theming</a>
+    <a href="#switcher">Quick Switcher HUD</a>
     <a href="#catalogs">Online Catalogs</a>
     <a href="#multimonitor">Multi-Screen Setup</a>
     <a href="#benchmarks">Performance &amp; Benchmarks</a>
@@ -343,6 +345,69 @@
             </div>
           </div>
 
+        </div>
+
+      </div>
+    </section>
+
+    <hr class="hairline-divider" />
+
+    <!-- ====================================================================
+         03 — QUICK SWITCHER HUD (Wayland Overlay)
+         ==================================================================== -->
+    <section class="section-showcase" id="switcher" aria-labelledby="switcher-heading">
+      <div class="container">
+
+        <div class="editorial-split-layout">
+          <div class="editorial-column-meta">
+            <span class="editorial-num">03 / INSTANT WORKFLOW</span>
+            <span class="mono-label">QUICK SWITCHER HUD</span>
+          </div>
+          <div>
+            <h2 id="switcher-heading" class="editorial-headline-large">
+              Switch wallpapers without leaving your workflow.
+            </h2>
+            <p class="editorial-prose">
+              Summon an ultra-responsive, floating heads-up display anywhere on your desktop with a single global shortcut. Preview your collection with real-time accent highlights, navigate with arrow keys or mouse wheel, and apply live backgrounds instantly with a single click &mdash; all without interrupting your open apps.
+            </p>
+          </div>
+        </div>
+
+        <!-- Real HUD Video Demo -->
+        <div class="multimonitor-showcase-block">
+          <video class="multimonitor-video" autoplay loop muted playsinline poster="assets/video/hud-poster.webp">
+            <source src="assets/video/hud-showcase.mp4" type="video/mp4" />
+            Your browser does not support HTML5 video.
+          </video>
+          <div class="hero-stage-footer">
+            <div class="hero-stage-caption">
+              <span class="status-dot-active"></span>
+              <span>LIVE RECORDING: QUICK SWITCHER HUD &bull; COSMIC WAYLAND OVERLAY</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim);">
+              GLOBAL SHORTCUT: AURA SWITCHER
+            </div>
+          </div>
+        </div>
+
+        <!-- Highlights Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 36px;">
+          <div class="premise-card">
+            <h4>Global Shortcut Summon</h4>
+            <p>Bind <code>aura switcher</code> in COSMIC Settings to <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd> to reveal the floating switcher overlay on any active workspace instantly.</p>
+          </div>
+          <div class="premise-card">
+            <h4>4 Screen Positions</h4>
+            <p>Position the HUD naturally at the <strong>Top</strong>, <strong>Bottom</strong>, or as sleek vertical sidebars on the <strong>Left</strong> or <strong>Right</strong> screen edges.</p>
+          </div>
+          <div class="premise-card">
+            <h4>Fluid Navigation &amp; 1-Click Apply</h4>
+            <p>Cycle smoothly with arrow keys, WASD, or your mouse scroll wheel. Click any preview card to apply it immediately and auto-dismiss.</p>
+          </div>
+          <div class="premise-card">
+            <h4>Zero-Flicker Native Compositing</h4>
+            <p>Engineered using the Wayland Layer-Shell protocol with exclusive keyboard focus and instant outside-click dismissal with zero desktop latency.</p>
+          </div>
         </div>
 
       </div>

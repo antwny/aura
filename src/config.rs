@@ -36,6 +36,20 @@ pub struct Config {
     pub library_sort: String,
     #[serde(default)]
     pub rotation_only_favorites: bool,
+    #[serde(default = "default_tray_click_action")]
+    pub tray_click_action: String,
+    #[serde(default)]
+    pub switcher_only_favorites: bool,
+    #[serde(default = "default_switcher_position")]
+    pub switcher_position: String,
+}
+
+fn default_switcher_position() -> String {
+    "top".to_string()
+}
+
+fn default_tray_click_action() -> String {
+    "switcher".to_string()
 }
 
 fn default_library_sort() -> String {
@@ -150,6 +164,9 @@ impl Default for Config {
             favorites: Vec::new(),
             library_sort: default_library_sort(),
             rotation_only_favorites: false,
+            tray_click_action: default_tray_click_action(),
+            switcher_only_favorites: false,
+            switcher_position: default_switcher_position(),
         }
     }
 }
@@ -367,5 +384,20 @@ mod tests {
         };
         assert_eq!(pool.len(), 1);
         assert_eq!(pool[0], "/wallpapers/2.mp4");
+    }
+
+    #[test]
+    fn test_switcher_config() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.tray_click_action, "switcher");
+        assert!(!cfg.switcher_only_favorites);
+        assert_eq!(cfg.switcher_position, "top");
+
+        cfg.tray_click_action = "main_window".to_string();
+        cfg.switcher_only_favorites = true;
+        cfg.switcher_position = "left".to_string();
+        assert_eq!(cfg.tray_click_action, "main_window");
+        assert!(cfg.switcher_only_favorites);
+        assert_eq!(cfg.switcher_position, "left");
     }
 }

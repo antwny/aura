@@ -10,6 +10,9 @@ use crate::online::{
 
 use cosmic::app::Core;
 use cosmic::iced::{Length, Subscription, Task};
+use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
+use cosmic::iced::platform_specific::shell::commands::layer_surface::{Anchor, KeyboardInteractivity, Layer};
+use cosmic::surface::action::{app_layer_shell, destroy_layer_shell, LiveSettings};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
 use std::path::PathBuf;
@@ -136,6 +139,24 @@ pub enum Message {
     PerformGuiUpdate { download_url: String, version: String },
     GuiUpdateResult(Result<String, String>),
     RestartApp,
+    OpenQuickSwitcher,
+    CloseQuickSwitcher,
+    ToggleQuickSwitcher,
+    SwitcherPrev,
+    SwitcherNext,
+    SwitcherSelect(usize),
+    SwitcherApply,
+    SwitcherApplyIndex(usize),
+    SwitcherNoop,
+    SwitcherTogglePause,
+    SwitcherToggleFavorite,
+    SwitcherKeyPressed { window: cosmic::iced::window::Id, key: cosmic::iced::keyboard::Key },
+    SwitcherUnfocused(cosmic::iced::window::Id),
+    SwitcherWheelScrolled { window: cosmic::iced::window::Id, delta: cosmic::iced::mouse::ScrollDelta },
+    SelectTrayClickAction(String),
+    ToggleSwitcherOnlyFavorites(bool),
+    SelectSwitcherPosition(String),
+    CopySwitcherCommand,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +184,18 @@ fn handle_window_events(
         }
         cosmic::iced::Event::Window(cosmic::iced::window::Event::Closed) => {
             Some(Message::WindowClosed(window))
+        }
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::Unfocused) => {
+            Some(Message::SwitcherUnfocused(window))
+        }
+        cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::WheelScrolled { delta }) => {
+            Some(Message::SwitcherWheelScrolled { window, delta })
+        }
+        cosmic::iced::Event::Keyboard(cosmic::iced::keyboard::Event::KeyPressed {
+            key,
+            ..
+        }) => {
+            Some(Message::SwitcherKeyPressed { window, key })
         }
         _ => None,
     }
@@ -239,6 +272,9 @@ pub struct AuraApp {
     pub(crate) update_status: UpdateStatus,
     pub(crate) pending_auto_apply_id: Option<String>,
     pub(crate) last_update_check: Option<Instant>,
+    pub(crate) switcher_window_id: Option<cosmic::iced::window::Id>,
+    pub(crate) closing_switcher_window_id: Option<cosmic::iced::window::Id>,
+    pub(crate) switcher_index: usize,
 }
 
 impl AuraApp {
@@ -359,6 +395,18 @@ impl AuraApp {
         }
         self.videos.iter().map(|v| v.path.clone()).collect()
     }
+
+    pub(crate) fn switcher_pool(&self) -> Vec<&VideoItem> {
+        if self.config.switcher_only_favorites {
+            let favs: Vec<&VideoItem> = self.videos.iter()
+                .filter(|v| self.config.is_favorite(&v.path.to_string_lossy()))
+                .collect();
+            if !favs.is_empty() {
+                return favs;
+            }
+        }
+        self.videos.iter().collect()
+    }
 }
 
 impl cosmic::Application for AuraApp {
@@ -469,6 +517,7 @@ impl cosmic::Application for AuraApp {
                 }
                 "next" => tasks.push(Task::done(cosmic::Action::App(Message::NextWallpaper))),
                 "prev" => tasks.push(Task::done(cosmic::Action::App(Message::PrevWallpaper))),
+                "switcher" => tasks.push(Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher))),
                 "stop" => {
                     engine.stop_all();
                     std::process::exit(0);
@@ -537,6 +586,9 @@ impl cosmic::Application for AuraApp {
             update_status: UpdateStatus::Idle,
             pending_auto_apply_id: None,
             last_update_check: None,
+            switcher_window_id: None,
+            closing_switcher_window_id: None,
+            switcher_index: 0,
         };
 
         if !crate::online::updater::is_flatpak() {
@@ -593,6 +645,7 @@ impl cosmic::Application for AuraApp {
                     }
                     "next" => Task::done(cosmic::Action::App(Message::NextWallpaper)),
                     "prev" => Task::done(cosmic::Action::App(Message::PrevWallpaper)),
+                    "switcher" => Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher)),
                     "stop" => Task::done(cosmic::Action::App(Message::StopWallpaper(None))),
                     "toggle-pause" | "pause" => Task::done(cosmic::Action::App(Message::TogglePause)),
                     _ => Task::none(),
@@ -612,8 +665,30 @@ impl cosmic::Application for AuraApp {
         }
     }
 
-    fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
-        self.view()
+    fn view_window(&self, id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
+        if self.switcher_window_id == Some(id) {
+            self.view_quick_switcher()
+        } else if self.core().main_window_id() == Some(id) {
+            self.view()
+        } else {
+            widget::container(widget::Space::new())
+                .width(cosmic::iced::Length::Fill)
+                .height(cosmic::iced::Length::Fill)
+                .class(cosmic::theme::Container::Transparent)
+                .into()
+        }
+    }
+
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        if self.switcher_window_id.is_some() || self.closing_switcher_window_id.is_some() {
+            let theme = cosmic::theme::active();
+            return Some(cosmic::iced::theme::Style {
+                background_color: cosmic::iced::Color::TRANSPARENT,
+                icon_color: theme.cosmic().on_bg_color().into(),
+                text_color: theme.cosmic().on_bg_color().into(),
+            });
+        }
+        None
     }
 
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
@@ -869,6 +944,16 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::TrayAction(action) => match action {
+                crate::tray::TrayAction::Activate => {
+                    if self.config.tray_click_action == "main_window" {
+                        return Task::done(cosmic::Action::App(Message::ShowMainWindow));
+                    } else {
+                        return Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher));
+                    }
+                }
+                crate::tray::TrayAction::OpenSwitcher => {
+                    return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
+                }
                 crate::tray::TrayAction::ShowApp => {
                     return Task::done(cosmic::Action::App(Message::ShowMainWindow));
                 }
@@ -944,21 +1029,239 @@ impl cosmic::Application for AuraApp {
                 return Task::batch(tasks);
             }
 
-            Message::WindowCloseRequested(id) => {
-                self.is_window_open = false;
-                self.core_mut().set_main_window_id(None);
-                if self.config.keep_running_on_close {
-                    return cosmic::iced::window::close(id);
+            Message::OpenQuickSwitcher => {
+                let pool = self.switcher_pool();
+                let curr_idx = if let Some(curr) = &self.config.current {
+                    pool.iter()
+                        .position(|v| v.path.to_string_lossy() == *curr)
+                        .unwrap_or(0)
                 } else {
-                    std::process::exit(0);
+                    0
+                };
+                self.switcher_index = curr_idx;
+
+                if let Some(id) = self.switcher_window_id {
+                    return cosmic::iced::window::gain_focus(id);
+                }
+
+                self.closing_switcher_window_id = None;
+
+                let id = cosmic::iced::window::Id::unique();
+                self.switcher_window_id = Some(id);
+
+                let surface_action = app_layer_shell(
+                    move |_app: &AuraApp| {
+                        LiveSettings {
+                            blur: Some(false),
+                            ..Default::default()
+                        }
+                    },
+                    move |_app: &mut AuraApp| {
+                        SctkLayerSurfaceSettings {
+                            id,
+                            layer: Layer::Overlay,
+                            keyboard_interactivity: KeyboardInteractivity::Exclusive,
+                            anchor: Anchor::TOP.union(Anchor::BOTTOM).union(Anchor::LEFT).union(Anchor::RIGHT),
+                            margin: IcedMargin::default(),
+                            size: None,
+                            namespace: "aura-switcher".to_string(),
+                            ..Default::default()
+                        }
+                    },
+                    None,
+                );
+
+                return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(surface_action)));
+            }
+
+            Message::CloseQuickSwitcher => {
+                if let Some(id) = self.switcher_window_id.take() {
+                    self.closing_switcher_window_id = Some(id);
+                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
             }
 
-            Message::WindowClosed(id) => {
-                self.is_window_open = false;
-                if self.core().main_window_id() == Some(id) {
-                    self.core_mut().set_main_window_id(None);
+            Message::ToggleQuickSwitcher => {
+                if self.switcher_window_id.is_some() {
+                    return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                } else {
+                    return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
                 }
+            }
+
+            Message::SwitcherPrev => {
+                let n = self.switcher_pool().len();
+                if n > 0 {
+                    self.switcher_index = (self.switcher_index + n - 1) % n;
+                }
+            }
+
+            Message::SwitcherNext => {
+                let n = self.switcher_pool().len();
+                if n > 0 {
+                    self.switcher_index = (self.switcher_index + 1) % n;
+                }
+            }
+
+            Message::SwitcherSelect(idx) => {
+                let pool = self.switcher_pool();
+                if idx < pool.len() {
+                    self.switcher_index = idx;
+                }
+            }
+
+            Message::SwitcherApplyIndex(idx) => {
+                let mut tasks = Vec::new();
+                let pool = self.switcher_pool();
+                if let Some(video) = pool.get(idx) {
+                    tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                        video_path: video.path.clone(),
+                        output: self.selected_output.clone(),
+                    })));
+                }
+                if let Some(id) = self.switcher_window_id.take() {
+                    self.closing_switcher_window_id = Some(id);
+                    tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
+                }
+                return Task::batch(tasks);
+            }
+
+            Message::SwitcherApply => {
+                return Task::done(cosmic::Action::App(Message::SwitcherApplyIndex(self.switcher_index)));
+            }
+
+            Message::SwitcherNoop => {
+                return Task::none();
+            }
+
+            Message::SwitcherTogglePause => {
+                let now_paused = self.engine.toggle_pause();
+                self.is_paused = now_paused;
+                let current_title = self.config.current.as_ref()
+                    .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
+                    .unwrap_or_else(|| "Video".into());
+                self.tray_controller.update_state(current_title, now_paused, self.config.current.is_some());
+            }
+
+            Message::SwitcherToggleFavorite => {
+                let pool = self.switcher_pool();
+                if let Some(video) = pool.get(self.switcher_index) {
+                    let path = video.path.clone();
+                    return Task::done(cosmic::Action::App(Message::ToggleFavorite(path)));
+                }
+            }
+
+            Message::SwitcherKeyPressed { window, key } => {
+                if self.switcher_window_id == Some(window) {
+                    match key {
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowLeft)
+                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowUp) => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                        }
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight)
+                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowDown) => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                        }
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::Enter) => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherApply));
+                        }
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::Escape) => {
+                            return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c == " " => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherTogglePause));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("f") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherToggleFavorite));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") || c.eq_ignore_ascii_case("w") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") || c.eq_ignore_ascii_case("s") => {
+                            return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            Message::SwitcherUnfocused(id) => {
+                if self.switcher_window_id == Some(id) {
+                    return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                }
+            }
+
+            Message::SwitcherWheelScrolled { window, delta } => {
+                if self.switcher_window_id == Some(window) {
+                    let (dx, dy) = match delta {
+                        cosmic::iced::mouse::ScrollDelta::Lines { x, y } => (x, y),
+                        cosmic::iced::mouse::ScrollDelta::Pixels { x, y } => (x, y),
+                    };
+                    if dy > 0.0 || dx < 0.0 {
+                        return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                    } else if dy < 0.0 || dx > 0.0 {
+                        return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                    }
+                }
+            }
+
+            Message::SelectTrayClickAction(action) => {
+                self.config.tray_click_action = action;
+                let _ = self.config.save();
+            }
+
+            Message::ToggleSwitcherOnlyFavorites(only_favs) => {
+                self.config.switcher_only_favorites = only_favs;
+                let _ = self.config.save();
+            }
+
+            Message::SelectSwitcherPosition(pos) => {
+                self.config.switcher_position = pos;
+                let _ = self.config.save();
+            }
+
+            Message::CopySwitcherCommand => {
+                let msg = self.language.settings_switcher_copied().to_string();
+                return Task::batch([
+                    cosmic::iced::clipboard::write("aura switcher".to_string()),
+                    self.notify(msg),
+                ]);
+            }
+
+            Message::WindowCloseRequested(id) => {
+                if self.switcher_window_id == Some(id) || self.closing_switcher_window_id == Some(id) {
+                    self.switcher_window_id = None;
+                    self.closing_switcher_window_id = Some(id);
+                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
+                }
+                if self.core().main_window_id() == Some(id) {
+                    self.is_window_open = false;
+                    self.core_mut().set_main_window_id(None);
+                    self.core_mut().window.is_maximized = false;
+                    self.core_mut().window.sharp_corners = false;
+                    if self.config.keep_running_on_close {
+                        return cosmic::iced::window::close(id);
+                    } else {
+                        std::process::exit(0);
+                    }
+                }
+                return cosmic::iced::window::close(id);
+            }
+
+            Message::WindowClosed(id) => {
+                if self.switcher_window_id == Some(id) {
+                    self.switcher_window_id = None;
+                }
+                if self.closing_switcher_window_id == Some(id) {
+                    self.closing_switcher_window_id = None;
+                }
+                if self.core().main_window_id() == Some(id) {
+                    self.is_window_open = false;
+                    self.core_mut().set_main_window_id(None);
+                    self.core_mut().window.is_maximized = false;
+                    self.core_mut().window.sharp_corners = false;
+                }
+                return Task::none();
             }
 
             Message::NextWallpaper => {
@@ -1173,6 +1476,14 @@ impl cosmic::Application for AuraApp {
 
                         let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
                         self.tray_controller.update_state(file_name.clone(), false, true);
+
+                        // Live sync with quick switcher HUD if it is open
+                        if self.switcher_window_id.is_some() {
+                            let pool = self.switcher_pool();
+                            if let Some(pos) = pool.iter().position(|v| v.path == video_path) {
+                                self.switcher_index = pos;
+                            }
+                        }
 
                         // COSMIC dynamic accent theme
                         if self.config.auto_theme || self.config.auto_dark {

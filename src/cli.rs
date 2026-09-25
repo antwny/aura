@@ -38,6 +38,7 @@ pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
     match args[1].as_str() {
         "gui" => (false, None, Vec::new()),
         "--hidden" | "--daemon" | "-d" => (true, None, Vec::new()),
+        "switcher" | "hud" | "menu" => (true, Some("switcher".into()), Vec::new()),
         "next" => (true, Some("next".into()), Vec::new()),
         "prev" => (true, Some("prev".into()), Vec::new()),
         "stop" => (true, Some("stop".into()), Vec::new()),
@@ -438,6 +439,7 @@ fn print_help() {
     println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC Desktop");
     println!("\nUso:");
     println!("  aura                  Abre la interfaz gráfica de COSMIC");
+    println!("  aura switcher         Abre el selector rápido de fondos en el centro (HUD)");
     println!("  aura next             Cambia al siguiente fondo de pantalla");
     println!("  aura prev             Regresa al fondo anterior");
     println!("  aura stop             Detiene la reproducción de fondos");
@@ -489,6 +491,10 @@ mod tests {
         let (hidden, action, _) = parse_flags(&["aura".into(), "toggle-pause".into()]);
         assert_eq!(hidden, true);
         assert_eq!(action, Some("toggle-pause".into()));
+
+        let (hidden, action, _) = parse_flags(&["aura".into(), "switcher".into()]);
+        assert_eq!(hidden, true);
+        assert_eq!(action, Some("switcher".into()));
 
         let (hidden, action, _) = parse_flags(&["aura".into(), "stop".into()]);
         assert_eq!(hidden, true);
