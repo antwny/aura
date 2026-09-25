@@ -665,6 +665,15 @@ impl cosmic::Application for AuraApp {
         }
     }
 
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        let theme = cosmic::theme::active();
+        Some(cosmic::iced::theme::Style {
+            background_color: cosmic::iced::Color::TRANSPARENT,
+            icon_color: theme.cosmic().on_bg_color().into(),
+            text_color: theme.cosmic().on_bg_color().into(),
+        })
+    }
+
     fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
         vec![
             Element::from(widget::text::title3("Aura")),
@@ -1020,7 +1029,7 @@ impl cosmic::Application for AuraApp {
 
                 let mut win_settings = cosmic::iced::window::Settings::default();
                 win_settings.position = cosmic::iced::window::Position::Centered;
-                win_settings.size = cosmic::iced::Size::new(1006.0, 226.0);
+                win_settings.size = cosmic::iced::Size::new(1006.0, 262.0);
                 win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 200.0));
                 win_settings.resizable = false;
                 win_settings.decorations = false;
@@ -1184,6 +1193,8 @@ impl cosmic::Application for AuraApp {
                 if self.core().main_window_id() == Some(id) {
                     self.is_window_open = false;
                     self.core_mut().set_main_window_id(None);
+                    self.core_mut().window.is_maximized = false;
+                    self.core_mut().window.sharp_corners = false;
                     if self.config.keep_running_on_close {
                         return cosmic::iced::window::close(id);
                     } else {
@@ -1201,6 +1212,8 @@ impl cosmic::Application for AuraApp {
                 if self.core().main_window_id() == Some(id) {
                     self.is_window_open = false;
                     self.core_mut().set_main_window_id(None);
+                    self.core_mut().window.is_maximized = false;
+                    self.core_mut().window.sharp_corners = false;
                 }
                 return Task::none();
             }

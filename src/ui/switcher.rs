@@ -127,7 +127,8 @@ impl AuraApp {
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(Horizontal::Center)
-            .align_y(Vertical::Center)
+            .align_y(Vertical::Bottom)
+            .padding([0, 0, 4, 0])
             .class(cosmic::theme::Container::Transparent)
             .into()
     }
