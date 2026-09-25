@@ -138,6 +138,7 @@ pub enum Message {
     RestartApp,
     OpenQuickSwitcher,
     CloseQuickSwitcher,
+    ToggleQuickSwitcher,
     SwitcherPrev,
     SwitcherNext,
     SwitcherSelect(usize),
@@ -509,7 +510,7 @@ impl cosmic::Application for AuraApp {
                 }
                 "next" => tasks.push(Task::done(cosmic::Action::App(Message::NextWallpaper))),
                 "prev" => tasks.push(Task::done(cosmic::Action::App(Message::PrevWallpaper))),
-                "switcher" => tasks.push(Task::done(cosmic::Action::App(Message::OpenQuickSwitcher))),
+                "switcher" => tasks.push(Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher))),
                 "stop" => {
                     engine.stop_all();
                     std::process::exit(0);
@@ -636,7 +637,7 @@ impl cosmic::Application for AuraApp {
                     }
                     "next" => Task::done(cosmic::Action::App(Message::NextWallpaper)),
                     "prev" => Task::done(cosmic::Action::App(Message::PrevWallpaper)),
-                    "switcher" => Task::done(cosmic::Action::App(Message::OpenQuickSwitcher)),
+                    "switcher" => Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher)),
                     "stop" => Task::done(cosmic::Action::App(Message::StopWallpaper(None))),
                     "toggle-pause" | "pause" => Task::done(cosmic::Action::App(Message::TogglePause)),
                     _ => Task::none(),
@@ -921,7 +922,7 @@ impl cosmic::Application for AuraApp {
                     if self.config.tray_click_action == "main_window" {
                         return Task::done(cosmic::Action::App(Message::ShowMainWindow));
                     } else {
-                        return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
+                        return Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher));
                     }
                 }
                 crate::tray::TrayAction::OpenSwitcher => {
@@ -1019,8 +1020,8 @@ impl cosmic::Application for AuraApp {
 
                 let mut win_settings = cosmic::iced::window::Settings::default();
                 win_settings.position = cosmic::iced::window::Position::Centered;
-                win_settings.size = cosmic::iced::Size::new(1020.0, 260.0);
-                win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 220.0));
+                win_settings.size = cosmic::iced::Size::new(1040.0, 380.0);
+                win_settings.min_size = Some(cosmic::iced::Size::new(600.0, 300.0));
                 win_settings.resizable = false;
                 win_settings.decorations = false;
                 win_settings.transparent = true;
@@ -1041,6 +1042,14 @@ impl cosmic::Application for AuraApp {
             Message::CloseQuickSwitcher => {
                 if let Some(id) = self.switcher_window_id.take() {
                     return cosmic::iced::window::close(id);
+                }
+            }
+
+            Message::ToggleQuickSwitcher => {
+                if self.switcher_window_id.is_some() {
+                    return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                } else {
+                    return Task::done(cosmic::Action::App(Message::OpenQuickSwitcher));
                 }
             }
 

@@ -500,6 +500,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn about_details_title(&self) -> &'static str {
         match self {
             Language::Es => "Detalles de la Aplicación",
@@ -514,6 +515,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn about_architecture_lbl(&self) -> &'static str {
         match self {
             Language::Es => "Arquitectura:",
@@ -550,6 +552,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn about_donation_lbl(&self) -> &'static str {
         match self {
             Language::Es => "Donaciones:",
