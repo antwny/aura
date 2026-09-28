@@ -285,7 +285,9 @@ body {
   gap: var(--s-2);
 }
 
-.hdr__github {
+.hdr__github,
+.hdr__social-btn,
+.hdr__youtube {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -295,8 +297,13 @@ body {
   color: var(--ink-1);
   transition: all var(--t-fast) var(--ease);
 }
-.hdr__github:hover {
+.hdr__github:hover,
+.hdr__social-btn:hover {
   color: var(--ink-0);
+  background: rgba(255, 255, 255, 0.08);
+}
+.hdr__youtube:hover {
+  color: #ff3344;
   background: rgba(255, 255, 255, 0.08);
 }
 
