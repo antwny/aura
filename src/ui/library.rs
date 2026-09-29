@@ -25,27 +25,8 @@ impl AuraApp {
             .push(search_input)
             .push(sort_btn);
 
-        // Quick category filter counts
-        let mut count_all = 0;
-        let mut count_live = 0;
-        let mut count_static = 0;
-        let mut count_downloaded = 0;
-        let mut count_favorites = 0;
-
-        for v in &self.videos {
-            count_all += 1;
-            if v.is_video {
-                count_live += 1;
-            } else {
-                count_static += 1;
-            }
-            if v.is_downloaded {
-                count_downloaded += 1;
-            }
-            if self.config.is_favorite(&v.path.to_string_lossy()) {
-                count_favorites += 1;
-            }
-        }
+        // Quick category filter counts (precalculated in O(1))
+        let (count_all, count_live, count_static, count_downloaded, count_favorites) = self.category_counts;
 
         let all_btn = if self.library_filter == LibraryFilter::All {
             widget::button::suggested(format!("{} ({})", self.language.library_filter_all(), count_all))
@@ -233,14 +214,13 @@ impl AuraApp {
             Some(search_trimmed.to_lowercase())
         };
 
-        let mut filtered_videos: Vec<_> = self.videos.iter().filter(|v| {
-            let path_str = v.path.to_string_lossy();
+        let filtered_videos: Vec<_> = self.videos.iter().filter(|v| {
             let match_type = match self.library_filter {
                 LibraryFilter::All => true,
                 LibraryFilter::Live => v.is_video,
                 LibraryFilter::Static => !v.is_video,
                 LibraryFilter::Downloaded => v.is_downloaded,
-                LibraryFilter::Favorites => self.config.is_favorite(&path_str),
+                LibraryFilter::Favorites => self.favorites_set.contains(v.path.to_string_lossy().as_ref()),
             };
 
             if !match_type {
@@ -253,15 +233,6 @@ impl AuraApp {
                 true
             }
         }).collect();
-
-        match self.library_sort {
-            LibrarySort::Newest => {
-                filtered_videos.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
-            }
-            LibrarySort::Oldest => {
-                filtered_videos.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
-            }
-        }
 
         if filtered_videos.is_empty() {
             let empty_content = if self.library_filter == LibraryFilter::Favorites {
@@ -311,8 +282,13 @@ impl AuraApp {
         }
 
         let selected_output = self.selected_output.clone();
-
         let custom_videos = self.config.custom_videos.clone();
+        let favorites_set = self.favorites_set.clone();
+        let total_count = filtered_videos.len();
+        let display_limit = self.library_limit.min(total_count);
+        let has_more = total_count > display_limit;
+        let displayed_videos: Vec<_> = filtered_videos.into_iter().take(display_limit).collect();
+        let load_more_label = self.language.library_btn_load_more();
 
         let grid = widget::responsive(move |size| {
             let card_w = 264.0f32;
@@ -320,12 +296,12 @@ impl AuraApp {
             let available_w = size.width.max(280.0);
             let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
 
-            let mut cards_column = widget::column::with_capacity(filtered_videos.len() / cols + 1)
+            let mut cards_column = widget::column::with_capacity(displayed_videos.len() / cols + 2)
                 .spacing(gap)
                 .width(Length::Fill)
                 .align_x(Horizontal::Center);
 
-            for chunk in filtered_videos.chunks(cols) {
+            for chunk in displayed_videos.chunks(cols) {
                 let mut card_row = widget::row::with_capacity(chunk.len())
                     .spacing(gap)
                     .align_y(Alignment::Center);
@@ -372,7 +348,7 @@ impl AuraApp {
                             })
                     };
 
-                    let is_fav = self.config.is_favorite(&path_str);
+                    let is_fav = favorites_set.contains(path_str.as_str());
                     let fav_tooltip = if is_fav {
                         self.language.library_fav_remove()
                     } else {
@@ -414,6 +390,24 @@ impl AuraApp {
                     card_row = card_row.push(card_container);
                 }
                 cards_column = cards_column.push(card_row);
+            }
+
+            if has_more {
+                let load_more_btn = widget::button::standard(format!(
+                    "{} ({} / {})",
+                    load_more_label,
+                    display_limit,
+                    total_count
+                ))
+                .leading_icon(widget::icon::from_name("view-more-symbolic"))
+                .on_press(Message::LoadMoreLibraryWallpapers);
+
+                let load_more_container = widget::container(load_more_btn)
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .padding(14);
+
+                cards_column = cards_column.push(load_more_container);
             }
 
             cards_column.into()

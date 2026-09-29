@@ -49,6 +49,7 @@ pub enum LibrarySort {
 pub enum Message {
     SelectPage(nav_bar::Id),
     SelectLibraryFilter(LibraryFilter),
+    LoadMoreLibraryWallpapers,
     ToggleFavorite(PathBuf),
     ToggleLibrarySort,
     SelectLibrarySort(LibrarySort),
@@ -72,6 +73,7 @@ pub enum Message {
     ToggleAutostart(bool),
     ToggleAutoTheme(bool),
     ToggleAutoDark(bool),
+    SelectThemeMode(crate::config::ThemeMode),
     ToggleMute(bool),
     ToggleSmartPause(bool),
     ToggleAutoPause(bool),
@@ -271,6 +273,9 @@ pub struct AuraApp {
     pub(crate) wallhaven_search: String,
     pub(crate) library_filter: LibraryFilter,
     pub(crate) library_sort: LibrarySort,
+    pub(crate) library_limit: usize,
+    pub(crate) favorites_set: std::collections::HashSet<String>,
+    pub(crate) category_counts: (usize, usize, usize, usize, usize),
     pub(crate) update_status: UpdateStatus,
     pub(crate) pending_auto_apply_id: Option<String>,
     pub(crate) last_update_check: Option<Instant>,
@@ -389,10 +394,52 @@ impl AuraApp {
         }
     }
 
+    pub(crate) fn update_category_counts(&mut self) {
+        let mut count_all = 0;
+        let mut count_live = 0;
+        let mut count_static = 0;
+        let mut count_downloaded = 0;
+        let mut count_favorites = 0;
+
+        for v in &self.videos {
+            count_all += 1;
+            if v.is_video {
+                count_live += 1;
+            } else {
+                count_static += 1;
+            }
+            if v.is_downloaded {
+                count_downloaded += 1;
+            }
+            if self.favorites_set.contains(v.path.to_string_lossy().as_ref()) {
+                count_favorites += 1;
+            }
+        }
+
+        self.category_counts = (count_all, count_live, count_static, count_downloaded, count_favorites);
+    }
+
+    pub(crate) fn sort_videos(&mut self) {
+        match self.library_sort {
+            LibrarySort::Newest => {
+                self.videos.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+            }
+            LibrarySort::Oldest => {
+                self.videos.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| a.name_lower.cmp(&b.name_lower)));
+            }
+        }
+    }
+
+    pub(crate) fn rescan_and_update(&mut self) {
+        self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+        self.sort_videos();
+        self.update_category_counts();
+    }
+
     pub(crate) fn rotation_pool(&self) -> Vec<PathBuf> {
         if self.config.rotation_only_favorites {
             let favs: Vec<PathBuf> = self.videos.iter()
-                .filter(|v| self.config.is_favorite(&v.path.to_string_lossy()))
+                .filter(|v| self.favorites_set.contains(v.path.to_string_lossy().as_ref()))
                 .map(|v| v.path.clone())
                 .collect();
             if !favs.is_empty() {
@@ -405,7 +452,7 @@ impl AuraApp {
     pub(crate) fn switcher_pool(&self) -> Vec<&VideoItem> {
         if self.config.switcher_only_favorites {
             let favs: Vec<&VideoItem> = self.videos.iter()
-                .filter(|v| self.config.is_favorite(&v.path.to_string_lossy()))
+                .filter(|v| self.favorites_set.contains(v.path.to_string_lossy().as_ref()))
                 .collect();
             if !favs.is_empty() {
                 return favs;
@@ -431,7 +478,6 @@ impl cosmic::Application for AuraApp {
 
     fn init(mut core: Core, flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
         let config = Config::load();
-        let _ = config.save();
         let language = crate::i18n::Language::from_code(&config.language);
         let nav = Self::build_nav(language, Page::Library);
 
@@ -455,6 +501,18 @@ impl cosmic::Application for AuraApp {
                 if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
                     if name.ends_with(".tmp") || name.ends_with(".tmp.jpg") {
                         let _ = std::fs::remove_file(p);
+                    }
+                }
+            }
+        }
+
+        // Cleanup any oversized legacy thumbnails (> 350KB) so they are regenerated compactly
+        let cache_dir = crate::scanner::thumbs::get_cache_dir();
+        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_file() && meta.len() > 350_000 {
+                        let _ = std::fs::remove_file(entry.path());
                     }
                 }
             }
@@ -542,8 +600,9 @@ impl cosmic::Application for AuraApp {
         };
 
         let initial_interval = config.interval;
+        let favorites_set: std::collections::HashSet<String> = config.favorites.iter().cloned().collect();
 
-        let app = Self {
+        let mut app = Self {
             core,
             nav,
             active_page: Page::Library,
@@ -591,6 +650,9 @@ impl cosmic::Application for AuraApp {
             wallhaven_search: String::new(),
             library_filter: LibraryFilter::All,
             library_sort,
+            library_limit: 48,
+            favorites_set,
+            category_counts: (0, 0, 0, 0, 0),
             update_status: UpdateStatus::Idle,
             pending_auto_apply_id: None,
             last_update_check: None,
@@ -602,6 +664,9 @@ impl cosmic::Application for AuraApp {
             switcher_last_scroll: None,
             switcher_last_event_time: None,
         };
+
+        app.sort_videos();
+        app.update_category_counts();
 
         if !crate::online::updater::is_flatpak() {
             tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
@@ -1572,13 +1637,13 @@ impl cosmic::Application for AuraApp {
                             }
                         }
 
-                        // COSMIC dynamic accent theme
-                        if self.config.auto_theme || self.config.auto_dark {
+                        // COSMIC dynamic accent theme and appearance mode
+                        if self.config.auto_theme || self.config.theme_mode != crate::config::ThemeMode::Manual {
                             if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
-                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
+                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
                             } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
                                 if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                    apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.auto_dark);
+                                    apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.theme_mode);
                                 }
                             }
                         }
@@ -1670,35 +1735,61 @@ impl cosmic::Application for AuraApp {
             Message::ToggleAutoTheme(active) => {
                 self.config.auto_theme = active;
                 let _ = self.config.save();
-                if active {
+                if active || self.config.theme_mode != crate::config::ThemeMode::Manual {
                     if let Some(current_str) = &self.config.current {
                         let cur_path = PathBuf::from(current_str);
                         if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
-                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
+                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
                         } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
                             if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.auto_dark);
+                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.theme_mode);
                             }
                         }
                     }
                 }
             }
 
-            Message::ToggleAutoDark(active) => {
-                self.config.auto_dark = active;
+            Message::SelectThemeMode(mode) => {
+                self.config.theme_mode = mode;
+                self.config.auto_dark = mode == crate::config::ThemeMode::Auto;
                 let _ = self.config.save();
-                if active {
-                    if let Some(current_str) = &self.config.current {
-                        let cur_path = PathBuf::from(current_str);
-                        if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
-                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.auto_dark);
-                        } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
-                            if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.auto_dark);
+
+                match mode {
+                    crate::config::ThemeMode::Dark => {
+                        crate::theme::apply_cosmic_mode(true);
+                        self.status_message = Some(self.language.status_theme_mode_dark().into());
+                    }
+                    crate::config::ThemeMode::Light => {
+                        crate::theme::apply_cosmic_mode(false);
+                        self.status_message = Some(self.language.status_theme_mode_light().into());
+                    }
+                    crate::config::ThemeMode::Auto => {
+                        if let Some(current_str) = &self.config.current {
+                            let cur_path = PathBuf::from(current_str);
+                            if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
+                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
+                            } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
+                                if crate::scanner::is_supported_wallpaper_ext(ext) {
+                                    apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.theme_mode);
+                                }
                             }
                         }
+                        self.status_message = Some(self.language.status_theme_mode_auto().into());
+                    }
+                    crate::config::ThemeMode::Manual => {
+                        self.status_message = Some(self.language.status_theme_mode_manual().into());
                     }
                 }
+                self.status_timer = 5;
+            }
+
+            Message::ToggleAutoDark(active) => {
+                let mode = if active {
+                    crate::config::ThemeMode::Auto
+                } else {
+                    crate::config::ThemeMode::Manual
+                };
+                return self.update(Message::SelectThemeMode(mode));
             }
 
             Message::ToggleSmartPause(active) => {
@@ -1731,13 +1822,13 @@ impl cosmic::Application for AuraApp {
             Message::RemoveFolder(folder) => {
                 self.config.dirs.retain(|d| d != &folder);
                 let _ = self.config.save();
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
                 self.status_message = Some(self.language.status_folder_removed(&folder));
                 self.status_timer = 5;
             }
 
             Message::RefreshLibrary => {
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
                 self.status_message = Some(self.language.status_library_refreshed().into());
                 self.status_timer = 5;
             }
@@ -1760,6 +1851,7 @@ impl cosmic::Application for AuraApp {
 
             Message::SearchChanged(q) => {
                 self.search_query = q;
+                self.library_limit = 48;
             }
 
             Message::PickVideoFile => {
@@ -1785,7 +1877,7 @@ impl cosmic::Application for AuraApp {
                     self.config.custom_videos.push(path_str.clone());
                     let _ = self.config.save();
                 }
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
                 let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 self.status_message = Some(self.language.status_video_added(&file_name));
                 self.status_timer = 5;
@@ -1837,7 +1929,7 @@ impl cosmic::Application for AuraApp {
                     self.config.dirs.push(folder_str.clone());
                     let _ = self.config.save();
                 }
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
                 self.status_message = Some(self.language.status_folder_added(&folder_str));
                 self.status_timer = 5;
 
@@ -1880,7 +1972,7 @@ impl cosmic::Application for AuraApp {
 
                 if added_any {
                     let _ = self.config.save();
-                    self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                    self.rescan_and_update();
                     self.status_message = Some(self.language.status_videos_dropped().into());
                     self.status_timer = 5;
 
@@ -2029,11 +2121,22 @@ impl cosmic::Application for AuraApp {
 
             Message::SelectLibraryFilter(filter) => {
                 self.library_filter = filter;
+                self.library_limit = 48;
+            }
+
+            Message::LoadMoreLibraryWallpapers => {
+                self.library_limit += 48;
             }
 
             Message::ToggleFavorite(path) => {
                 let path_str = path.to_string_lossy().to_string();
+                if self.favorites_set.contains(&path_str) {
+                    self.favorites_set.remove(&path_str);
+                } else {
+                    self.favorites_set.insert(path_str.clone());
+                }
                 self.config.toggle_favorite(&path_str);
+                self.update_category_counts();
                 let _ = self.config.save();
             }
 
@@ -2046,6 +2149,8 @@ impl cosmic::Application for AuraApp {
                     LibrarySort::Newest => "newest".into(),
                     LibrarySort::Oldest => "oldest".into(),
                 };
+                self.sort_videos();
+                self.library_limit = 48;
                 let _ = self.config.save();
             }
 
@@ -2055,6 +2160,8 @@ impl cosmic::Application for AuraApp {
                     LibrarySort::Newest => "newest".into(),
                     LibrarySort::Oldest => "oldest".into(),
                 };
+                self.sort_videos();
+                self.library_limit = 48;
                 let _ = self.config.save();
             }
 
@@ -2488,7 +2595,7 @@ impl cosmic::Application for AuraApp {
                 self.download_cancels.remove(&id);
                 self.downloading_online_ids.remove(&id);
                 self.download_progress.remove(&id);
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
                 let _ = self.config.save();
 
                 let mut tasks = Vec::new();
@@ -2586,7 +2693,7 @@ impl cosmic::Application for AuraApp {
                 // Remove from custom_videos (does NOT delete user's file from disk!)
                 self.config.custom_videos.retain(|p| p != &path_str);
                 let _ = self.config.save();
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
 
                 return self.set_status(self.language.library_removed_toast());
             }
@@ -2619,7 +2726,7 @@ impl cosmic::Application for AuraApp {
                     let _ = std::fs::remove_file(&path);
                 }
 
-                self.videos = scan_directories(&self.config.dirs, &self.config.custom_videos);
+                self.rescan_and_update();
 
                 let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 return self.set_status(format!("{}: {}", self.language.library_deleted_toast(), fname));

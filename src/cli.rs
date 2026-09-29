@@ -10,7 +10,7 @@ pub fn is_pure_cli(args: &[String]) -> bool {
     }
     matches!(
         args[1].as_str(),
-        "status" | "help" | "--help" | "-h" | "version" | "--version" | "-v" | "-V" | "check-update" | "update"
+        "status" | "help" | "--help" | "-h" | "version" | "--version" | "-v" | "-V" | "check-update" | "update" | "mode" | "theme-mode"
     )
 }
 
@@ -26,6 +26,7 @@ pub fn handle_pure_cli(args: &[String]) {
         }
         "check-update" => cmd_check_update(),
         "update" => cmd_update(),
+        "mode" | "theme-mode" => cmd_theme_mode(args),
         _ => {}
     }
 }
@@ -131,9 +132,9 @@ fn cmd_next() {
         config.current = Some(path_str.clone());
         let _ = config.save();
 
-        if config.auto_theme || config.auto_dark {
+        if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_theme, config.auto_dark);
+                apply_cosmic_theme(thumb, config.auto_theme, config.theme_mode);
             }
         }
 
@@ -181,9 +182,9 @@ fn cmd_prev() {
         config.current = Some(path_str.clone());
         let _ = config.save();
 
-        if config.auto_theme || config.auto_dark {
+        if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_theme, config.auto_dark);
+                apply_cosmic_theme(thumb, config.auto_theme, config.theme_mode);
             }
         }
 
@@ -262,8 +263,8 @@ fn cmd_apply(path_arg: &str) {
             let _ = config.save();
 
             let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
-            if thumb.exists() && (config.auto_theme || config.auto_dark) {
-                apply_cosmic_theme(&thumb, config.auto_theme, config.auto_dark);
+            if thumb.exists() && (config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual) {
+                apply_cosmic_theme(&thumb, config.auto_theme, config.theme_mode);
             }
 
             println!("✨ Aura: Fondo aplicado exitosamente (PID: {}) -> {}", pid, full_path.display());
@@ -336,6 +337,13 @@ fn cmd_status() {
         config.interval
     );
     println!("Auto-Tema COSMIC:      {}", if config.auto_theme { "Activado" } else { "Desactivado" });
+    let mode_str = match config.theme_mode {
+        crate::config::ThemeMode::Auto => "Automático (dinámico según luminancia)",
+        crate::config::ThemeMode::Dark => "Oscuro (Fijo y persistente)",
+        crate::config::ThemeMode::Light => "Claro (Fijo y persistente)",
+        crate::config::ThemeMode::Manual => "Sin alterar (Del sistema)",
+    };
+    println!("Modo de apariencia:    {}", mode_str);
     println!("Silenciado:            {}", if config.mute { "Sí" } else { "No" });
     println!("Volumen:               {}%", config.volume);
     println!("Aceleración GPU:       {}", config.hwdec);
@@ -435,6 +443,56 @@ fn cmd_update() {
     });
 }
 
+fn cmd_theme_mode(args: &[String]) {
+    if args.len() < 3 {
+        let config = Config::load();
+        let mode_str = match config.theme_mode {
+            crate::config::ThemeMode::Auto => "auto (dinámico según luminancia del fondo)",
+            crate::config::ThemeMode::Dark => "dark (oscuro fijo y persistente)",
+            crate::config::ThemeMode::Light => "light (claro fijo y persistente)",
+            crate::config::ThemeMode::Manual => "manual (sin alterar por Aura)",
+        };
+        println!("Modo actual de apariencia: {}", mode_str);
+        println!("Uso: aura mode <dark|light|auto|manual>");
+        return;
+    }
+
+    let target_mode = match args[2].to_lowercase().as_str() {
+        "dark" | "oscuro" => crate::config::ThemeMode::Dark,
+        "light" | "claro" => crate::config::ThemeMode::Light,
+        "auto" | "dynamic" | "automatico" | "automático" => crate::config::ThemeMode::Auto,
+        "manual" | "system" | "sistema" => crate::config::ThemeMode::Manual,
+        other => {
+            eprintln!("Error: Modo desconocido '{}'. Opciones disponibles: dark, light, auto, manual", other);
+            std::process::exit(1);
+        }
+    };
+
+    let mut config = Config::load();
+    config.theme_mode = target_mode;
+    config.auto_dark = target_mode == crate::config::ThemeMode::Auto;
+    let _ = config.save();
+
+    match target_mode {
+        crate::config::ThemeMode::Dark => crate::theme::apply_cosmic_mode(true),
+        crate::config::ThemeMode::Light => crate::theme::apply_cosmic_mode(false),
+        crate::config::ThemeMode::Auto => {
+            if let Some(cur) = &config.current {
+                let p = PathBuf::from(cur);
+                let thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
+                if thumb.exists() {
+                    apply_cosmic_theme(&thumb, config.auto_theme, target_mode);
+                } else if crate::scanner::is_supported_wallpaper_ext(p.extension().and_then(|e| e.to_str()).unwrap_or_default()) {
+                    apply_cosmic_theme(&p, config.auto_theme, target_mode);
+                }
+            }
+        }
+        crate::config::ThemeMode::Manual => {}
+    }
+
+    println!("✨ Aura: Modo de apariencia cambiado a {:?}", target_mode);
+}
+
 fn print_help() {
     println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC Desktop");
     println!("\nUso:");
@@ -446,6 +504,7 @@ fn print_help() {
     println!("  aura toggle-pause     Pausa o reanuda la reproducción (0% GPU al pausar)");
     println!("  aura apply <archivo>  Aplica inmediatamente un archivo de video");
     println!("  aura status           Muestra información del fondo y pantallas");
+    println!("  aura mode <modo>      Cambia el modo de tema: dark, light, auto, manual");
     println!("  aura check-update     Comprueba si hay una nueva versión en GitHub");
     println!("  aura update           Descarga e instala la última actualización");
     println!("  aura --version, -v    Muestra la versión de Aura");
@@ -469,6 +528,8 @@ mod tests {
         assert_eq!(is_pure_cli(&["aura".into(), "version".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "-v".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "status".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "mode".into()]), true);
+        assert_eq!(is_pure_cli(&["aura".into(), "theme-mode".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "check-update".into()]), true);
         assert_eq!(is_pure_cli(&["aura".into(), "update".into()]), true);
     }

@@ -381,8 +381,8 @@ impl Language {
 
     pub fn settings_lang_title(&self) -> &'static str {
         match self {
-            Language::Es => "Idioma / Language",
-            Language::En => "Language / Idioma",
+            Language::Es => "Idioma",
+            Language::En => "Language",
         }
     }
 
@@ -442,6 +442,105 @@ impl Language {
         }
     }
 
+    pub fn settings_auto_theme_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Extrae el color predominante del fondo y lo aplica como acento del sistema en COSMIC",
+            Language::En => "Extracts dominant wallpaper color and sets it as the COSMIC system accent",
+        }
+    }
+
+    pub fn settings_theme_mode_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Modo de Apariencia del Sistema (COSMIC)",
+            Language::En => "System Appearance Mode (COSMIC)",
+        }
+    }
+
+    pub fn settings_theme_mode_auto(&self) -> &'static str {
+        match self {
+            Language::Es => "Automático",
+            Language::En => "Dynamic",
+        }
+    }
+
+    pub fn settings_theme_mode_auto_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Cambia dinámicamente entre Modo Oscuro y Claro según la claridad del fondo activo.",
+            Language::En => "Dynamically toggles Dark and Light mode based on active wallpaper luminance.",
+        }
+    }
+
+    pub fn settings_theme_mode_dark(&self) -> &'static str {
+        match self {
+            Language::Es => "Oscuro fijo",
+            Language::En => "Fixed Dark",
+        }
+    }
+
+    pub fn settings_theme_mode_dark_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "El sistema permanece siempre en Modo Oscuro. Se mantiene fijo sin importar qué fondo apliques o cómo rote la lista.",
+            Language::En => "System permanently stays in Dark Mode. Persists regardless of wallpaper changes or playlist rotation.",
+        }
+    }
+
+    pub fn settings_theme_mode_light(&self) -> &'static str {
+        match self {
+            Language::Es => "Claro fijo",
+            Language::En => "Fixed Light",
+        }
+    }
+
+    pub fn settings_theme_mode_light_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "El sistema permanece siempre en Modo Claro. Se mantiene fijo sin importar qué fondo apliques o cómo rote la lista.",
+            Language::En => "System permanently stays in Light Mode. Persists regardless of wallpaper changes or playlist rotation.",
+        }
+    }
+
+    pub fn settings_theme_mode_manual(&self) -> &'static str {
+        match self {
+            Language::Es => "Sin alterar",
+            Language::En => "System Default",
+        }
+    }
+
+    pub fn settings_theme_mode_manual_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Aura no modificará el modo oscuro/claro del sistema, respetando tu configuración manual o programada de COSMIC.",
+            Language::En => "Aura will not alter the system dark/light mode, respecting your manual or scheduled COSMIC settings.",
+        }
+    }
+
+    pub fn status_theme_mode_dark(&self) -> &'static str {
+        match self {
+            Language::Es => "✨ Modo Oscuro fijo aplicado y persistente",
+            Language::En => "✨ Fixed Dark Mode applied and persistent",
+        }
+    }
+
+    pub fn status_theme_mode_light(&self) -> &'static str {
+        match self {
+            Language::Es => "✨ Modo Claro fijo aplicado y persistente",
+            Language::En => "✨ Fixed Light Mode applied and persistent",
+        }
+    }
+
+    pub fn status_theme_mode_auto(&self) -> &'static str {
+        match self {
+            Language::Es => "✨ Modo Automático activado (sincronizado con fondo)",
+            Language::En => "✨ Dynamic Mode activated (synced with wallpaper)",
+        }
+    }
+
+    pub fn status_theme_mode_manual(&self) -> &'static str {
+        match self {
+            Language::Es => "✨ Modo del sistema sin alterar por Aura",
+            Language::En => "✨ System theme mode left unaltered by Aura",
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn settings_auto_dark(&self) -> &'static str {
         match self {
             Language::Es => "Cambiar automáticamente entre Modo Oscuro y Claro según la claridad del video",
@@ -807,6 +906,13 @@ impl Language {
     }
 
     pub fn explore_btn_load_more(&self) -> &'static str {
+        match self {
+            Language::Es => "Cargar más fondos",
+            Language::En => "Load more wallpapers",
+        }
+    }
+
+    pub fn library_btn_load_more(&self) -> &'static str {
         match self {
             Language::Es => "Cargar más fondos",
             Language::En => "Load more wallpapers",
@@ -1790,5 +1896,15 @@ mod tests {
         assert!(Language::En.about_version_info().contains("COSMIC Desktop"));
         assert!(Language::Es.settings_autostart().contains("COSMIC Desktop"));
         assert!(Language::En.settings_autostart().contains("COSMIC Desktop"));
+    }
+
+    #[test]
+    fn test_clean_language_titles() {
+        assert_eq!(Language::Es.settings_lang_title(), "Idioma");
+        assert_eq!(Language::En.settings_lang_title(), "Language");
+        assert!(!Language::Es.settings_lang_title().contains('/'));
+        assert!(!Language::En.settings_lang_title().contains('/'));
+        assert_eq!(Language::Es.library_btn_load_more(), "Cargar más fondos");
+        assert_eq!(Language::En.library_btn_load_more(), "Load more wallpapers");
     }
 }

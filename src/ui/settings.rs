@@ -95,14 +95,64 @@ impl AuraApp {
                     .spacing(20)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.config.auto_theme).on_toggle(Message::ToggleAutoTheme))
-                    .push(widget::text::body(self.language.settings_auto_theme()))
+                    .push(
+                        widget::column::with_capacity(2)
+                            .spacing(2)
+                            .push(widget::text::body(self.language.settings_auto_theme()))
+                            .push(widget::text::caption(self.language.settings_auto_theme_desc()))
+                    )
             )
             .push(
-                widget::row::with_capacity(2)
-                    .spacing(20)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.auto_dark).on_toggle(Message::ToggleAutoDark))
-                    .push(widget::text::body(self.language.settings_auto_dark()))
+                widget::column::with_capacity(3)
+                    .spacing(8)
+                    .push(widget::text::body(self.language.settings_theme_mode_title()))
+                    .push(
+                        widget::row::with_capacity(4)
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(
+                                if self.config.theme_mode == crate::config::ThemeMode::Auto {
+                                    widget::button::suggested(self.language.settings_theme_mode_auto())
+                                } else {
+                                    widget::button::standard(self.language.settings_theme_mode_auto())
+                                }
+                                .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
+                                .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Auto))
+                            )
+                            .push(
+                                if self.config.theme_mode == crate::config::ThemeMode::Dark {
+                                    widget::button::suggested(self.language.settings_theme_mode_dark())
+                                } else {
+                                    widget::button::standard(self.language.settings_theme_mode_dark())
+                                }
+                                .leading_icon(widget::icon::from_name("weather-clear-night-symbolic"))
+                                .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Dark))
+                            )
+                            .push(
+                                if self.config.theme_mode == crate::config::ThemeMode::Light {
+                                    widget::button::suggested(self.language.settings_theme_mode_light())
+                                } else {
+                                    widget::button::standard(self.language.settings_theme_mode_light())
+                                }
+                                .leading_icon(widget::icon::from_name("weather-clear-symbolic"))
+                                .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Light))
+                            )
+                            .push(
+                                if self.config.theme_mode == crate::config::ThemeMode::Manual {
+                                    widget::button::suggested(self.language.settings_theme_mode_manual())
+                                } else {
+                                    widget::button::standard(self.language.settings_theme_mode_manual())
+                                }
+                                .leading_icon(widget::icon::from_name("preferences-system-symbolic"))
+                                .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Manual))
+                            )
+                    )
+                    .push(widget::text::caption(match self.config.theme_mode {
+                        crate::config::ThemeMode::Auto => self.language.settings_theme_mode_auto_desc(),
+                        crate::config::ThemeMode::Dark => self.language.settings_theme_mode_dark_desc(),
+                        crate::config::ThemeMode::Light => self.language.settings_theme_mode_light_desc(),
+                        crate::config::ThemeMode::Manual => self.language.settings_theme_mode_manual_desc(),
+                    }))
             );
 
         col = col.push(widget::container(general_section).width(Length::Fill));

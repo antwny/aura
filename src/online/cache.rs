@@ -4,7 +4,36 @@ use std::time::Duration;
 
 /// Determines the user's standard Pictures / Imágenes directory via XDG or standard paths.
 pub fn user_pictures_dir() -> PathBuf {
-    // 1. Try xdg-user-dir PICTURES
+    // 1. Try parsing ~/.config/user-dirs.dirs (instant in-memory file read, avoids spawning subprocesses)
+    if let Ok(home) = std::env::var("HOME") {
+        let home_path = PathBuf::from(&home);
+        let user_dirs = home_path.join(".config/user-dirs.dirs");
+        if let Ok(content) = std::fs::read_to_string(user_dirs) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("XDG_PICTURES_DIR=") {
+                    let val = trimmed.trim_start_matches("XDG_PICTURES_DIR=").trim_matches('"');
+                    let expanded = val.replace("$HOME", &home);
+                    let p = PathBuf::from(expanded);
+                    if p.exists() {
+                        return p;
+                    }
+                }
+            }
+        }
+
+        // 2. Fallbacks: Spanish 'Imágenes' or English 'Pictures'
+        let p_esp = home_path.join("Imágenes");
+        if p_esp.exists() {
+            return p_esp;
+        }
+        let p_eng = home_path.join("Pictures");
+        if p_eng.exists() {
+            return p_eng;
+        }
+    }
+
+    // 3. Fallback to xdg-user-dir PICTURES command if file wasn't found
     if let Ok(output) = std::process::Command::new("xdg-user-dir").arg("PICTURES").output() {
         if output.status.success() {
             let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -17,31 +46,8 @@ pub fn user_pictures_dir() -> PathBuf {
         }
     }
 
-    // 2. Try parsing ~/.config/user-dirs.dirs
     if let Ok(home) = std::env::var("HOME") {
-        let home_path = PathBuf::from(&home);
-        let user_dirs = home_path.join(".config/user-dirs.dirs");
-        if let Ok(content) = std::fs::read_to_string(user_dirs) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("XDG_PICTURES_DIR=") {
-                    let val = trimmed.trim_start_matches("XDG_PICTURES_DIR=").trim_matches('"');
-                    let expanded = val.replace("$HOME", &home);
-                    return PathBuf::from(expanded);
-                }
-            }
-        }
-
-        // 3. Fallbacks: Spanish 'Imágenes' or English 'Pictures'
-        let p_esp = home_path.join("Imágenes");
-        if p_esp.exists() {
-            return p_esp;
-        }
-        let p_eng = home_path.join("Pictures");
-        if p_eng.exists() {
-            return p_eng;
-        }
-        return home_path.join("Pictures");
+        return PathBuf::from(home).join("Pictures");
     }
 
     PathBuf::from("/tmp")

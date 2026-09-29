@@ -116,19 +116,41 @@ fn atomic_write(path: &Path, content: &str) {
     }
 }
 
-pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, auto_dark: bool) -> bool {
-    if !auto_theme && !auto_dark {
+pub fn apply_cosmic_mode(is_dark: bool) {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let cosmic_config = PathBuf::from(home).join(".config").join("cosmic");
+    let mode_dir = cosmic_config.join("com.system76.CosmicTheme.Mode").join("v1");
+    atomic_write(&mode_dir.join("is_dark"), if is_dark { "true\n" } else { "false\n" });
+}
+
+pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, theme_mode: crate::config::ThemeMode) -> bool {
+    if !auto_theme && theme_mode == crate::config::ThemeMode::Manual {
         return false;
     }
 
-    let Some(palette) = extract_palette(thumb_path) else {
-        return false;
-    };
+    let palette_opt = extract_palette(thumb_path);
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let cosmic_config = PathBuf::from(home).join(".config").join("cosmic");
+    // 1. Apply system appearance mode
+    match theme_mode {
+        crate::config::ThemeMode::Dark => apply_cosmic_mode(true),
+        crate::config::ThemeMode::Light => apply_cosmic_mode(false),
+        crate::config::ThemeMode::Auto => {
+            if let Some(ref pal) = palette_opt {
+                apply_cosmic_mode(pal.is_dark);
+            }
+        }
+        crate::config::ThemeMode::Manual => {}
+    }
 
+    // 2. Apply dynamic accent color if auto_theme is enabled
     if auto_theme {
+        let Some(palette) = palette_opt else {
+            return false;
+        };
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        let cosmic_config = PathBuf::from(home).join(".config").join("cosmic");
+
         let col = palette.dominant_color;
         let r_u8 = (col.r * 255.0).round().clamp(0.0, 255.0) as u8;
         let g_u8 = (col.g * 255.0).round().clamp(0.0, 255.0) as u8;
@@ -199,11 +221,6 @@ pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, auto_dark: bool) 
         }
     }
 
-    if auto_dark {
-        let mode_dir = cosmic_config.join("com.system76.CosmicTheme.Mode").join("v1");
-        atomic_write(&mode_dir.join("is_dark"), if palette.is_dark { "true\n" } else { "false\n" });
-    }
-
     true
 }
 
@@ -264,8 +281,15 @@ mod tests {
 
     #[test]
     fn test_apply_disabled() {
-        // When both auto_theme and auto_dark are false, should return false immediately
-        assert!(!apply_cosmic_theme(Path::new("/nonexistent"), false, false));
+        // When auto_theme is false and theme_mode is Manual, should return false immediately
+        assert!(!apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Manual));
+    }
+
+    #[test]
+    fn test_apply_theme_modes_without_accent() {
+        // ThemeMode::Dark and Light return true even if auto_theme is false (mode is applied)
+        assert!(apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Dark));
+        assert!(apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Light));
     }
 
     #[test]

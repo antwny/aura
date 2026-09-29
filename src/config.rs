@@ -2,6 +2,25 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    Auto,
+    Dark,
+    Light,
+    Manual,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        ThemeMode::Auto
+    }
+}
+
+fn default_auto_dark() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub current: Option<String>,
@@ -11,7 +30,10 @@ pub struct Config {
     pub output: String,
     pub scaling: HashMap<String, String>,
     pub auto_theme: bool,
+    #[serde(default = "default_auto_dark")]
     pub auto_dark: bool,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
     pub rotation: bool,
     pub interval: u64, // In minutes
     pub order: String,  // "random" | "sequential"
@@ -69,6 +91,24 @@ fn default_language() -> String {
 }
 
 fn resolve_xdg_user_dir(name: &str) -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        let user_dirs_file = PathBuf::from(&home).join(".config/user-dirs.dirs");
+        if let Ok(content) = std::fs::read_to_string(user_dirs_file) {
+            let key = format!("XDG_{}_DIR=", name.to_uppercase());
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with(&key) {
+                    let val = trimmed.trim_start_matches(&key).trim_matches('"');
+                    let expanded = val.replace("$HOME", &home);
+                    let p = PathBuf::from(expanded);
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+
     if let Ok(output) = std::process::Command::new("xdg-user-dir").arg(name).output() {
         if output.status.success() {
             let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -148,6 +188,7 @@ impl Default for Config {
             scaling: HashMap::new(),
             auto_theme: true,
             auto_dark: true,
+            theme_mode: ThemeMode::Auto,
             rotation: false,
             interval: 30,
             order: "random".into(),
@@ -191,6 +232,13 @@ impl Config {
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Ok(mut cfg) = serde_json::from_str::<Config>(&content) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if val.get("theme_mode").is_none() {
+                            if let Some(false) = val.get("auto_dark").and_then(|v| v.as_bool()) {
+                                cfg.theme_mode = ThemeMode::Manual;
+                            }
+                        }
+                    }
                     let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
                     if !cfg.dirs.contains(&online_dir) {
                         cfg.dirs.insert(0, online_dir);
@@ -266,6 +314,7 @@ mod tests {
         assert_eq!(cfg.interval, 30);
         assert!(cfg.auto_theme);
         assert!(cfg.auto_dark);
+        assert_eq!(cfg.theme_mode, ThemeMode::Auto);
         assert!(cfg.mute);
         assert!(cfg.smart_pause);
         assert!(cfg.keep_running_on_close);
@@ -325,6 +374,18 @@ mod tests {
         let cfg = cfg.unwrap();
         assert!(!cfg.language.is_empty());
         assert!(cfg.auto_pause);
+        assert_eq!(cfg.theme_mode, ThemeMode::Auto);
+    }
+
+    #[test]
+    fn test_theme_mode_serialization() {
+        for mode in [ThemeMode::Auto, ThemeMode::Dark, ThemeMode::Light, ThemeMode::Manual] {
+            let mut cfg = Config::default();
+            cfg.theme_mode = mode;
+            let json = serde_json::to_string(&cfg).expect("serialize");
+            let deserialized: Config = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(deserialized.theme_mode, mode);
+        }
     }
 
     #[test]

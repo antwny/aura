@@ -75,21 +75,14 @@ impl VideoItem {
 
 fn resolve_or_link_thumb(path: &Path) -> Option<PathBuf> {
     let potential_thumb = thumbs::thumb_path_for_video(path);
-    let online_dir = crate::online::wallpapers_online_dir();
-    let is_online_image = path.starts_with(&online_dir)
-        && path.extension()
-            .and_then(|e| e.to_str())
-            .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-            .unwrap_or(false);
 
     if potential_thumb.exists() {
-        // Upgrade legacy low-res web thumbnails (< 16KB) if master wallpaper exists on disk
-        if is_online_image && path.exists() {
-            if let Ok(meta) = potential_thumb.metadata() {
-                if meta.len() < 16_384 {
-                    let _ = std::fs::remove_file(&potential_thumb);
-                    return None;
-                }
+        if let Ok(meta) = potential_thumb.metadata() {
+            // If the thumbnail is larger than 350KB, it's an uncompressed or full-HD image.
+            // Remove it so generate_thumbnail produces a crisp compact 480x270 thumbnail (~30KB).
+            if meta.len() > 350_000 {
+                let _ = std::fs::remove_file(&potential_thumb);
+                return None;
             }
         }
         return Some(potential_thumb);
@@ -103,13 +96,11 @@ fn resolve_or_link_thumb(path: &Path) -> Option<PathBuf> {
             for ext in &["jpg", "jpeg", "png", "webp"] {
                 let candidate = online_thumbs_dir.join(format!("{}.{}", stem, ext));
                 if candidate.exists() {
-                    if let Some(parent) = potential_thumb.parent() {
-                        let _ = std::fs::create_dir_all(parent);
+                    // Only reuse if it's genuinely a compact thumbnail
+                    let is_compact = candidate.metadata().map(|m| m.len() <= 350_000).unwrap_or(false);
+                    if is_compact {
+                        return Some(candidate);
                     }
-                    if std::fs::copy(&candidate, &potential_thumb).is_ok() {
-                        return Some(potential_thumb);
-                    }
-                    return Some(candidate);
                 }
             }
         }
@@ -343,6 +334,24 @@ mod tests {
         assert_eq!(list[0].name, "A");
         assert_eq!(list[1].name, "C");
         assert_eq!(list[2].name, "B");
+    }
+
+    #[test]
+    fn test_resolve_oversized_thumb_purged() {
+        let dummy_wallpaper = PathBuf::from("/tmp/test_heavy_wallpaper_123.mp4");
+        let thumb_path = thumbs::thumb_path_for_video(&dummy_wallpaper);
+        if let Some(parent) = thumb_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        // Write a 400KB dummy thumbnail
+        let dummy_data = vec![0u8; 400_000];
+        let _ = std::fs::write(&thumb_path, dummy_data);
+        assert!(thumb_path.exists());
+
+        // resolve_or_link_thumb should detect it is > 350KB, remove it, and return None
+        let resolved = resolve_or_link_thumb(&dummy_wallpaper);
+        assert!(resolved.is_none());
+        assert!(!thumb_path.exists());
     }
 }
 
