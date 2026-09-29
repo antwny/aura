@@ -1771,6 +1771,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn switcher_cinematic_nav_hint(&self) -> &'static str {
         match self {
             Language::Es => "← → Navegar  ·  Enter Aplicar  ·  Espacio Pausa  ·  F Favorito  ·  Esc Salir",
