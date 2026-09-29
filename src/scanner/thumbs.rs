@@ -64,7 +64,12 @@ pub fn cinematic_thumb_for_media(
         .take(50)
         .collect();
     let hash = format!("{:016x}", md5_simple(media_path.to_string_lossy().as_bytes()));
-    let suffix = if is_active { "act" } else { "inact" };
+    let accent = accent_rgb.unwrap_or([58, 142, 230]);
+    let suffix = if is_active {
+        format!("act_{:02x}{:02x}{:02x}", accent[0], accent[1], accent[2])
+    } else {
+        "inact".to_string()
+    };
     let cached_path = cache_dir.join(format!("{}_{}_{}.png", clean_stem, &hash[..8], suffix));
 
     if cached_path.exists() {
@@ -287,8 +292,7 @@ mod tests {
         let generated = cinematic_thumb_for_media(&src_img_path, true, Some([255, 100, 50]));
         assert!(generated.is_some(), "Cinematic thumbnail should be generated");
         let path = generated.unwrap();
-        assert!(path.exists(), "Generated cinematic thumb file must exist");
-        assert!(path.to_string_lossy().ends_with("_act.png"));
+        assert!(path.to_string_lossy().ends_with("_act_ff6432.png"));
 
         // Verify image dimensions and transparency in skewed corner
         let img = image::open(&path).expect("open generated thumb").to_rgba8();

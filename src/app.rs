@@ -1168,6 +1168,12 @@ impl cosmic::Application for AuraApp {
                             margin: IcedMargin::default(),
                             size: None,
                             namespace: "aura-switcher".to_string(),
+                            exclusive_zone: -1,
+                            size_limits: cosmic::iced::Limits::NONE
+                                .min_width(1.0)
+                                .min_height(1.0)
+                                .max_width(f32::INFINITY)
+                                .max_height(f32::INFINITY),
                             ..Default::default()
                         }
                     },

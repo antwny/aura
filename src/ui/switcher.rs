@@ -227,7 +227,7 @@ impl AuraApp {
                 .align_y(Vertical::Center)
                 .class(cosmic::theme::Container::custom(|_theme| {
                     cosmic::iced::widget::container::Style {
-                        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.78))),
+                        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.38))),
                         ..Default::default()
                     }
                 }));
@@ -280,13 +280,21 @@ impl AuraApp {
             vec![(0, 420.0, 380.0, 0.0, true)]
         };
 
+        let accent_base = cosmic::theme::active().cosmic().accent.base;
+        let accent_color: cosmic::iced::Color = accent_base.into();
+        let accent_rgb: [u8; 3] = [
+            (accent_color.r * 255.0).round() as u8,
+            (accent_color.g * 255.0).round() as u8,
+            (accent_color.b * 255.0).round() as u8,
+        ];
+
         let mut stack_children: Vec<Element<'_, Message>> = Vec::with_capacity(slots.len());
 
         for (offset, w, h, x_shift, is_center) in slots {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
             let video = pool[item_idx];
 
-            let card_widget: Element<'_, Message> = if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, None) {
+            let card_widget: Element<'_, Message> = if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb)) {
                 let img = widget::image(cinematic_thumb)
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h));
@@ -353,80 +361,23 @@ impl AuraApp {
             .width(Length::Fill)
             .height(Length::Fixed(440.0));
 
-        // Metadata footer info
-        let current_video = pool[curr_idx];
-        let file_title = current_video.path.file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Wallpaper".to_string());
+        // Prevent clicking on the carousel items from closing the HUD via backdrop
+        let content_mouse_area = widget::mouse_area(carousel_stack).on_press(Message::SwitcherNoop);
 
-        let mut badges_row = widget::row::with_capacity(4)
-            .spacing(8)
-            .align_y(Alignment::Center);
+        let centered_content = widget::container(content_mouse_area)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center);
 
-        // Position counter badge
-        badges_row = badges_row.push(
-            widget::container(
-                widget::text::caption(format!("{} / {}", curr_idx + 1, n))
-            )
-            .padding([3, 10])
-            .class(cosmic::theme::Container::Card)
-        );
-
-        // Favorite badge
-        if self.config.is_favorite(&current_video.path.to_string_lossy()) {
-            badges_row = badges_row.push(
-                widget::container(
-                    widget::icon::from_name("emblem-favorite-symbolic").size(14)
-                )
-                .padding([3, 8])
-                .class(cosmic::theme::Container::Card)
-            );
-        }
-
-        // Animated video badge
-        if current_video.is_video {
-            badges_row = badges_row.push(
-                widget::container(
-                    widget::icon::from_name("video-x-generic-symbolic").size(14)
-                )
-                .padding([3, 8])
-                .class(cosmic::theme::Container::Card)
-            );
-        }
-
-        let hud_footer = widget::column::with_capacity(3)
-            .spacing(6)
-            .align_x(Alignment::Center)
-            .push(
-                widget::text::title3(file_title)
-                    .size(20)
-            )
-            .push(badges_row)
-            .push(
-                widget::text::caption(self.language.switcher_cinematic_nav_hint())
-            );
-
-        let hud_footer_container = widget::container(hud_footer)
-            .padding([12, 28])
-            .class(cosmic::theme::Container::Card);
-
-        let main_content = widget::column::with_capacity(2)
-            .spacing(20)
-            .align_x(Alignment::Center)
-            .push(carousel_stack)
-            .push(hud_footer_container);
-
-        // Prevent clicking the center content from closing the HUD
-        let content_mouse_area = widget::mouse_area(main_content).on_press(Message::SwitcherNoop);
-
-        let backdrop = widget::container(content_mouse_area)
+        let backdrop = widget::container(centered_content)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center)
             .class(cosmic::theme::Container::custom(|_theme| {
                 cosmic::iced::widget::container::Style {
-                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.78))),
+                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.38))),
                     ..Default::default()
                 }
             }));
