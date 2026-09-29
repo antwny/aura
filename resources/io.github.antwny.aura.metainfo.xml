@@ -60,6 +60,16 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.4.1" date="2026-09-29">
+      <description>
+        <p>Aura 1.4.1 adds customizable auto-rotation durations and refines touchpad gestures in the Quick Switcher HUD:</p>
+        <ul>
+          <li>Arbitrary Custom Rotation Interval: Configure any custom wallpaper rotation duration in minutes (from 1 to 1440 minutes / 24 hours), persisted in configuration.</li>
+          <li>Touchpad Gesture Sensitivity: Added pixel threshold accumulation and cooldown throttling for two-finger touchpad scrolling in the Quick Switcher HUD, preventing accidental rapid wallpaper skipping.</li>
+          <li>Maintains bundled 64-bit mpvpaper portable engine for out-of-the-box playback on COSMIC Desktop across all Linux distributions.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-09-25">
       <description>
         <p>Aura 1.4.0 introduces the Quick Switcher HUD overlay, new official Dual Pillar branding, and visual layer-shell teardown safeguards:</p>

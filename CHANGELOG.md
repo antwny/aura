@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-09-29
+
+### Added
+- **Intervalos de Rotación Personalizados (Arbitrary Custom Rotation Duration)**:
+  - Posibilidad de definir cualquier duración personalizada de intervalo en minutos para la rotación automática de fondos, además de los preajustes habituales (1m, 5m, 15m, 30m, 1h).
+  - Campo numérico interactivo en la sección de Ajustes con validación en tiempo real (rango de 1 a 1440 minutos / 24 horas).
+  - Persistencia automática en `config.json` y sincronización inmediata con el temporizador de rotación de fondos de pantalla.
+  - Soporte bilingüe completo (español e inglés) para etiquetas, descripciones y mensajes de ayuda.
+
+### Fixed
+- **Sensibilidad y Control del Touchpad en Quick Switcher HUD**:
+  - Resuelto el problema de inercia en touchpads (deslizamiento con dos dedos) donde un solo gesto pasaba a toda velocidad por múltiples tarjetas sin control.
+  - Implementado acumulador de umbral de desplazamiento continuo (`TOUCHPAD_SCROLL_THRESHOLD = 32.0`) y tiempo de enfriamiento (`TOUCHPAD_COOLDOWN = 110ms`).
+  - Navegación precisa y deliberada fondo por fondo tanto en touchpad como en ratón tradicional con rueda de desplazamiento.
+
 ## [1.4.0] - 2026-09-25
 
 ### Added
