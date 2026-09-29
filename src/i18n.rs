@@ -1302,6 +1302,41 @@ impl Language {
         }
     }
 
+    pub fn settings_interval_custom_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Personalizado:",
+            Language::En => "Custom:",
+        }
+    }
+
+    pub fn settings_interval_custom_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "ej. 45",
+            Language::En => "e.g. 45",
+        }
+    }
+
+    pub fn settings_interval_mins_unit(&self) -> &'static str {
+        match self {
+            Language::Es => "min",
+            Language::En => "min",
+        }
+    }
+
+    pub fn settings_interval_apply(&self) -> &'static str {
+        match self {
+            Language::Es => "Aplicar",
+            Language::En => "Apply",
+        }
+    }
+
+    pub fn status_interval_invalid(&self) -> &'static str {
+        match self {
+            Language::Es => "El intervalo debe ser un número entre 1 y 1440 minutos",
+            Language::En => "Interval must be a number between 1 and 1440 minutes",
+        }
+    }
+
     pub fn settings_order_label(&self) -> &'static str {
         match self {
             Language::Es => "Orden de reproducción:",
@@ -1695,6 +1730,11 @@ mod tests {
             assert!(!lang.settings_rotation_desc().is_empty());
             assert!(!lang.settings_rotation_toggle().is_empty());
             assert!(!lang.settings_interval_label().is_empty());
+            assert!(!lang.settings_interval_custom_label().is_empty());
+            assert!(!lang.settings_interval_custom_placeholder().is_empty());
+            assert!(!lang.settings_interval_mins_unit().is_empty());
+            assert!(!lang.settings_interval_apply().is_empty());
+            assert!(!lang.status_interval_invalid().is_empty());
             assert!(!lang.settings_order_label().is_empty());
             assert!(!lang.settings_order_random().is_empty());
             assert!(!lang.settings_order_seq().is_empty());

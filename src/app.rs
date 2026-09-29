@@ -60,6 +60,8 @@ pub enum Message {
     StartFavoritesRotation,
     NavigateToPage(Page),
     SelectInterval(u64),
+    CustomIntervalChanged(String),
+    ApplyCustomInterval,
     SelectRotationOrder(String),
     TogglePauseOnBattery(bool),
     ChangeVolume(u8),
@@ -275,6 +277,10 @@ pub struct AuraApp {
     pub(crate) switcher_window_id: Option<cosmic::iced::window::Id>,
     pub(crate) closing_switcher_window_id: Option<cosmic::iced::window::Id>,
     pub(crate) switcher_index: usize,
+    pub(crate) custom_interval_input: String,
+    pub(crate) switcher_scroll_accum: f32,
+    pub(crate) switcher_last_scroll: Option<Instant>,
+    pub(crate) switcher_last_event_time: Option<Instant>,
 }
 
 impl AuraApp {
@@ -535,6 +541,8 @@ impl cosmic::Application for AuraApp {
             _ => LibrarySort::Newest,
         };
 
+        let initial_interval = config.interval;
+
         let app = Self {
             core,
             nav,
@@ -589,6 +597,10 @@ impl cosmic::Application for AuraApp {
             switcher_window_id: None,
             closing_switcher_window_id: None,
             switcher_index: 0,
+            custom_interval_input: initial_interval.to_string(),
+            switcher_scroll_accum: 0.0,
+            switcher_last_scroll: None,
+            switcher_last_event_time: None,
         };
 
         if !crate::online::updater::is_flatpak() {
@@ -872,8 +884,29 @@ impl cosmic::Application for AuraApp {
 
             Message::SelectInterval(interval) => {
                 self.config.interval = interval;
+                self.custom_interval_input = interval.to_string();
                 let _ = self.config.save();
                 return self.set_status(self.language.status_interval_selected(interval));
+            }
+
+            Message::CustomIntervalChanged(text) => {
+                let digits: String = text.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
+                self.custom_interval_input = digits;
+                return Task::none();
+            }
+
+            Message::ApplyCustomInterval => {
+                if let Ok(val) = self.custom_interval_input.trim().parse::<u64>() {
+                    if (1..=1440).contains(&val) {
+                        self.config.interval = val;
+                        self.custom_interval_input = val.to_string();
+                        let _ = self.config.save();
+                        return self.set_status(self.language.status_interval_selected(val));
+                    }
+                }
+                self.custom_interval_input = self.config.interval.to_string();
+                let warn_msg = self.language.status_interval_invalid().to_string();
+                return self.notify(warn_msg);
             }
 
             Message::SelectRotationOrder(order) => {
@@ -1039,6 +1072,9 @@ impl cosmic::Application for AuraApp {
                     0
                 };
                 self.switcher_index = curr_idx;
+                self.switcher_scroll_accum = 0.0;
+                self.switcher_last_scroll = None;
+                self.switcher_last_event_time = None;
 
                 if let Some(id) = self.switcher_window_id {
                     return cosmic::iced::window::gain_focus(id);
@@ -1075,6 +1111,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::CloseQuickSwitcher => {
+                self.switcher_scroll_accum = 0.0;
+                self.switcher_last_scroll = None;
+                self.switcher_last_event_time = None;
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1193,14 +1232,62 @@ impl cosmic::Application for AuraApp {
 
             Message::SwitcherWheelScrolled { window, delta } => {
                 if self.switcher_window_id == Some(window) {
-                    let (dx, dy) = match delta {
-                        cosmic::iced::mouse::ScrollDelta::Lines { x, y } => (x, y),
-                        cosmic::iced::mouse::ScrollDelta::Pixels { x, y } => (x, y),
+                    const TOUCHPAD_THRESHOLD: f32 = 60.0;
+                    const SCROLL_COOLDOWN: std::time::Duration = std::time::Duration::from_millis(130);
+                    const GESTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(220);
+
+                    let now = Instant::now();
+                    if let Some(last_event) = self.switcher_last_event_time {
+                        if now.duration_since(last_event) > GESTURE_TIMEOUT {
+                            self.switcher_scroll_accum = 0.0;
+                        }
+                    }
+                    self.switcher_last_event_time = Some(now);
+
+                    let is_vertical = matches!(self.config.switcher_position.as_str(), "left" | "right");
+
+                    let increment = match delta {
+                        cosmic::iced::mouse::ScrollDelta::Lines { x, y } => {
+                            let dir = if is_vertical {
+                                if y.abs() >= x.abs() { -y } else { x }
+                            } else {
+                                if x.abs() >= y.abs() { x } else { -y }
+                            };
+                            dir * TOUCHPAD_THRESHOLD
+                        }
+                        cosmic::iced::mouse::ScrollDelta::Pixels { x, y } => {
+                            if is_vertical {
+                                if y.abs() >= x.abs() { -y } else { x }
+                            } else {
+                                if x.abs() >= y.abs() { x } else { -y }
+                            }
+                        }
                     };
-                    if dy > 0.0 || dx < 0.0 {
-                        return Task::done(cosmic::Action::App(Message::SwitcherPrev));
-                    } else if dy < 0.0 || dx > 0.0 {
-                        return Task::done(cosmic::Action::App(Message::SwitcherNext));
+
+                    // If direction reversed, reset accumulator to avoid fighting previous inertia
+                    if (increment > 0.0 && self.switcher_scroll_accum < 0.0)
+                        || (increment < 0.0 && self.switcher_scroll_accum > 0.0)
+                    {
+                        self.switcher_scroll_accum = 0.0;
+                    }
+
+                    self.switcher_scroll_accum += increment;
+
+                    let can_step = match self.switcher_last_scroll {
+                        Some(last) => now.duration_since(last) >= SCROLL_COOLDOWN,
+                        None => true,
+                    };
+
+                    if can_step {
+                        if self.switcher_scroll_accum >= TOUCHPAD_THRESHOLD {
+                            self.switcher_scroll_accum = 0.0;
+                            self.switcher_last_scroll = Some(now);
+                            return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                        } else if self.switcher_scroll_accum <= -TOUCHPAD_THRESHOLD {
+                            self.switcher_scroll_accum = 0.0;
+                            self.switcher_last_scroll = Some(now);
+                            return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                        }
                     }
                 }
             }
@@ -2622,3 +2709,58 @@ impl AuraApp {
         nav
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_custom_interval_input_sanitization_and_validation() {
+        let input = "abc 45 min!";
+        let sanitized: String = input.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
+        assert_eq!(sanitized, "45");
+
+        let val = sanitized.parse::<u64>().unwrap();
+        assert!((1..=1440).contains(&val));
+
+        // Invalid zero
+        let zero_input = "0".chars().filter(|c| c.is_ascii_digit()).take(5).collect::<String>();
+        let val_zero = zero_input.parse::<u64>().unwrap();
+        assert!(!(1..=1440).contains(&val_zero));
+
+        // Invalid excessive (> 1440)
+        let big_input = "1441".chars().filter(|c| c.is_ascii_digit()).take(5).collect::<String>();
+        let val_big = big_input.parse::<u64>().unwrap();
+        assert!(!(1..=1440).contains(&val_big));
+    }
+
+    #[test]
+    fn test_switcher_scroll_accumulator_threshold() {
+        const TOUCHPAD_THRESHOLD: f32 = 60.0;
+        let mut accum = 0.0f32;
+
+        // Small events from gentle touch (e.g. 10 events of 3.0 px)
+        for _ in 0..10 {
+            accum += 3.0;
+        }
+        assert_eq!(accum, 30.0);
+        // Not yet at threshold
+        assert!(accum < TOUCHPAD_THRESHOLD);
+
+        // More events push it over threshold
+        accum += 35.0; // 65.0
+        assert!(accum >= TOUCHPAD_THRESHOLD);
+
+        // Upon trigger, reset
+        accum = 0.0;
+        assert_eq!(accum, 0.0);
+
+        // Direction reversal reset: if moving down (+20), then user swipes up (-15)
+        accum += 20.0;
+        let increment = -15.0;
+        if (increment > 0.0 && accum < 0.0) || (increment < 0.0 && accum > 0.0) {
+            accum = 0.0;
+        }
+        accum += increment;
+        assert_eq!(accum, -15.0);
+    }
+}
+

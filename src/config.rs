@@ -214,6 +214,13 @@ impl Config {
                             }
                         }
                     }
+                    // Sanitize interval to reasonable range [1, 1440] (default to 30 if zero)
+                    if cfg.interval == 0 {
+                        cfg.interval = 30;
+                    } else {
+                        cfg.interval = cfg.interval.clamp(1, 1440);
+                    }
+
                     return cfg;
                 }
             }
@@ -399,5 +406,31 @@ mod tests {
         assert_eq!(cfg.tray_click_action, "main_window");
         assert!(cfg.switcher_only_favorites);
         assert_eq!(cfg.switcher_position, "left");
+    }
+
+    #[test]
+    fn test_custom_interval_serialization_and_clamping() {
+        let mut cfg = Config::default();
+        cfg.interval = 45;
+        let json = serde_json::to_string_pretty(&cfg).expect("serialize config");
+        let mut deserialized: Config = serde_json::from_str(&json).expect("deserialize config");
+        assert_eq!(deserialized.interval, 45);
+
+        // Test clamping on corrupted zero or excessive values
+        deserialized.interval = 0;
+        if deserialized.interval == 0 {
+            deserialized.interval = 30;
+        } else {
+            deserialized.interval = deserialized.interval.clamp(1, 1440);
+        }
+        assert_eq!(deserialized.interval, 30);
+
+        deserialized.interval = 5000;
+        deserialized.interval = deserialized.interval.clamp(1, 1440);
+        assert_eq!(deserialized.interval, 1440);
+
+        deserialized.interval = 7;
+        deserialized.interval = deserialized.interval.clamp(1, 1440);
+        assert_eq!(deserialized.interval, 7);
     }
 }

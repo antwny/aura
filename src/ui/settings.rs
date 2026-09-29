@@ -139,6 +139,30 @@ impl AuraApp {
                 interval_row = interval_row.push(btn);
             }
 
+            let is_custom = ![5, 10, 15, 30, 60, 120].contains(&self.config.interval);
+            let custom_interval_row = widget::row::with_capacity(4)
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(widget::text::body(self.language.settings_interval_custom_label()))
+                .push(
+                    widget::text_input(
+                        self.language.settings_interval_custom_placeholder(),
+                        &self.custom_interval_input,
+                    )
+                    .on_input(Message::CustomIntervalChanged)
+                    .on_submit(|_| Message::ApplyCustomInterval)
+                    .width(Length::Fixed(85.0))
+                )
+                .push(widget::text::caption(self.language.settings_interval_mins_unit()))
+                .push(
+                    if is_custom {
+                        widget::button::suggested(self.language.settings_interval_apply())
+                    } else {
+                        widget::button::standard(self.language.settings_interval_apply())
+                    }
+                    .on_press(Message::ApplyCustomInterval)
+                );
+
             // Order options: Random vs Sequential
             let order_row = widget::row::with_capacity(3)
                 .spacing(8)
@@ -198,7 +222,12 @@ impl AuraApp {
                 widget::text::caption(self.language.settings_rotation_desc())
             };
 
-            rotation_section = rotation_section.push(source_row).push(hint_caption).push(interval_row).push(order_row);
+            rotation_section = rotation_section
+                .push(source_row)
+                .push(hint_caption)
+                .push(interval_row)
+                .push(custom_interval_row)
+                .push(order_row);
         }
 
         col = col.push(widget::container(rotation_section).width(Length::Fill));
