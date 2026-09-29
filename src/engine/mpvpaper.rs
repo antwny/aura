@@ -291,6 +291,8 @@ pub struct WallpaperEngine {
     processes: HashMap<String, Child>,
     // Stores active IPC socket path per output
     sockets: HashMap<String, PathBuf>,
+    // Stores whether active wallpaper on output is an image
+    output_is_image: HashMap<String, bool>,
     pub is_paused: bool,
 }
 
@@ -299,6 +301,7 @@ impl WallpaperEngine {
         Self {
             processes: HashMap::new(),
             sockets: HashMap::new(),
+            output_is_image: HashMap::new(),
             is_paused: false,
         }
     }
@@ -326,6 +329,7 @@ impl WallpaperEngine {
             if let Some(sock) = self.sockets.remove(out) {
                 let _ = std::fs::remove_file(sock);
             }
+            self.output_is_image.remove(out);
         }
         dead
     }
@@ -382,20 +386,29 @@ impl WallpaperEngine {
         let sock_path = socket_path_for_output(output);
 
         // Fast, seamless transition via IPC if mpvpaper is already running on this output!
+        // We only reuse an existing mpv instance if the media type matches (both are videos or both are images).
+        // Mixing image and video in the same mpv instance causes broken flags (--no-audio, pause=yes, hwdec).
+        let current_is_image = self.output_is_image.get(output).copied();
+        let media_type_matches = current_is_image == Some(is_image);
+
         let mut can_reuse = false;
-        if let Some(child) = self.processes.get_mut(output) {
-            if let Ok(None) = child.try_wait() {
-                if ipc_is_alive(&sock_path) {
-                    can_reuse = true;
+        if media_type_matches {
+            if let Some(child) = self.processes.get_mut(output) {
+                if let Ok(None) = child.try_wait() {
+                    if ipc_is_alive(&sock_path) {
+                        can_reuse = true;
+                    }
                 }
+            } else if ipc_is_alive(&sock_path) {
+                can_reuse = true;
             }
-        } else if ipc_is_alive(&sock_path) {
-            can_reuse = true;
         }
 
         if can_reuse {
             let _ = ipc_set_property(&sock_path, "mute", mute);
             let _ = ipc_set_property(&sock_path, "volume", volume.min(100));
+            let target_pause = if is_image { true } else { false };
+            let _ = ipc_set_property(&sock_path, "pause", target_pause);
             match scaling {
                 "fill" => {
                     let _ = ipc_set_property(&sock_path, "panscan", 1.0f32);
@@ -413,6 +426,7 @@ impl WallpaperEngine {
 
             if ipc_loadfile(&sock_path, &effective_path_str).is_ok() {
                 self.is_paused = false;
+                self.output_is_image.insert(output.to_string(), is_image);
                 self.sockets.insert(output.to_string(), sock_path.clone());
                 if let Some(child) = self.processes.get(output) {
                     return Ok(child.id());
@@ -549,6 +563,7 @@ impl WallpaperEngine {
         let pid = child.id();
         self.processes.insert(output.to_string(), child);
         self.sockets.insert(output.to_string(), sock_path);
+        self.output_is_image.insert(output.to_string(), is_image);
         self.is_paused = false;
         Ok(pid)
     }
@@ -706,6 +721,7 @@ impl WallpaperEngine {
             let _ = child.kill();
             let _ = child.wait();
         }
+        self.output_is_image.remove(output);
     }
 
     pub fn stop_all(&mut self) {
@@ -736,6 +752,7 @@ impl WallpaperEngine {
                 }
             }
         }
+        self.output_is_image.clear();
         self.is_paused = false;
     }
 
@@ -933,6 +950,24 @@ mod tests {
         assert!(engine.processes_keys().is_empty());
         let dead = engine.reap_dead_processes();
         assert!(dead.is_empty());
+    }
+
+    #[test]
+    fn test_output_is_image_tracking() {
+        let mut engine = WallpaperEngine::new();
+        assert!(engine.output_is_image.is_empty());
+
+        engine.output_is_image.insert("eDP-1".to_string(), true);
+        engine.output_is_image.insert("HDMI-A-1".to_string(), false);
+        assert_eq!(engine.output_is_image.get("eDP-1"), Some(&true));
+        assert_eq!(engine.output_is_image.get("HDMI-A-1"), Some(&false));
+
+        engine.stop_output("eDP-1");
+        assert_eq!(engine.output_is_image.get("eDP-1"), None);
+        assert_eq!(engine.output_is_image.get("HDMI-A-1"), Some(&false));
+
+        engine.stop_all();
+        assert!(engine.output_is_image.is_empty());
     }
 }
 

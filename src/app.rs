@@ -1160,7 +1160,7 @@ impl cosmic::Application for AuraApp {
                         }
                     },
                     move |_app: &mut AuraApp| {
-                        SctkLayerSurfaceSettings {
+                        let mut settings = SctkLayerSurfaceSettings {
                             id,
                             layer: Layer::Overlay,
                             keyboard_interactivity: KeyboardInteractivity::Exclusive,
@@ -1168,14 +1168,17 @@ impl cosmic::Application for AuraApp {
                             margin: IcedMargin::default(),
                             size: None,
                             namespace: "aura-switcher".to_string(),
-                            exclusive_zone: -1,
-                            size_limits: cosmic::iced::Limits::NONE
+                            ..Default::default()
+                        };
+                        if is_cinematic {
+                            settings.exclusive_zone = -1;
+                            settings.size_limits = cosmic::iced::Limits::NONE
                                 .min_width(1.0)
                                 .min_height(1.0)
                                 .max_width(f32::INFINITY)
-                                .max_height(f32::INFINITY),
-                            ..Default::default()
+                                .max_height(f32::INFINITY);
                         }
+                        settings
                     },
                     None,
                 );
