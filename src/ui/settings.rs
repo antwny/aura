@@ -338,46 +338,75 @@ impl AuraApp {
                     )
             )
             .push(
-                widget::row::with_capacity(5)
+                widget::row::with_capacity(3)
                     .spacing(8)
                     .align_y(Alignment::Center)
-                    .push(widget::text::body(self.language.settings_switcher_position_label()))
+                    .push(widget::text::body(self.language.settings_switcher_style_label()))
                     .push(
-                        if self.config.switcher_position == "top" || (self.config.switcher_position != "bottom" && self.config.switcher_position != "left" && self.config.switcher_position != "right") {
-                            widget::button::suggested(self.language.settings_switcher_pos_top())
+                        if self.config.switcher_style == crate::config::SwitcherStyle::Classic {
+                            widget::button::suggested(self.language.settings_switcher_style_classic())
                         } else {
-                            widget::button::standard(self.language.settings_switcher_pos_top())
+                            widget::button::standard(self.language.settings_switcher_style_classic())
                         }
-                        .leading_icon(widget::icon::from_name("go-up-symbolic"))
-                        .on_press(Message::SelectSwitcherPosition("top".into()))
+                        .leading_icon(widget::icon::from_name("view-paged-symbolic"))
+                        .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Classic))
                     )
                     .push(
-                        if self.config.switcher_position == "bottom" {
-                            widget::button::suggested(self.language.settings_switcher_pos_bottom())
+                        if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
+                            widget::button::suggested(self.language.settings_switcher_style_cinematic())
                         } else {
-                            widget::button::standard(self.language.settings_switcher_pos_bottom())
+                            widget::button::standard(self.language.settings_switcher_style_cinematic())
                         }
-                        .leading_icon(widget::icon::from_name("go-down-symbolic"))
-                        .on_press(Message::SelectSwitcherPosition("bottom".into()))
+                        .leading_icon(widget::icon::from_name("video-display-symbolic"))
+                        .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Cinematic))
                     )
-                    .push(
-                        if self.config.switcher_position == "left" {
-                            widget::button::suggested(self.language.settings_switcher_pos_left())
-                        } else {
-                            widget::button::standard(self.language.settings_switcher_pos_left())
-                        }
-                        .leading_icon(widget::icon::from_name("go-previous-symbolic"))
-                        .on_press(Message::SelectSwitcherPosition("left".into()))
-                    )
-                    .push(
-                        if self.config.switcher_position == "right" {
-                            widget::button::suggested(self.language.settings_switcher_pos_right())
-                        } else {
-                            widget::button::standard(self.language.settings_switcher_pos_right())
-                        }
-                        .leading_icon(widget::icon::from_name("go-next-symbolic"))
-                        .on_press(Message::SelectSwitcherPosition("right".into()))
-                    )
+            )
+            .push(
+                if self.config.switcher_style == crate::config::SwitcherStyle::Classic {
+                    let r = widget::row::with_capacity(5)
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(widget::text::body(self.language.settings_switcher_position_label()))
+                        .push(
+                            if self.config.switcher_position == "top" || (self.config.switcher_position != "bottom" && self.config.switcher_position != "left" && self.config.switcher_position != "right") {
+                                widget::button::suggested(self.language.settings_switcher_pos_top())
+                            } else {
+                                widget::button::standard(self.language.settings_switcher_pos_top())
+                            }
+                            .leading_icon(widget::icon::from_name("go-up-symbolic"))
+                            .on_press(Message::SelectSwitcherPosition("top".into()))
+                        )
+                        .push(
+                            if self.config.switcher_position == "bottom" {
+                                widget::button::suggested(self.language.settings_switcher_pos_bottom())
+                            } else {
+                                widget::button::standard(self.language.settings_switcher_pos_bottom())
+                            }
+                            .leading_icon(widget::icon::from_name("go-down-symbolic"))
+                            .on_press(Message::SelectSwitcherPosition("bottom".into()))
+                        )
+                        .push(
+                            if self.config.switcher_position == "left" {
+                                widget::button::suggested(self.language.settings_switcher_pos_left())
+                            } else {
+                                widget::button::standard(self.language.settings_switcher_pos_left())
+                            }
+                            .leading_icon(widget::icon::from_name("go-previous-symbolic"))
+                            .on_press(Message::SelectSwitcherPosition("left".into()))
+                        )
+                        .push(
+                            if self.config.switcher_position == "right" {
+                                widget::button::suggested(self.language.settings_switcher_pos_right())
+                            } else {
+                                widget::button::standard(self.language.settings_switcher_pos_right())
+                            }
+                            .leading_icon(widget::icon::from_name("go-next-symbolic"))
+                            .on_press(Message::SelectSwitcherPosition("right".into()))
+                        );
+                    Element::from(r)
+                } else {
+                    Element::from(widget::text::caption(self.language.settings_switcher_style_cinematic_desc()))
+                }
             )
             .push(
                 widget::column::with_capacity(3)

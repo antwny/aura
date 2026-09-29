@@ -1742,6 +1742,41 @@ impl Language {
             Language::En => "Right",
         }
     }
+
+    pub fn settings_switcher_style_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Estilo del HUD:",
+            Language::En => "HUD Style:",
+        }
+    }
+
+    pub fn settings_switcher_style_classic(&self) -> &'static str {
+        match self {
+            Language::Es => "Clásico",
+            Language::En => "Classic",
+        }
+    }
+
+    pub fn settings_switcher_style_cinematic(&self) -> &'static str {
+        match self {
+            Language::Es => "Cinemático",
+            Language::En => "Cinematic",
+        }
+    }
+
+    pub fn settings_switcher_style_cinematic_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Carrusel inmersivo a pantalla completa con tarjetas inclinadas y efecto coverflow",
+            Language::En => "Fullscreen immersive carousel with skewed cards and coverflow effect",
+        }
+    }
+
+    pub fn switcher_cinematic_nav_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "← → Navegar  ·  Enter Aplicar  ·  Espacio Pausa  ·  F Favorito  ·  Esc Salir",
+            Language::En => "← → Navigate  ·  Enter Apply  ·  Space Pause  ·  F Favorite  ·  Esc Exit",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1883,6 +1918,11 @@ mod tests {
             assert!(!lang.settings_switcher_pos_bottom().is_empty());
             assert!(!lang.settings_switcher_pos_left().is_empty());
             assert!(!lang.settings_switcher_pos_right().is_empty());
+            assert!(!lang.settings_switcher_style_label().is_empty());
+            assert!(!lang.settings_switcher_style_classic().is_empty());
+            assert!(!lang.settings_switcher_style_cinematic().is_empty());
+            assert!(!lang.settings_switcher_style_cinematic_desc().is_empty());
+            assert!(!lang.switcher_cinematic_nav_hint().is_empty());
         }
     }
 

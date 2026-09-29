@@ -17,6 +17,19 @@ impl Default for ThemeMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SwitcherStyle {
+    Classic,
+    Cinematic,
+}
+
+impl Default for SwitcherStyle {
+    fn default() -> Self {
+        SwitcherStyle::Cinematic
+    }
+}
+
 fn default_auto_dark() -> bool {
     true
 }
@@ -64,6 +77,8 @@ pub struct Config {
     pub switcher_only_favorites: bool,
     #[serde(default = "default_switcher_position")]
     pub switcher_position: String,
+    #[serde(default)]
+    pub switcher_style: SwitcherStyle,
 }
 
 fn default_switcher_position() -> String {
@@ -208,6 +223,7 @@ impl Default for Config {
             tray_click_action: default_tray_click_action(),
             switcher_only_favorites: false,
             switcher_position: default_switcher_position(),
+            switcher_style: SwitcherStyle::Cinematic,
         }
     }
 }
@@ -460,13 +476,20 @@ mod tests {
         assert_eq!(cfg.tray_click_action, "switcher");
         assert!(!cfg.switcher_only_favorites);
         assert_eq!(cfg.switcher_position, "top");
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Cinematic);
 
         cfg.tray_click_action = "main_window".to_string();
         cfg.switcher_only_favorites = true;
         cfg.switcher_position = "left".to_string();
+        cfg.switcher_style = SwitcherStyle::Classic;
         assert_eq!(cfg.tray_click_action, "main_window");
         assert!(cfg.switcher_only_favorites);
         assert_eq!(cfg.switcher_position, "left");
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Classic);
+
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        let deserialized: Config = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.switcher_style, SwitcherStyle::Classic);
     }
 
     #[test]

@@ -160,6 +160,7 @@ pub enum Message {
     SelectTrayClickAction(String),
     ToggleSwitcherOnlyFavorites(bool),
     SelectSwitcherPosition(String),
+    SelectSwitcherStyle(crate::config::SwitcherStyle),
     CopySwitcherCommand,
 }
 
@@ -1150,10 +1151,11 @@ impl cosmic::Application for AuraApp {
                 let id = cosmic::iced::window::Id::unique();
                 self.switcher_window_id = Some(id);
 
+                let is_cinematic = self.config.switcher_style == crate::config::SwitcherStyle::Cinematic;
                 let surface_action = app_layer_shell(
                     move |_app: &AuraApp| {
                         LiveSettings {
-                            blur: Some(false),
+                            blur: Some(is_cinematic),
                             ..Default::default()
                         }
                     },
@@ -1369,6 +1371,11 @@ impl cosmic::Application for AuraApp {
 
             Message::SelectSwitcherPosition(pos) => {
                 self.config.switcher_position = pos;
+                let _ = self.config.save();
+            }
+
+            Message::SelectSwitcherStyle(style) => {
+                self.config.switcher_style = style;
                 let _ = self.config.save();
             }
 

@@ -1,4 +1,5 @@
 use crate::app::{AuraApp, Message};
+use crate::config::SwitcherStyle;
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -6,6 +7,13 @@ use cosmic::Element;
 
 impl AuraApp {
     pub(crate) fn view_quick_switcher(&self) -> Element<'_, Message> {
+        match self.config.switcher_style {
+            SwitcherStyle::Classic => self.view_classic_switcher(),
+            SwitcherStyle::Cinematic => self.view_cinematic_switcher(),
+        }
+    }
+
+    pub(crate) fn view_classic_switcher(&self) -> Element<'_, Message> {
         let pool = self.switcher_pool();
         let n = pool.len();
         if n == 0 {
@@ -201,5 +209,230 @@ impl AuraApp {
         )
         .on_press(Message::CloseQuickSwitcher)
         .into()
+    }
+
+    pub(crate) fn view_cinematic_switcher(&self) -> Element<'_, Message> {
+        let pool = self.switcher_pool();
+        let n = pool.len();
+        if n == 0 {
+            let empty_text = widget::text::body(self.language.library_empty_title()).size(16);
+            let empty_container = widget::container(empty_text)
+                .padding(24)
+                .class(cosmic::theme::Container::Card);
+            let pod_mouse_area = widget::mouse_area(empty_container).on_press(Message::SwitcherNoop);
+            let positioned = widget::container(pod_mouse_area)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center)
+                .class(cosmic::theme::Container::custom(|_theme| {
+                    cosmic::iced::widget::container::Style {
+                        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.78))),
+                        ..Default::default()
+                    }
+                }));
+            return widget::mouse_area(positioned)
+                .on_press(Message::CloseQuickSwitcher)
+                .into();
+        }
+
+        let curr_idx = self.switcher_index % n;
+
+        // Slots configuration: (offset, width, height, x_shift, is_center)
+        // Ordered from outer cards inward so the center card (0) is pushed LAST in the Stack and renders on TOP.
+        let slots: Vec<(i32, f32, f32, f32, bool)> = if n >= 7 {
+            vec![
+                (-3, 230.0, 205.0, -540.0, false),
+                (3, 230.0, 205.0, 540.0, false),
+                (-2, 290.0, 260.0, -380.0, false),
+                (2, 290.0, 260.0, 380.0, false),
+                (-1, 350.0, 315.0, -200.0, false),
+                (1, 350.0, 315.0, 200.0, false),
+                (0, 420.0, 380.0, 0.0, true),
+            ]
+        } else if n >= 5 {
+            vec![
+                (-2, 290.0, 260.0, -380.0, false),
+                (2, 290.0, 260.0, 380.0, false),
+                (-1, 350.0, 315.0, -200.0, false),
+                (1, 350.0, 315.0, 200.0, false),
+                (0, 420.0, 380.0, 0.0, true),
+            ]
+        } else if n == 4 {
+            vec![
+                (-2, 290.0, 260.0, -380.0, false),
+                (-1, 350.0, 315.0, -200.0, false),
+                (1, 350.0, 315.0, 200.0, false),
+                (0, 420.0, 380.0, 0.0, true),
+            ]
+        } else if n == 3 {
+            vec![
+                (-1, 350.0, 315.0, -200.0, false),
+                (1, 350.0, 315.0, 200.0, false),
+                (0, 420.0, 380.0, 0.0, true),
+            ]
+        } else if n == 2 {
+            vec![
+                (1, 350.0, 315.0, 200.0, false),
+                (0, 420.0, 380.0, 0.0, true),
+            ]
+        } else {
+            vec![(0, 420.0, 380.0, 0.0, true)]
+        };
+
+        let mut stack_children: Vec<Element<'_, Message>> = Vec::with_capacity(slots.len());
+
+        for (offset, w, h, x_shift, is_center) in slots {
+            let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
+            let video = pool[item_idx];
+
+            let card_widget: Element<'_, Message> = if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, None) {
+                let img = widget::image(cinematic_thumb)
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h));
+                widget::mouse_area(img)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
+            } else if let Some(thumb) = &video.thumb_path {
+                widget::button::image(thumb.clone())
+                    .width(w)
+                    .height(h)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
+            } else {
+                let icon_name = if video.is_video {
+                    "video-x-generic-symbolic"
+                } else {
+                    "image-x-generic-symbolic"
+                };
+                let placeholder = widget::container(widget::icon::from_name(icon_name).size(32))
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .class(cosmic::theme::Container::Card);
+
+                widget::button::custom(placeholder)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
+            };
+
+            let positioned_card: Element<'_, Message> = if x_shift > 0.0 {
+                let r = widget::row::with_capacity(2)
+                    .push(widget::Space::new().width(Length::Fixed(2.0 * x_shift)))
+                    .push(card_widget);
+                widget::container(r)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .into()
+            } else if x_shift < 0.0 {
+                let r = widget::row::with_capacity(2)
+                    .push(card_widget)
+                    .push(widget::Space::new().width(Length::Fixed(2.0 * x_shift.abs())));
+                widget::container(r)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .into()
+            } else {
+                widget::container(card_widget)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .into()
+            };
+
+            stack_children.push(positioned_card);
+        }
+
+        let carousel_stack = cosmic::iced::widget::stack(stack_children)
+            .width(Length::Fill)
+            .height(Length::Fixed(440.0));
+
+        // Metadata footer info
+        let current_video = pool[curr_idx];
+        let file_title = current_video.path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Wallpaper".to_string());
+
+        let mut badges_row = widget::row::with_capacity(4)
+            .spacing(8)
+            .align_y(Alignment::Center);
+
+        // Position counter badge
+        badges_row = badges_row.push(
+            widget::container(
+                widget::text::caption(format!("{} / {}", curr_idx + 1, n))
+            )
+            .padding([3, 10])
+            .class(cosmic::theme::Container::Card)
+        );
+
+        // Favorite badge
+        if self.config.is_favorite(&current_video.path.to_string_lossy()) {
+            badges_row = badges_row.push(
+                widget::container(
+                    widget::icon::from_name("emblem-favorite-symbolic").size(14)
+                )
+                .padding([3, 8])
+                .class(cosmic::theme::Container::Card)
+            );
+        }
+
+        // Animated video badge
+        if current_video.is_video {
+            badges_row = badges_row.push(
+                widget::container(
+                    widget::icon::from_name("video-x-generic-symbolic").size(14)
+                )
+                .padding([3, 8])
+                .class(cosmic::theme::Container::Card)
+            );
+        }
+
+        let hud_footer = widget::column::with_capacity(3)
+            .spacing(6)
+            .align_x(Alignment::Center)
+            .push(
+                widget::text::title3(file_title)
+                    .size(20)
+            )
+            .push(badges_row)
+            .push(
+                widget::text::caption(self.language.switcher_cinematic_nav_hint())
+            );
+
+        let hud_footer_container = widget::container(hud_footer)
+            .padding([12, 28])
+            .class(cosmic::theme::Container::Card);
+
+        let main_content = widget::column::with_capacity(2)
+            .spacing(20)
+            .align_x(Alignment::Center)
+            .push(carousel_stack)
+            .push(hud_footer_container);
+
+        // Prevent clicking the center content from closing the HUD
+        let content_mouse_area = widget::mouse_area(main_content).on_press(Message::SwitcherNoop);
+
+        let backdrop = widget::container(content_mouse_area)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center)
+            .class(cosmic::theme::Container::custom(|_theme| {
+                cosmic::iced::widget::container::Style {
+                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color::from_rgba(0.0, 0.0, 0.0, 0.78))),
+                    ..Default::default()
+                }
+            }));
+
+        widget::mouse_area(backdrop)
+            .on_press(Message::CloseQuickSwitcher)
+            .into()
     }
 }
