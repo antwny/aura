@@ -386,29 +386,23 @@ impl WallpaperEngine {
         let sock_path = socket_path_for_output(output);
 
         // Fast, seamless transition via IPC if mpvpaper is already running on this output!
-        // We only reuse an existing mpv instance if the media type matches (both are videos or both are images).
-        // Mixing image and video in the same mpv instance causes broken flags (--no-audio, pause=yes, hwdec).
-        let current_is_image = self.output_is_image.get(output).copied();
-        let media_type_matches = current_is_image == Some(is_image);
-
+        // We reuse the existing mpv instance for all media transitions (video <-> image).
+        // Unified mpv options allow zero-flicker instant playback switching via IPC.
         let mut can_reuse = false;
-        if media_type_matches {
-            if let Some(child) = self.processes.get_mut(output) {
-                if let Ok(None) = child.try_wait() {
-                    if ipc_is_alive(&sock_path) {
-                        can_reuse = true;
-                    }
+        if let Some(child) = self.processes.get_mut(output) {
+            if let Ok(None) = child.try_wait() {
+                if ipc_is_alive(&sock_path) {
+                    can_reuse = true;
                 }
-            } else if ipc_is_alive(&sock_path) {
-                can_reuse = true;
             }
+        } else if ipc_is_alive(&sock_path) {
+            can_reuse = true;
         }
 
         if can_reuse {
             let _ = ipc_set_property(&sock_path, "mute", mute);
             let _ = ipc_set_property(&sock_path, "volume", volume.min(100));
-            let target_pause = if is_image { true } else { false };
-            let _ = ipc_set_property(&sock_path, "pause", target_pause);
+            let _ = ipc_set_property(&sock_path, "pause", false);
             match scaling {
                 "fill" => {
                     let _ = ipc_set_property(&sock_path, "panscan", 1.0f32);
@@ -756,21 +750,16 @@ impl WallpaperEngine {
         self.is_paused = false;
     }
 
-    pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, is_image: bool) -> String {
-        let mut opts = if is_image {
-            String::from("image-display-duration=inf --loop-file=inf --pause=yes --no-config --no-audio --scale=spline36 --cscale=spline36 --dscale=mitchell --demuxer-max-bytes=8M --vd-lavc-threads=1")
+    pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, _is_image: bool) -> String {
+        let mut opts = format!(
+            "loop-file=inf --image-display-duration=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
+            hwdec
+        );
+        if mute || volume == 0 {
+            opts.push_str(" --no-audio");
         } else {
-            let mut o = format!(
-                "loop-file=inf --image-display-duration=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
-                hwdec
-            );
-            if mute || volume == 0 {
-                o.push_str(" --no-audio");
-            } else {
-                o.push_str(&format!(" --volume={}", volume.min(100)));
-            }
-            o
-        };
+            opts.push_str(&format!(" --volume={}", volume.min(100)));
+        }
 
         match scaling {
             "fill" => opts.push_str(" --panscan=1.0"),
@@ -877,10 +866,10 @@ mod tests {
 
         let opts_image = WallpaperEngine::build_mpv_options("fill", true, 100, "auto-safe", true);
         assert!(opts_image.contains("image-display-duration=inf"));
-        assert!(opts_image.contains("--pause=yes"));
-        assert!(opts_image.contains("--scale=spline36"));
-        assert!(opts_image.contains("--demuxer-max-bytes=8M"));
-        assert!(opts_image.contains("--vd-lavc-threads=1"));
+        assert!(opts_image.contains("--hwdec=auto-safe"));
+        assert!(opts_image.contains("--no-audio"));
+        assert!(opts_image.contains("--demuxer-max-bytes=24M"));
+        assert!(opts_image.contains("--vd-lavc-threads=2"));
         assert!(opts_image.contains("--panscan=1.0"));
     }
 

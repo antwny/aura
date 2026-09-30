@@ -461,6 +461,30 @@ impl AuraApp {
         }
         self.videos.iter().collect()
     }
+
+    pub(crate) fn prewarm_switcher_around(&self, curr_idx: usize) {
+        if self.config.switcher_style != crate::config::SwitcherStyle::Cinematic {
+            return;
+        }
+        let pool = self.switcher_pool();
+        let n = pool.len();
+        if n == 0 {
+            return;
+        }
+        let accent_base = cosmic::theme::active().cosmic().accent.base;
+        let accent_color: cosmic::iced::Color = accent_base.into();
+        let accent_rgb: [u8; 3] = [
+            (accent_color.r * 255.0).round() as u8,
+            (accent_color.g * 255.0).round() as u8,
+            (accent_color.b * 255.0).round() as u8,
+        ];
+        let mut targets = Vec::new();
+        for offset in -4..=4 {
+            let idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
+            targets.push(pool[idx].path.clone());
+        }
+        crate::scanner::thumbs::prewarm_cinematic_thumbs(&targets, accent_rgb);
+    }
 }
 
 impl cosmic::Application for AuraApp {
@@ -1141,6 +1165,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_scroll_accum = 0.0;
                 self.switcher_last_scroll = None;
                 self.switcher_last_event_time = None;
+                self.prewarm_switcher_around(curr_idx);
 
                 if let Some(id) = self.switcher_window_id {
                     return cosmic::iced::window::gain_focus(id);
@@ -1208,6 +1233,7 @@ impl cosmic::Application for AuraApp {
                 let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + n - 1) % n;
+                    self.prewarm_switcher_around(self.switcher_index);
                 }
             }
 
@@ -1215,6 +1241,7 @@ impl cosmic::Application for AuraApp {
                 let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + 1) % n;
+                    self.prewarm_switcher_around(self.switcher_index);
                 }
             }
 
@@ -1222,6 +1249,7 @@ impl cosmic::Application for AuraApp {
                 let pool = self.switcher_pool();
                 if idx < pool.len() {
                     self.switcher_index = idx;
+                    self.prewarm_switcher_around(self.switcher_index);
                 }
             }
 

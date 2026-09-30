@@ -46,14 +46,15 @@ pub fn get_cinematic_cache_dir() -> PathBuf {
     base.join("aura/cinematic")
 }
 
-pub fn cinematic_thumb_for_media(
-    media_path: &Path,
-    is_active: bool,
-    accent_rgb: Option<[u8; 3]>,
-) -> Option<PathBuf> {
-    let cache_dir = get_cinematic_cache_dir();
-    let _ = std::fs::create_dir_all(&cache_dir);
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::ImageEncoder;
 
+static CINEMATIC_IN_FLIGHT: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+pub fn cinematic_thumb_path(media_path: &Path, is_active: bool, accent_rgb: Option<[u8; 3]>) -> PathBuf {
+    let cache_dir = get_cinematic_cache_dir();
     let file_stem = media_path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -70,7 +71,17 @@ pub fn cinematic_thumb_for_media(
     } else {
         "inact".to_string()
     };
-    let cached_path = cache_dir.join(format!("{}_{}_{}.png", clean_stem, &hash[..8], suffix));
+    cache_dir.join(format!("{}_{}_{}.png", clean_stem, &hash[..8], suffix))
+}
+
+pub fn generate_cinematic_thumb_sync(
+    media_path: &Path,
+    is_active: bool,
+    accent_rgb: Option<[u8; 3]>,
+) -> Option<PathBuf> {
+    let cache_dir = get_cinematic_cache_dir();
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let cached_path = cinematic_thumb_path(media_path, is_active, accent_rgb);
 
     if cached_path.exists() {
         return Some(cached_path);
@@ -160,10 +171,75 @@ pub fn cinematic_thumb_for_media(
         }
     }
 
-    if out.save_with_format(&cached_path, image::ImageFormat::Png).is_ok() {
+    let file = std::fs::File::create(&cached_path).ok()?;
+    let writer = std::io::BufWriter::new(file);
+    let encoder = PngEncoder::new_with_quality(
+        writer,
+        CompressionType::Fast,
+        FilterType::NoFilter,
+    );
+    if encoder.write_image(
+        out.as_raw(),
+        total_w,
+        total_h,
+        image::ExtendedColorType::Rgba8,
+    ).is_ok() {
         Some(cached_path)
     } else {
         None
+    }
+}
+
+pub fn trigger_cinematic_thumb_async(
+    media_path: PathBuf,
+    is_active: bool,
+    accent_rgb: Option<[u8; 3]>,
+) {
+    let cached_path = cinematic_thumb_path(&media_path, is_active, accent_rgb);
+    if cached_path.exists() {
+        return;
+    }
+
+    let mut in_flight = match CINEMATIC_IN_FLIGHT.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if in_flight.insert(cached_path.clone()) {
+        drop(in_flight);
+        tokio::task::spawn_blocking(move || {
+            let _ = generate_cinematic_thumb_sync(&media_path, is_active, accent_rgb);
+            if let Ok(mut in_flight) = CINEMATIC_IN_FLIGHT.lock() {
+                in_flight.remove(&cached_path);
+            }
+        });
+    }
+}
+
+pub fn prewarm_cinematic_thumbs(media_paths: &[PathBuf], accent_rgb: [u8; 3]) {
+    for path in media_paths {
+        trigger_cinematic_thumb_async(path.clone(), true, Some(accent_rgb));
+        trigger_cinematic_thumb_async(path.clone(), false, Some(accent_rgb));
+    }
+}
+
+pub fn cinematic_thumb_for_media(
+    media_path: &Path,
+    is_active: bool,
+    accent_rgb: Option<[u8; 3]>,
+) -> Option<PathBuf> {
+    let cached_path = cinematic_thumb_path(media_path, is_active, accent_rgb);
+    if cached_path.exists() {
+        return Some(cached_path);
+    }
+
+    // In asynchronous tokio environment (UI app runtime), never block the frame.
+    // Trigger background generation and return None so fallback thumbnail or placeholder renders at 60 FPS.
+    if tokio::runtime::Handle::try_current().is_ok() {
+        trigger_cinematic_thumb_async(media_path.to_path_buf(), is_active, accent_rgb);
+        None
+    } else {
+        // Synchronous fallback (e.g. CLI or unit tests without tokio runtime)
+        generate_cinematic_thumb_sync(media_path, is_active, accent_rgb)
     }
 }
 
