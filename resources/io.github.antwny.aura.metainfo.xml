@@ -60,6 +60,19 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.5.0" date="2026-09-29">
+      <description>
+        <p>Aura 1.5.0 introduces the Cinematic HUD Carousel, zero-flicker transitions between video and static wallpapers, async performance optimizations, and bundled mpvpaper:</p>
+        <ul>
+          <li>Cinematic HUD Carousel: Immersive fullscreen overlay featuring 3D-perspective focal card scaling, dynamic COSMIC accent border, backdrop blur scrim, and centered layout.</li>
+          <li>Switcher Style Selector: Choose between the Classic floating dock HUD and the new Cinematic HUD in Settings, with Cinematic enabled by default for new installs while preserving existing user preferences.</li>
+          <li>Zero-Flicker Transitions: Unified mpv playback engine with continuous socket reuse eliminates the desktop background flicker when switching between video and static wallpapers.</li>
+          <li>60+ FPS Switcher Navigation: Non-blocking asynchronous thumbnail generation, pre-warming of adjacent cards, and fast PNG compression ensure silky-smooth scrolling across large libraries.</li>
+          <li>Bundled Precompiled mpvpaper: Includes a standalone 64-bit mpvpaper binary in the official distribution tarball and installer for seamless playback on any COSMIC Desktop distribution.</li>
+          <li>Layer-Shell Surface Clearance: Refined classic HUD top dock positioning to prevent overlap with the COSMIC top panel.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.4.1" date="2026-09-29">
       <description>
         <p>Aura 1.4.1 adds customizable auto-rotation durations and refines touchpad gestures in the Quick Switcher HUD:</p>

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-29
+
+### Added
+- **HUD Cinemático (Cinematic HUD Carousel)**:
+  - Nuevo diseño inmersivo a pantalla completa (`SwitcherStyle::Cinematic`) con carrusel horizontal centrado y perspectiva 3D visual.
+  - Escalado dinámico de tarjetas: la tarjeta central seleccionada destaca con una escala prominente (1.12x), acompañada por tarjetas adyacentes en perspectiva decreciente (0.92x y 0.75x).
+  - Borde reactivo con el color de acento dinámico de COSMIC (`palette.accent` / `Button::Suggested`) y elevación con sombras multicapa.
+  - Fondo atenuado translúcido (*backdrop scrim*) que cubre suavemente la pantalla permitiendo cerrar el HUD al hacer clic en cualquier área externa.
+  - Selector de estilo en la pestaña de Ajustes: alternancia entre **HUD Clásico** (barra flotante adaptable) y **HUD Cinemático** (inmersivo).
+  - Establecido como estilo predeterminado para nuevas instalaciones (`SwitcherStyle::Cinematic`), respetando en todo momento las configuraciones previas de los usuarios existentes mediante `#[serde(default)]`.
+
+### Improved & Optimized
+- **Transiciones Fluidas Sin Parpadeo (Zero-Flicker Transitions)**:
+  - Unificación de opciones del reproductor `mpv` (`--loop-file=inf --image-display-duration=inf`) y reutilización universal del socket IPC (`can_reuse = true`).
+  - Eliminación total del parpadeo momentáneo del fondo de pantalla original de COSMIC al alternar entre fondos animados (video) y fondos estáticos (imágenes), manteniendo una reproducción continua e instantánea.
+- **Rendimiento 60+ FPS en el Switcher**:
+  - Generación de miniaturas totalmente asíncrona y no bloqueante mediante tareas en segundo plano (`tokio::task::spawn_blocking`) con desduplicación de peticiones en vuelo.
+  - Precalentamiento predictivo de tarjetas vecinas (`prewarm_switcher_around`) al navegar por el carrusel.
+  - Codificación rápida de imágenes PNG (`CompressionType::Fast`) para reducir drásticamente el consumo de CPU y asegurar transiciones suaves sin tirones.
+- **Distribución con mpvpaper Precompilado**:
+  - Inclusión del binario nativo de 64 bits de `mpvpaper` empaquetado directamente en el archivo de lanzamiento `tar.gz`.
+  - Instalación automática de `mpvpaper` en `~/.local/bin/mpvpaper` mediante el instalador oficial, eliminando dependencias de compilación externa en cualquier distribución Linux.
+
+### Fixed
+- **Alineación del HUD Clásico en Posición Superior**:
+  - Corregido el solapamiento visual con la barra o dock superior de COSMIC restaurando `exclusive_zone: 0` para el HUD clásico, garantizando espacio adecuado y posición correcta.
+
 ## [1.4.1] - 2026-09-29
 
 ### Added
