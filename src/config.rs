@@ -27,7 +27,7 @@ pub enum SwitcherStyle {
 
 impl Default for SwitcherStyle {
     fn default() -> Self {
-        SwitcherStyle::Cinematic
+        SwitcherStyle::Honeycomb
     }
 }
 
@@ -37,6 +37,8 @@ fn default_auto_dark() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    pub version: Option<String>,
     pub current: Option<String>,
     pub wallpapers: HashMap<String, String>,
     pub dirs: Vec<String>,
@@ -202,6 +204,7 @@ pub fn default_library_dirs() -> Vec<String> {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            version: Some("1.6.0".into()),
             current: None,
             wallpapers: HashMap::new(),
             dirs: default_library_dirs(),
@@ -231,7 +234,7 @@ impl Default for Config {
             tray_click_action: default_tray_click_action(),
             switcher_only_favorites: false,
             switcher_position: default_switcher_position(),
-            switcher_style: SwitcherStyle::Cinematic,
+            switcher_style: SwitcherStyle::Honeycomb,
         }
     }
 }
@@ -261,6 +264,15 @@ impl Config {
                             if let Some(false) = val.get("auto_dark").and_then(|v| v.as_bool()) {
                                 cfg.theme_mode = ThemeMode::Manual;
                             }
+                        }
+                        // Version 1.6.0 migration:
+                        // Ensure all user configurations are preserved, but set the new Honeycomb HUD as default
+                        // on upgrading to 1.6.0 so users see it, while allowing them to change it in settings.
+                        let old_ver = val.get("version").and_then(|v| v.as_str());
+                        if old_ver != Some("1.6.0") {
+                            cfg.switcher_style = SwitcherStyle::Honeycomb;
+                            cfg.version = Some("1.6.0".into());
+                            let _ = cfg.save();
                         }
                     }
                     let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
@@ -486,7 +498,7 @@ mod tests {
         assert_eq!(cfg.tray_click_action, "switcher");
         assert!(!cfg.switcher_only_favorites);
         assert_eq!(cfg.switcher_position, "top");
-        assert_eq!(cfg.switcher_style, SwitcherStyle::Cinematic);
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Honeycomb);
 
         cfg.tray_click_action = "main_window".to_string();
         cfg.switcher_only_favorites = true;
@@ -532,5 +544,81 @@ mod tests {
         deserialized.interval = 7;
         deserialized.interval = deserialized.interval.clamp(1, 1440);
         assert_eq!(deserialized.interval, 7);
+    }
+
+    #[test]
+    fn test_v16_config_upgrade_migration() {
+        // Simulate a legacy v1.5.0 config without "version" field and with "switcher_style": "cinematic"
+        let legacy_json = r#"{
+            "current": "/wallpapers/live.mp4",
+            "wallpapers": { "eDP-1": "/wallpapers/live.mp4" },
+            "dirs": ["/home/user/Wallpapers"],
+            "custom_videos": [],
+            "output": "eDP-1",
+            "scaling": {},
+            "auto_theme": true,
+            "auto_dark": true,
+            "theme_mode": "dark",
+            "rotation": true,
+            "interval": 15,
+            "order": "random",
+            "seq_index": 0,
+            "mute": false,
+            "volume": 80,
+            "hwdec": "auto-safe",
+            "gpu_preference": "auto",
+            "smart_pause": true,
+            "auto_pause": true,
+            "pause_on_battery": true,
+            "keep_running_on_close": true,
+            "autostart": false,
+            "language": "es",
+            "favorites": ["/wallpapers/live.mp4"],
+            "library_sort": "newest",
+            "rotation_only_favorites": true,
+            "tray_click_action": "switcher",
+            "switcher_only_favorites": false,
+            "switcher_position": "top",
+            "switcher_style": "cinematic"
+        }"#;
+
+        let mut cfg: Config = serde_json::from_str(legacy_json).expect("deserialize legacy json");
+        assert_eq!(cfg.version, None);
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Cinematic);
+        assert_eq!(cfg.interval, 15);
+        assert_eq!(cfg.volume, 80);
+        assert_eq!(cfg.theme_mode, ThemeMode::Dark);
+        assert!(cfg.rotation_only_favorites);
+
+        // Apply migration logic
+        let val: serde_json::Value = serde_json::from_str(legacy_json).expect("parse value");
+        let old_ver = val.get("version").and_then(|v| v.as_str());
+        if old_ver != Some("1.6.0") {
+            cfg.switcher_style = SwitcherStyle::Honeycomb;
+            cfg.version = Some("1.6.0".into());
+        }
+
+        // All user custom configurations are strictly preserved:
+        assert_eq!(cfg.interval, 15);
+        assert_eq!(cfg.volume, 80);
+        assert_eq!(cfg.theme_mode, ThemeMode::Dark);
+        assert!(cfg.rotation_only_favorites);
+        assert_eq!(cfg.favorites.len(), 1);
+        assert_eq!(cfg.output, "eDP-1");
+
+        // But switcher_style upgraded to Honeycomb by default:
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Honeycomb);
+        assert_eq!(cfg.version.as_deref(), Some("1.6.0"));
+
+        // If user now explicitly changes to Classic or Cinematic, it persists:
+        cfg.switcher_style = SwitcherStyle::Classic;
+        let v16_json = serde_json::to_string(&cfg).expect("serialize v16");
+        let val16: serde_json::Value = serde_json::from_str(&v16_json).expect("parse v16 value");
+        let mut cfg16: Config = serde_json::from_str(&v16_json).expect("deserialize v16");
+        let ver16 = val16.get("version").and_then(|v| v.as_str());
+        if ver16 != Some("1.6.0") {
+            cfg16.switcher_style = SwitcherStyle::Honeycomb;
+        }
+        assert_eq!(cfg16.switcher_style, SwitcherStyle::Classic, "User choice must be preserved once on 1.6.0");
     }
 }

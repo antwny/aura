@@ -60,6 +60,19 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.6.0" date="2026-10-04">
+      <description>
+        <p>Aura 1.6.0 introduces the Honeycomb Hexagonal HUD, reactive ambient halo glow, multi-monitor pointer-focused overlay spawning, GPU geometric clipping, and LRU texture caching:</p>
+        <ul>
+          <li>Honeycomb Hexagonal HUD: A stunning, floating honeycomb matrix overlay with regular hexagonal geometry (180x155px) and 15px constant spacing with zero overlap.</li>
+          <li>Edge Panning &amp; Fluid Navigation: Pan seamlessly across your entire library using mouse scroll, touchpad, or natural cursor proximity to screen edges.</li>
+          <li>Reactive Ambient Halo Glow: Atmospheric layered light diffusion behind the selected wallpaper in both Honeycomb and Cinematic HUD styles.</li>
+          <li>Pointer-Focused Multi-Monitor Spawn: The HUD dynamically detects the cursor position across multi-monitor setups and opens directly on the active display.</li>
+          <li>GPU Geometric Clipping &amp; LRU In-Memory Texture Cache: Direct 60° regular polygon path clipping on GPU with in-memory handle caching for instant 60+ FPS navigation.</li>
+          <li>Seamless Config Migration: Honeycomb is set as the active default HUD style on update, while strictly preserving all playlists, intervals, scaling, and custom user configurations.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-09-29">
       <description>
         <p>Aura 1.5.0 introduces the Cinematic HUD Carousel, zero-flicker transitions between video and static wallpapers, async performance optimizations, and bundled mpvpaper:</p>

@@ -82,7 +82,7 @@ if [ -z "$TARGET_VERSION" ]; then
     fi
 
     if [ -z "$LATEST_TAG" ]; then
-        LATEST_TAG="v1.5.0"
+        LATEST_TAG="v1.6.0"
     fi
     VERSION="${LATEST_TAG#v}"
 else

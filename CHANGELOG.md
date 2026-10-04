@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-10-04
+
+### Added
+- **HUD Panal de Abeja (Honeycomb Hexagonal HUD)**:
+  - Nuevo estilo visual de switcher heads-up display (`SwitcherStyle::Honeycomb`) con mosaico geométrico hexagonal flotante inspirado en la arquitectura de panal de abeja.
+  - Distribución matemática de rejilla con separación uniforme e independiente (15px constante entre hexágonos sin solapamientos ni colisiones en esquinas).
+  - Geometría de hexágono regular vertical simétrica (180×155px) con recorte geométrico directo por hardware en GPU (`Path::polygon` de 6 vértices a 60°), optimizando la visibilidad y nitidez de las miniaturas de cada fondo.
+  - Desplazamiento y paneo continuo e intuitivo: soporte para rueda de ratón, touchpad y desplazamiento dinámico por proximidad del cursor a los extremos laterales de la pantalla.
+  - Aplicación instantánea con un clic sobre cualquier hexágono y cierre suave del overlay.
+- **Iluminación Ambiental Reactiva (Halo Glow)**:
+  - Resplandor ambiental atmosférico (*ambient halo glow*) que se proyecta dinámicamente detrás del fondo seleccionado en los estilos Honeycomb y Cinematic.
+  - Difusión multicapa que aporta profundidad inmersiva y resalta la selección activa de forma sutil y elegante.
+- **Multi-Monitor Dinámico (Pointer-Focused Display Spawn)**:
+  - Detección precisa de la pantalla activa según la posición global del puntero al invocar `aura switcher`.
+  - El HUD se proyecta de forma inmediata en el monitor donde se encuentra el cursor del ratón, facilitando un flujo de trabajo natural en escritorios multimonitor y ultrapanorámicos.
+- **Caché de Texturas Decodificadas en Memoria (LRU Handle Cache)**:
+  - Caché de texturas decodificadas en memoria con desalojo LRU para miniaturas del HUD, eliminando lecturas repetitivas a disco I/O.
+  - Navegación fluida y consistente a 60+ FPS sin tirones visuales al deslizarse por grandes bibliotecas de fondos.
+- **Migración Transparente de Configuración**:
+  - Migración inteligente al actualizar a v1.6.0 que activa por defecto el estilo Honeycomb para dar a conocer la nueva experiencia a todos los usuarios.
+  - Preservación estricta de todas las opciones personalizadas existentes (listas de reproducción, orden, intervalos, escalado, volumen, favoritos), permitiendo alternar entre Clásico, Cinemático y Panal de Abeja desde Ajustes.
+
 ## [1.5.0] - 2026-09-29
 
 ### Added

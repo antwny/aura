@@ -102,9 +102,11 @@ Switch wallpapers without interrupting your focus. Summon a floating heads-up di
 <p align="center"><sub><i>Live recording: Floating Quick Switcher HUD on COSMIC Wayland • 4 dock screen positions — click image to watch full 60 FPS video</i></sub></p>
 
 - **Global Shortcut Summon**: Bind `aura switcher` in COSMIC Settings to `Super+Alt+W` (or your preferred shortcut) for instant desktop access.
-- **4 Screen Placements**: Dock the floating HUD at the **Top**, **Bottom**, or as a sleek vertical sidebar on the **Left** or **Right** screen edges.
-- **Fluid Keyboard & Mouse Navigation**: Cycle seamlessly with Arrow Keys, `WASD`, or your mouse scroll wheel.
-- **1-Click Apply**: Click any wallpaper card in the carousel to apply it immediately and auto-dismiss.
+- **3 Visual HUD Styles**: Choose in Settings between the **Honeycomb Hexagonal HUD** (floating honeycomb matrix with edge panning), **Cinematic HUD** (immersive 3D carousel with ambient halo glow), or **Classic Dock HUD** (minimalist dock bar).
+- **Pointer-Focused Multi-Monitor Overlay**: Automatically detects which monitor your mouse pointer is on and summons the HUD right there.
+- **4 Dock Screen Placements**: Dock the floating HUD at the **Top**, **Bottom**, or as a sleek vertical sidebar on the **Left** or **Right** screen edges.
+- **Fluid Keyboard & Mouse Navigation**: Cycle seamlessly with Arrow Keys, `WASD`, mouse scroll wheel, or screen-edge panning.
+- **1-Click Apply**: Click any wallpaper cell or card to apply it immediately and auto-dismiss.
 - **Zero-Flicker Native Compositing**: Engineered with the Wayland Layer-Shell protocol (`Layer::Overlay`) featuring exclusive keyboard focus and instant outside-click dismissal.
 - **In-HUD Shortcuts**: Toggle Pause/Resume with <kbd>Space</kbd>, toggle Favorites with <kbd>F</kbd>, or dismiss with <kbd>Esc</kbd>.
 
@@ -180,12 +182,12 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 ### Method 2: Precompiled Release Package
 
-1. Download `aura-v1.5.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
+1. Download `aura-v1.6.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases).
 2. Extract the archive and run the installer:
 
 ```bash
-tar -xzf aura-v1.5.0-x86_64-linux.tar.gz
-cd aura-v1.5.0-x86_64-linux
+tar -xzf aura-v1.6.0-x86_64-linux.tar.gz
+cd aura-v1.6.0-x86_64-linux
 ./install.sh
 ```
 
