@@ -295,7 +295,14 @@ impl AuraApp {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
             let video = pool[item_idx];
 
-            let card_widget: Element<'_, Message> = if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb)) {
+            let card_widget: Element<'_, Message> = if let Some(handle) = crate::scanner::thumbs::cinematic_thumb_handle(&video.path, is_center, Some(accent_rgb)) {
+                let img = widget::image(handle)
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h));
+                widget::mouse_area(img)
+                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .into()
+            } else if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb)) {
                 let img = widget::image(cinematic_thumb)
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h));
@@ -448,7 +455,14 @@ impl AuraApp {
                     let (draw_x, draw_y) = layout.item_draw_pos(col, row);
 
                     let video = pool[item_idx];
-                    let card_element: Element<'_, Message> = if let Some(hex_thumb) =
+                    let card_element: Element<'_, Message> = if let Some(handle) =
+                        crate::scanner::thumbs::honeycomb_thumb_handle(&video.path, is_active, Some(accent_rgb))
+                    {
+                        widget::image(handle)
+                            .width(Length::Fixed(layout.w))
+                            .height(Length::Fixed(layout.h))
+                            .into()
+                    } else if let Some(hex_thumb) =
                         crate::scanner::thumbs::honeycomb_thumb_for_media(&video.path, is_active, Some(accent_rgb))
                     {
                         widget::image(hex_thumb)
@@ -533,16 +547,16 @@ pub struct HoneycombLayout {
 }
 
 impl HoneycombLayout {
-    pub const GAP: f32 = 20.0;
+    pub const GAP: f32 = 15.0;
     pub const ROWS_PER_COL: usize = 3;
 
     pub fn new(screen_w: f32, screen_h: f32, n: usize, curr_idx: usize) -> Self {
         let gap = Self::GAP;
         let rows_per_col = Self::ROWS_PER_COL;
 
-        let avail_h = (screen_h * 0.76).clamp(360.0, 960.0);
+        let avail_h = (screen_h * 0.80).clamp(380.0, 1020.0);
         // Total height spanned by 3 rows: 2 * step_y + h = 2 * (0.75 * h + sqrt(3)/2 * gap) + h = 2.5 * h + 1.7320508 * gap
-        let h = ((avail_h - 1.7320508 * gap) / 2.5).clamp(140.0, 320.0);
+        let h = ((avail_h - 1.7320508 * gap) / 2.5).clamp(150.0, 340.0);
         let r = h * 0.5;
         let w = h * 0.8660254f32; // sqrt(3)/2 * h
         let inradius = w * 0.5;

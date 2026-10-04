@@ -61,10 +61,61 @@ pub fn get_honeycomb_cache_dir() -> PathBuf {
     base.join("aura/honeycomb")
 }
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{LazyLock, Mutex};
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ImageEncoder;
+
+#[derive(Debug)]
+pub struct LruMemoryCache<K: Eq + std::hash::Hash + Clone, V: Clone> {
+    capacity: usize,
+    map: HashMap<K, V>,
+    order: VecDeque<K>,
+}
+
+impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruMemoryCache<K, V> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            map: HashMap::with_capacity(capacity),
+            order: VecDeque::with_capacity(capacity),
+        }
+    }
+
+    pub fn get(&mut self, key: &K) -> Option<V> {
+        if let Some(val) = self.map.get(key) {
+            let val = val.clone();
+            if let Some(pos) = self.order.iter().position(|k| k == key) {
+                self.order.remove(pos);
+            }
+            self.order.push_back(key.clone());
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    pub fn insert(&mut self, key: K, val: V) {
+        if self.map.contains_key(&key) {
+            self.map.insert(key.clone(), val);
+            if let Some(pos) = self.order.iter().position(|k| k == &key) {
+                self.order.remove(pos);
+            }
+            self.order.push_back(key);
+        } else {
+            while self.order.len() >= self.capacity {
+                if let Some(oldest) = self.order.pop_front() {
+                    self.map.remove(&oldest);
+                }
+            }
+            self.map.insert(key.clone(), val);
+            self.order.push_back(key);
+        }
+    }
+}
+
+pub static THUMB_HANDLE_CACHE: LazyLock<Mutex<LruMemoryCache<String, cosmic::iced::widget::image::Handle>>> =
+    LazyLock::new(|| Mutex::new(LruMemoryCache::new(96)));
 
 static CINEMATIC_IN_FLIGHT: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 static HONEYCOMB_IN_FLIGHT: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
@@ -155,7 +206,12 @@ pub fn generate_cinematic_thumb_sync(
                 (-u).max(u - card_w).max(-v).max(v - card_h)
             };
 
-            if dist > 1.0 {
+            if dist > 0.0 {
+                if is_active && dist <= 14.0 {
+                    let glow_factor = ((1.0 - dist / 14.0) * (1.0 - dist / 14.0)).clamp(0.0, 1.0);
+                    let a = (170.0 * glow_factor) as u8;
+                    out.put_pixel(x, y, image::Rgba([accent[0], accent[1], accent[2], a]));
+                }
                 continue;
             }
 
@@ -187,6 +243,13 @@ pub fn generate_cinematic_thumb_sync(
         }
     }
 
+    // Direct GPU/memory cache insertion
+    let handle_key = format!("cn:{}:{}:{:02x}{:02x}{:02x}", media_path.to_string_lossy(), is_active, accent[0], accent[1], accent[2]);
+    let direct_handle = cosmic::iced::widget::image::Handle::from_rgba(total_w, total_h, out.as_raw().clone());
+    if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+        cache.insert(handle_key, direct_handle);
+    }
+
     let file = std::fs::File::create(&cached_path).ok()?;
     let writer = std::io::BufWriter::new(file);
     let encoder = PngEncoder::new_with_quality(
@@ -203,6 +266,42 @@ pub fn generate_cinematic_thumb_sync(
         Some(cached_path)
     } else {
         None
+    }
+}
+
+pub fn cinematic_thumb_handle(
+    media_path: &Path,
+    is_active: bool,
+    accent_rgb: Option<[u8; 3]>,
+) -> Option<cosmic::iced::widget::image::Handle> {
+    let accent = accent_rgb.unwrap_or([58, 142, 230]);
+    let key = format!("cn:{}:{}:{:02x}{:02x}{:02x}", media_path.to_string_lossy(), is_active, accent[0], accent[1], accent[2]);
+
+    if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+        if let Some(handle) = cache.get(&key) {
+            return Some(handle);
+        }
+    }
+
+    let cached_path = cinematic_thumb_path(media_path, is_active, accent_rgb);
+    if cached_path.exists() {
+        let handle = cosmic::iced::widget::image::Handle::from_path(cached_path);
+        if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+            cache.insert(key, handle.clone());
+        }
+        return Some(handle);
+    }
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        trigger_cinematic_thumb_async(media_path.to_path_buf(), is_active, accent_rgb);
+        None
+    } else {
+        let path = generate_cinematic_thumb_sync(media_path, is_active, accent_rgb)?;
+        let handle = cosmic::iced::widget::image::Handle::from_path(path);
+        if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+            cache.insert(key, handle.clone());
+        }
+        Some(handle)
     }
 }
 
@@ -308,8 +407,8 @@ pub fn generate_honeycomb_thumb_sync(
     let total_w = card_w as u32;
     let total_h = card_h as u32;
 
-    let inradius = card_w * 0.5 - 4.0;
-    let corner_r = 12.0f32;
+    let inradius = card_w * 0.5 - 2.0;
+    let corner_r = 8.0f32;
     let border_thick = if is_active { 4.0f32 } else { 2.0f32 };
 
     let accent = accent_rgb.unwrap_or([58, 142, 230]);
@@ -354,7 +453,12 @@ pub fn generate_honeycomb_thumb_sync(
             let px = x as f32 - cx;
             let dist = sd_pointy_hex(px, py, r_inner) - corner_r;
 
-            if dist > 1.0 {
+            if dist > 0.0 {
+                if is_active && dist <= 7.0 {
+                    let glow_factor = ((1.0 - dist / 7.0) * (1.0 - dist / 7.0)).clamp(0.0, 1.0);
+                    let a = (175.0 * glow_factor) as u8;
+                    out.put_pixel(x, y, image::Rgba([accent[0], accent[1], accent[2], a]));
+                }
                 continue;
             }
 
@@ -382,6 +486,13 @@ pub fn generate_honeycomb_thumb_sync(
         }
     }
 
+    // Direct GPU/memory cache insertion
+    let handle_key = format!("hc:{}:{}:{:02x}{:02x}{:02x}", media_path.to_string_lossy(), is_active, accent[0], accent[1], accent[2]);
+    let direct_handle = cosmic::iced::widget::image::Handle::from_rgba(total_w, total_h, out.as_raw().clone());
+    if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+        cache.insert(handle_key, direct_handle);
+    }
+
     let file = std::fs::File::create(&cached_path).ok()?;
     let writer = std::io::BufWriter::new(file);
     let encoder = PngEncoder::new_with_quality(
@@ -398,6 +509,42 @@ pub fn generate_honeycomb_thumb_sync(
         Some(cached_path)
     } else {
         None
+    }
+}
+
+pub fn honeycomb_thumb_handle(
+    media_path: &Path,
+    is_active: bool,
+    accent_rgb: Option<[u8; 3]>,
+) -> Option<cosmic::iced::widget::image::Handle> {
+    let accent = accent_rgb.unwrap_or([58, 142, 230]);
+    let key = format!("hc:{}:{}:{:02x}{:02x}{:02x}", media_path.to_string_lossy(), is_active, accent[0], accent[1], accent[2]);
+
+    if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+        if let Some(handle) = cache.get(&key) {
+            return Some(handle);
+        }
+    }
+
+    let cached_path = honeycomb_thumb_path(media_path, is_active, accent_rgb);
+    if cached_path.exists() {
+        let handle = cosmic::iced::widget::image::Handle::from_path(cached_path);
+        if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+            cache.insert(key, handle.clone());
+        }
+        return Some(handle);
+    }
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        trigger_honeycomb_thumb_async(media_path.to_path_buf(), is_active, accent_rgb);
+        None
+    } else {
+        let path = generate_honeycomb_thumb_sync(media_path, is_active, accent_rgb)?;
+        let handle = cosmic::iced::widget::image::Handle::from_path(path);
+        if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+            cache.insert(key, handle.clone());
+        }
+        Some(handle)
     }
 }
 
@@ -617,6 +764,21 @@ mod tests {
         let _ = std::fs::remove_file(&src_img_path);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn test_lru_memory_cache() {
+        let mut cache = LruMemoryCache::<String, usize>::new(3);
+        cache.insert("a".into(), 1);
+        cache.insert("b".into(), 2);
+        cache.insert("c".into(), 3);
+        assert_eq!(cache.get(&"a".into()), Some(1));
+        // Inserting "d" should evict "b" since "a" was recently accessed
+        cache.insert("d".into(), 4);
+        assert_eq!(cache.get(&"b".into()), None);
+        assert_eq!(cache.get(&"a".into()), Some(1));
+        assert_eq!(cache.get(&"c".into()), Some(3));
+        assert_eq!(cache.get(&"d".into()), Some(4));
     }
 }
 

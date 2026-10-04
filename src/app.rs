@@ -311,6 +311,7 @@ pub struct AuraApp {
     pub(crate) switcher_cursor_position: Option<cosmic::iced::Point>,
     pub(crate) switcher_edge_scroll_dir: i8,
     pub(crate) switcher_last_edge_scroll: Option<Instant>,
+    pub(crate) switcher_active_output: Option<String>,
 }
 
 impl AuraApp {
@@ -728,6 +729,7 @@ impl cosmic::Application for AuraApp {
             switcher_cursor_position: None,
             switcher_edge_scroll_dir: 0,
             switcher_last_edge_scroll: None,
+            switcher_active_output: None,
         };
 
         app.sort_videos();
@@ -1225,6 +1227,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_cursor_position = None;
                 self.switcher_edge_scroll_dir = 0;
                 self.switcher_last_edge_scroll = None;
+                self.switcher_active_output = None;
                 self.prewarm_switcher_around(curr_idx);
 
                 if let Some(id) = self.switcher_window_id {
@@ -1278,6 +1281,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_cursor_position = None;
                 self.switcher_edge_scroll_dir = 0;
                 self.switcher_last_edge_scroll = None;
+                self.switcher_active_output = None;
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1340,13 +1344,15 @@ impl cosmic::Application for AuraApp {
                 let mut tasks = Vec::new();
                 let pool = self.switcher_pool();
                 if let Some(video) = pool.get(idx) {
+                    let target_output = self.switcher_active_output.as_ref().unwrap_or(&self.selected_output).clone();
                     tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
                         video_path: video.path.clone(),
-                        output: self.selected_output.clone(),
+                        output: target_output,
                     })));
                 }
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
+                    self.switcher_active_output = None;
                     tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
                 }
                 return Task::batch(tasks);
@@ -1603,6 +1609,17 @@ impl cosmic::Application for AuraApp {
                 if self.switcher_window_id == Some(window) {
                     self.switcher_window_width = size.width;
                     self.switcher_window_height = size.height;
+
+                    // Dynamically identify which monitor this surface was mapped to
+                    if let Some(matched) = self.outputs.iter().find(|o| {
+                        (o.width as f32 - size.width).abs() < 4.0 && (o.height as f32 - size.height).abs() < 4.0
+                    }) {
+                        self.switcher_active_output = Some(matched.name.clone());
+                    } else if let Some(matched) = self.outputs.iter().min_by_key(|o| {
+                        ((o.width as f32 - size.width).abs() + (o.height as f32 - size.height).abs()) as u32
+                    }) {
+                        self.switcher_active_output = Some(matched.name.clone());
+                    }
                 }
             }
 
@@ -1641,6 +1658,7 @@ impl cosmic::Application for AuraApp {
                     self.switcher_cursor_position = None;
                     self.switcher_edge_scroll_dir = 0;
                     self.switcher_last_edge_scroll = None;
+                    self.switcher_active_output = None;
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
                 if self.core().main_window_id() == Some(id) {
