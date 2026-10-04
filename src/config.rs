@@ -22,6 +22,7 @@ impl Default for ThemeMode {
 pub enum SwitcherStyle {
     Classic,
     Cinematic,
+    Honeycomb,
 }
 
 impl Default for SwitcherStyle {
@@ -490,6 +491,12 @@ mod tests {
         let json = serde_json::to_string(&cfg).expect("serialize");
         let deserialized: Config = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.switcher_style, SwitcherStyle::Classic);
+
+        cfg.switcher_style = SwitcherStyle::Honeycomb;
+        let json_honeycomb = serde_json::to_string(&cfg).expect("serialize honeycomb");
+        assert!(json_honeycomb.contains("\"switcher_style\":\"honeycomb\""));
+        let deserialized_honeycomb: Config = serde_json::from_str(&json_honeycomb).expect("deserialize honeycomb");
+        assert_eq!(deserialized_honeycomb.switcher_style, SwitcherStyle::Honeycomb);
     }
 
     #[test]

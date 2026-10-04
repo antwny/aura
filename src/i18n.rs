@@ -1771,6 +1771,20 @@ impl Language {
         }
     }
 
+    pub fn settings_switcher_style_honeycomb(&self) -> &'static str {
+        match self {
+            Language::Es => "Panal de Abeja",
+            Language::En => "Honeycomb",
+        }
+    }
+
+    pub fn settings_switcher_style_honeycomb_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Malla hexagonal panorámica con miniaturas optimizadas y desplazamiento fluido",
+            Language::En => "Panoramic hexagonal mesh with optimized thumbnails and fluid scrolling",
+        }
+    }
+
     #[allow(dead_code)]
     pub fn switcher_cinematic_nav_hint(&self) -> &'static str {
         match self {
@@ -1923,6 +1937,8 @@ mod tests {
             assert!(!lang.settings_switcher_style_classic().is_empty());
             assert!(!lang.settings_switcher_style_cinematic().is_empty());
             assert!(!lang.settings_switcher_style_cinematic_desc().is_empty());
+            assert!(!lang.settings_switcher_style_honeycomb().is_empty());
+            assert!(!lang.settings_switcher_style_honeycomb_desc().is_empty());
             assert!(!lang.switcher_cinematic_nav_hint().is_empty());
         }
     }

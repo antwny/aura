@@ -148,6 +148,8 @@ pub enum Message {
     ToggleQuickSwitcher,
     SwitcherPrev,
     SwitcherNext,
+    SwitcherPrevCol,
+    SwitcherNextCol,
     SwitcherSelect(usize),
     SwitcherApply,
     SwitcherApplyIndex(usize),
@@ -157,6 +159,11 @@ pub enum Message {
     SwitcherKeyPressed { window: cosmic::iced::window::Id, key: cosmic::iced::keyboard::Key },
     SwitcherUnfocused(cosmic::iced::window::Id),
     SwitcherWheelScrolled { window: cosmic::iced::window::Id, delta: cosmic::iced::mouse::ScrollDelta },
+    SwitcherMouseClicked(cosmic::iced::window::Id),
+    SwitcherCursorMoved { window: cosmic::iced::window::Id, position: cosmic::iced::Point },
+    SwitcherCursorLeft(cosmic::iced::window::Id),
+    SwitcherResized { window: cosmic::iced::window::Id, size: cosmic::iced::Size },
+    SwitcherEdgeScrollTick,
     SelectTrayClickAction(String),
     ToggleSwitcherOnlyFavorites(bool),
     SelectSwitcherPosition(String),
@@ -193,6 +200,15 @@ fn handle_window_events(
         cosmic::iced::Event::Window(cosmic::iced::window::Event::Unfocused) => {
             Some(Message::SwitcherUnfocused(window))
         }
+        cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::ButtonPressed(cosmic::iced::mouse::Button::Left)) => {
+            Some(Message::SwitcherMouseClicked(window))
+        }
+        cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::CursorMoved { position }) => {
+            Some(Message::SwitcherCursorMoved { window, position })
+        }
+        cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::CursorLeft) => {
+            Some(Message::SwitcherCursorLeft(window))
+        }
         cosmic::iced::Event::Mouse(cosmic::iced::mouse::Event::WheelScrolled { delta }) => {
             Some(Message::SwitcherWheelScrolled { window, delta })
         }
@@ -201,6 +217,9 @@ fn handle_window_events(
             ..
         }) => {
             Some(Message::SwitcherKeyPressed { window, key })
+        }
+        cosmic::iced::Event::Window(cosmic::iced::window::Event::Resized(size)) => {
+            Some(Message::SwitcherResized { window, size })
         }
         _ => None,
     }
@@ -287,6 +306,11 @@ pub struct AuraApp {
     pub(crate) switcher_scroll_accum: f32,
     pub(crate) switcher_last_scroll: Option<Instant>,
     pub(crate) switcher_last_event_time: Option<Instant>,
+    pub(crate) switcher_window_width: f32,
+    pub(crate) switcher_window_height: f32,
+    pub(crate) switcher_cursor_position: Option<cosmic::iced::Point>,
+    pub(crate) switcher_edge_scroll_dir: i8,
+    pub(crate) switcher_last_edge_scroll: Option<Instant>,
 }
 
 impl AuraApp {
@@ -463,9 +487,6 @@ impl AuraApp {
     }
 
     pub(crate) fn prewarm_switcher_around(&self, curr_idx: usize) {
-        if self.config.switcher_style != crate::config::SwitcherStyle::Cinematic {
-            return;
-        }
         let pool = self.switcher_pool();
         let n = pool.len();
         if n == 0 {
@@ -478,12 +499,26 @@ impl AuraApp {
             (accent_color.g * 255.0).round() as u8,
             (accent_color.b * 255.0).round() as u8,
         ];
-        let mut targets = Vec::new();
-        for offset in -4..=4 {
-            let idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
-            targets.push(pool[idx].path.clone());
+
+        match self.config.switcher_style {
+            crate::config::SwitcherStyle::Cinematic => {
+                let mut targets = Vec::new();
+                for offset in -4..=4 {
+                    let idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
+                    targets.push(pool[idx].path.clone());
+                }
+                crate::scanner::thumbs::prewarm_cinematic_thumbs(&targets, accent_rgb);
+            }
+            crate::config::SwitcherStyle::Honeycomb => {
+                let mut targets = Vec::new();
+                for offset in -12..=12 {
+                    let idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
+                    targets.push(pool[idx].path.clone());
+                }
+                crate::scanner::thumbs::prewarm_honeycomb_thumbs(&targets, accent_rgb);
+            }
+            crate::config::SwitcherStyle::Classic => {}
         }
-        crate::scanner::thumbs::prewarm_cinematic_thumbs(&targets, accent_rgb);
     }
 }
 
@@ -688,6 +723,11 @@ impl cosmic::Application for AuraApp {
             switcher_scroll_accum: 0.0,
             switcher_last_scroll: None,
             switcher_last_event_time: None,
+            switcher_window_width: 1920.0,
+            switcher_window_height: 1080.0,
+            switcher_cursor_position: None,
+            switcher_edge_scroll_dir: 0,
+            switcher_last_edge_scroll: None,
         };
 
         app.sort_videos();
@@ -819,6 +859,13 @@ impl cosmic::Application for AuraApp {
         let mut subs = Vec::new();
 
         subs.push(cosmic::iced::event::listen_with(handle_window_events));
+
+        if self.switcher_window_id.is_some() && self.switcher_edge_scroll_dir != 0 {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_millis(180))
+                    .map(|_| Message::SwitcherEdgeScrollTick)
+            );
+        }
 
         if self.status_timer > 0 {
             subs.push(
@@ -1165,6 +1212,19 @@ impl cosmic::Application for AuraApp {
                 self.switcher_scroll_accum = 0.0;
                 self.switcher_last_scroll = None;
                 self.switcher_last_event_time = None;
+                let (def_w, def_h) = self.outputs.iter()
+                    .find(|o| o.name == self.selected_output)
+                    .map(|o| (o.width as f32, o.height as f32))
+                    .unwrap_or_else(|| {
+                        self.outputs.first()
+                            .map(|o| (o.width as f32, o.height as f32))
+                            .unwrap_or((1920.0, 1080.0))
+                    });
+                self.switcher_window_width = def_w;
+                self.switcher_window_height = def_h;
+                self.switcher_cursor_position = None;
+                self.switcher_edge_scroll_dir = 0;
+                self.switcher_last_edge_scroll = None;
                 self.prewarm_switcher_around(curr_idx);
 
                 if let Some(id) = self.switcher_window_id {
@@ -1176,11 +1236,11 @@ impl cosmic::Application for AuraApp {
                 let id = cosmic::iced::window::Id::unique();
                 self.switcher_window_id = Some(id);
 
-                let is_cinematic = self.config.switcher_style == crate::config::SwitcherStyle::Cinematic;
+                let is_fullscreen_overlay = matches!(self.config.switcher_style, crate::config::SwitcherStyle::Cinematic | crate::config::SwitcherStyle::Honeycomb);
                 let surface_action = app_layer_shell(
                     move |_app: &AuraApp| {
                         LiveSettings {
-                            blur: Some(is_cinematic),
+                            blur: Some(is_fullscreen_overlay),
                             ..Default::default()
                         }
                     },
@@ -1195,7 +1255,7 @@ impl cosmic::Application for AuraApp {
                             namespace: "aura-switcher".to_string(),
                             ..Default::default()
                         };
-                        if is_cinematic {
+                        if is_fullscreen_overlay {
                             settings.exclusive_zone = -1;
                             settings.size_limits = cosmic::iced::Limits::NONE
                                 .min_width(1.0)
@@ -1215,6 +1275,9 @@ impl cosmic::Application for AuraApp {
                 self.switcher_scroll_accum = 0.0;
                 self.switcher_last_scroll = None;
                 self.switcher_last_event_time = None;
+                self.switcher_cursor_position = None;
+                self.switcher_edge_scroll_dir = 0;
+                self.switcher_last_edge_scroll = None;
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1241,6 +1304,26 @@ impl cosmic::Application for AuraApp {
                 let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + 1) % n;
+                    self.prewarm_switcher_around(self.switcher_index);
+                }
+            }
+
+            Message::SwitcherPrevCol => {
+                let n = self.switcher_pool().len();
+                if n > 0 {
+                    let rows = crate::ui::switcher::HoneycombLayout::ROWS_PER_COL;
+                    let step = rows.min(n);
+                    self.switcher_index = self.switcher_index.saturating_sub(step);
+                    self.prewarm_switcher_around(self.switcher_index);
+                }
+            }
+
+            Message::SwitcherNextCol => {
+                let n = self.switcher_pool().len();
+                if n > 0 {
+                    let rows = crate::ui::switcher::HoneycombLayout::ROWS_PER_COL;
+                    let step = rows.min(n);
+                    self.switcher_index = (self.switcher_index + step).min(n - 1);
                     self.prewarm_switcher_around(self.switcher_index);
                 }
             }
@@ -1296,13 +1379,26 @@ impl cosmic::Application for AuraApp {
 
             Message::SwitcherKeyPressed { window, key } => {
                 if self.switcher_window_id == Some(window) {
+                    let is_honeycomb = self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb;
                     match key {
-                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowLeft)
-                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowUp) => {
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowLeft) => {
+                            if is_honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                            }
+                        }
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight) => {
+                            if is_honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                            }
+                        }
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowUp) => {
                             return Task::done(cosmic::Action::App(Message::SwitcherPrev));
                         }
-                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight)
-                        | cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowDown) => {
+                        cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowDown) => {
                             return Task::done(cosmic::Action::App(Message::SwitcherNext));
                         }
                         cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::Enter) => {
@@ -1317,10 +1413,24 @@ impl cosmic::Application for AuraApp {
                         cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("f") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherToggleFavorite));
                         }
-                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") || c.eq_ignore_ascii_case("w") => {
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("a") => {
+                            if is_honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                            }
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") => {
+                            if is_honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                            }
+                        }
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("w") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherPrev));
                         }
-                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("d") || c.eq_ignore_ascii_case("s") => {
+                        cosmic::iced::keyboard::Key::Character(ref c) if c.eq_ignore_ascii_case("s") => {
                             return Task::done(cosmic::Action::App(Message::SwitcherNext));
                         }
                         _ => {}
@@ -1386,13 +1496,113 @@ impl cosmic::Application for AuraApp {
                         if self.switcher_scroll_accum >= TOUCHPAD_THRESHOLD {
                             self.switcher_scroll_accum = 0.0;
                             self.switcher_last_scroll = Some(now);
-                            return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                            if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherNext));
+                            }
                         } else if self.switcher_scroll_accum <= -TOUCHPAD_THRESHOLD {
                             self.switcher_scroll_accum = 0.0;
                             self.switcher_last_scroll = Some(now);
-                            return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                            if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
+                            } else {
+                                return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                            }
                         }
                     }
+                }
+            }
+
+            Message::SwitcherMouseClicked(window) => {
+                if self.switcher_window_id == Some(window) && self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                    let pool = self.switcher_pool();
+                    let n = pool.len();
+                    if let Some(pos) = self.switcher_cursor_position {
+                        let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
+                        let stored_h = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_HEIGHT.load(std::sync::atomic::Ordering::Relaxed));
+                        let width = if stored_w > 100.0 { stored_w } else if self.switcher_window_width > 100.0 { self.switcher_window_width } else { 1366.0 };
+                        let height = if stored_h > 100.0 { stored_h } else if self.switcher_window_height > 100.0 { self.switcher_window_height } else { 768.0 };
+                        let layout = crate::ui::switcher::HoneycombLayout::new(width, height, n, self.switcher_index);
+                        if let Some(idx) = layout.hit_test(n, pos.x, pos.y) {
+                            return Task::done(cosmic::Action::App(Message::SwitcherApplyIndex(idx)));
+                        } else {
+                            return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                        }
+                    } else {
+                        return Task::done(cosmic::Action::App(Message::CloseQuickSwitcher));
+                    }
+                }
+            }
+
+            Message::SwitcherCursorMoved { window, position } => {
+                if self.switcher_window_id == Some(window) {
+                    self.switcher_cursor_position = Some(position);
+                    if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                        let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
+                        let width = if stored_w > 100.0 { stored_w } else if self.switcher_window_width > 100.0 { self.switcher_window_width } else { 1366.0 };
+                        let edge_margin = (width * 0.08).clamp(70.0, 130.0);
+                        let prev_dir = self.switcher_edge_scroll_dir;
+                        let new_dir = if position.x < edge_margin {
+                            -1
+                        } else if position.x > width - edge_margin {
+                            1
+                        } else {
+                            0
+                        };
+                        self.switcher_edge_scroll_dir = new_dir;
+
+                        if new_dir != 0 && prev_dir == 0 {
+                            let now = Instant::now();
+                            let should_step = self.switcher_last_edge_scroll
+                                .map(|last| now.duration_since(last) > Duration::from_millis(180))
+                                .unwrap_or(true);
+                            if should_step {
+                                let pool_len = self.switcher_pool().len();
+                                let rows = crate::ui::switcher::HoneycombLayout::ROWS_PER_COL;
+                                let total_cols = (pool_len + rows - 1) / rows;
+                                let sel_col = self.switcher_index / rows;
+                                if new_dir > 0 && sel_col + 1 < total_cols {
+                                    self.switcher_last_edge_scroll = Some(now);
+                                    return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                                } else if new_dir < 0 && sel_col > 0 {
+                                    self.switcher_last_edge_scroll = Some(now);
+                                    return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Message::SwitcherCursorLeft(window) => {
+                if self.switcher_window_id == Some(window) {
+                    self.switcher_cursor_position = None;
+                    self.switcher_edge_scroll_dir = 0;
+                }
+            }
+
+            Message::SwitcherEdgeScrollTick => {
+                if self.switcher_window_id.is_some() && self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                    let pool_len = self.switcher_pool().len();
+                    let rows = crate::ui::switcher::HoneycombLayout::ROWS_PER_COL;
+                    let total_cols = (pool_len + rows - 1) / rows;
+                    let sel_col = self.switcher_index / rows;
+                    let now = Instant::now();
+                    if self.switcher_edge_scroll_dir > 0 && sel_col + 1 < total_cols {
+                        self.switcher_last_edge_scroll = Some(now);
+                        return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                    } else if self.switcher_edge_scroll_dir < 0 && sel_col > 0 {
+                        self.switcher_last_edge_scroll = Some(now);
+                        return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
+                    }
+                }
+            }
+
+            Message::SwitcherResized { window, size } => {
+                if self.switcher_window_id == Some(window) {
+                    self.switcher_window_width = size.width;
+                    self.switcher_window_height = size.height;
                 }
             }
 
@@ -1428,6 +1638,9 @@ impl cosmic::Application for AuraApp {
                 if self.switcher_window_id == Some(id) || self.closing_switcher_window_id == Some(id) {
                     self.switcher_window_id = None;
                     self.closing_switcher_window_id = Some(id);
+                    self.switcher_cursor_position = None;
+                    self.switcher_edge_scroll_dir = 0;
+                    self.switcher_last_edge_scroll = None;
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
                 if self.core().main_window_id() == Some(id) {
@@ -1447,6 +1660,9 @@ impl cosmic::Application for AuraApp {
             Message::WindowClosed(id) => {
                 if self.switcher_window_id == Some(id) {
                     self.switcher_window_id = None;
+                    self.switcher_cursor_position = None;
+                    self.switcher_edge_scroll_dir = 0;
+                    self.switcher_last_edge_scroll = None;
                 }
                 if self.closing_switcher_window_id == Some(id) {
                     self.closing_switcher_window_id = None;
@@ -2912,6 +3128,78 @@ mod tests {
         }
         accum += increment;
         assert_eq!(accum, -15.0);
+    }
+
+    #[test]
+    fn test_switcher_edge_scroll_margin_and_clamping() {
+        // Test 1366x768 (User's display)
+        let width_1366 = 1366.0f32;
+        let margin_1366 = (width_1366 * 0.08).clamp(70.0, 130.0);
+        assert!((margin_1366 - 109.28).abs() < 0.01);
+
+        // On 1366: cursor near right edge (1320px) should trigger right scroll (+1)
+        let pos_right_1366 = 1320.0f32;
+        let dir_right_1366 = if pos_right_1366 < margin_1366 {
+            -1
+        } else if pos_right_1366 > width_1366 - margin_1366 {
+            1
+        } else {
+            0
+        };
+        assert_eq!(dir_right_1366, 1, "Right edge scroll must trigger on 1366px screen");
+
+        // Test 1920x1080
+        let width = 1920.0f32;
+        let edge_margin = (width * 0.08).clamp(70.0, 130.0);
+        assert_eq!(edge_margin, 130.0);
+
+        // Cursor at far left (50px)
+        let pos_left = 50.0f32;
+        let dir_left = if pos_left < edge_margin {
+            -1
+        } else if pos_left > width - edge_margin {
+            1
+        } else {
+            0
+        };
+        assert_eq!(dir_left, -1);
+
+        // Cursor at center (960px)
+        let pos_center = 960.0f32;
+        let dir_center = if pos_center < edge_margin {
+            -1
+        } else if pos_center > width - edge_margin {
+            1
+        } else {
+            0
+        };
+        assert_eq!(dir_center, 0);
+
+        // Cursor at far right (1850px)
+        let pos_right = 1850.0f32;
+        let dir_right = if pos_right < edge_margin {
+            -1
+        } else if pos_right > width - edge_margin {
+            1
+        } else {
+            0
+        };
+        assert_eq!(dir_right, 1);
+
+        // Boundary checks for a 10-item library (4 columns: 0, 1, 2, 3)
+        let n = 10usize;
+        let total_cols = (n + 2) / 3;
+        assert_eq!(total_cols, 4);
+
+        // At column 0: can step right, but not left
+        let sel_col_0 = 0usize;
+        assert!(!(sel_col_0 > 0), "Should not scroll left past column 0");
+        assert!(sel_col_0 + 1 < total_cols, "Should scroll right from column 0");
+
+        // At column 3 (last column): can step left, but not right
+        let sel_col_last = 3usize;
+        assert!(sel_col_last > 0, "Should scroll left from last column");
+        assert!(!(sel_col_last + 1 < total_cols), "Should not scroll right past last column");
     }
 }
 

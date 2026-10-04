@@ -338,7 +338,7 @@ impl AuraApp {
                     )
             )
             .push(
-                widget::row::with_capacity(3)
+                widget::row::with_capacity(4)
                     .spacing(8)
                     .align_y(Alignment::Center)
                     .push(widget::text::body(self.language.settings_switcher_style_label()))
@@ -359,6 +359,15 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("video-display-symbolic"))
                         .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Cinematic))
+                    )
+                    .push(
+                        if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                            widget::button::suggested(self.language.settings_switcher_style_honeycomb())
+                        } else {
+                            widget::button::standard(self.language.settings_switcher_style_honeycomb())
+                        }
+                        .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                        .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Honeycomb))
                     )
             )
             .push(
@@ -404,6 +413,8 @@ impl AuraApp {
                             .on_press(Message::SelectSwitcherPosition("right".into()))
                         );
                     Element::from(r)
+                } else if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                    Element::from(widget::text::caption(self.language.settings_switcher_style_honeycomb_desc()))
                 } else {
                     Element::from(widget::text::caption(self.language.settings_switcher_style_cinematic_desc()))
                 }
