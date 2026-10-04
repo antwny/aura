@@ -201,4 +201,50 @@ mod tests {
         };
         assert_eq!(m_zero.aspect_ratio(), 16.0 / 9.0);
     }
+
+    #[test]
+    fn test_hotplug_topology_diff() {
+        let old_outputs = vec![
+            MonitorOutput {
+                name: "eDP-1".into(),
+                description: "Built-in".into(),
+                resolution: "1920x1080".into(),
+                width: 1920,
+                height: 1080,
+                is_primary: true,
+            },
+        ];
+
+        let docked_outputs = vec![
+            MonitorOutput {
+                name: "DP-1".into(),
+                description: "Dock Screen 1".into(),
+                resolution: "2560x1440".into(),
+                width: 2560,
+                height: 1440,
+                is_primary: true,
+            },
+            MonitorOutput {
+                name: "DP-2".into(),
+                description: "Dock Screen 2".into(),
+                resolution: "1920x1080".into(),
+                width: 1920,
+                height: 1080,
+                is_primary: false,
+            },
+        ];
+
+        let disconnected: Vec<_> = old_outputs.iter()
+            .filter(|old| !docked_outputs.iter().any(|d| d.name == old.name))
+            .collect();
+        assert_eq!(disconnected.len(), 1);
+        assert_eq!(disconnected[0].name, "eDP-1");
+
+        let added: Vec<_> = docked_outputs.iter()
+            .filter(|d| !old_outputs.iter().any(|old| old.name == d.name))
+            .collect();
+        assert_eq!(added.len(), 2);
+        assert_eq!(added[0].name, "DP-1");
+        assert_eq!(added[1].name, "DP-2");
+    }
 }

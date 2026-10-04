@@ -444,7 +444,7 @@ impl AuraApp {
         col = col.push(widget::container(switcher_section).width(Length::Fill));
 
         // 5. Hardware Acceleration (GPU) section
-        let hwdec_section = widget::column::with_capacity(3)
+        let hwdec_section = widget::column::with_capacity(6)
             .spacing(12)
             .padding(16)
             .push(widget::text::title3(self.language.settings_hwdec_title()))
@@ -484,6 +484,37 @@ impl AuraApp {
                             widget::button::standard("CPU (Software)")
                         }
                         .on_press(Message::SelectHwdec("no".into()))
+                    )
+            )
+            .push(widget::text::title3(self.language.settings_gpu_card_title()))
+            .push(widget::text::caption(self.language.settings_gpu_card_desc()))
+            .push(
+                widget::row::with_capacity(3)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(
+                        if self.config.gpu_preference == "auto" {
+                            widget::button::suggested(self.language.settings_gpu_auto())
+                        } else {
+                            widget::button::standard(self.language.settings_gpu_auto())
+                        }
+                        .on_press(Message::SelectGpuPreference("auto".into()))
+                    )
+                    .push(
+                        if self.config.gpu_preference == "integrated" {
+                            widget::button::suggested(self.language.settings_gpu_integrated())
+                        } else {
+                            widget::button::standard(self.language.settings_gpu_integrated())
+                        }
+                        .on_press(Message::SelectGpuPreference("integrated".into()))
+                    )
+                    .push(
+                        if self.config.gpu_preference == "discrete" {
+                            widget::button::suggested(self.language.settings_gpu_discrete())
+                        } else {
+                            widget::button::standard(self.language.settings_gpu_discrete())
+                        }
+                        .on_press(Message::SelectGpuPreference("discrete".into()))
                     )
             );
 

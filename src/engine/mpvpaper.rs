@@ -361,6 +361,7 @@ impl WallpaperEngine {
         volume: u8,
         hwdec: &str,
         auto_pause: bool,
+        gpu_pref: &str,
     ) -> Result<u32, std::io::Error> {
         // If applying to all monitors ("*"), stop any specific outputs first
         if output == "*" {
@@ -436,7 +437,7 @@ impl WallpaperEngine {
         self.stop_output(output);
         let _ = std::fs::remove_file(&sock_path);
 
-        let mut opts = Self::build_mpv_options(scaling, mute, volume, hwdec, is_image);
+        let mut opts = Self::build_mpv_options_with_gpu(scaling, mute, volume, hwdec, is_image, gpu_pref);
         opts.push_str(&format!(" --input-ipc-server={}", sock_path.display()));
 
         let mpv_bin = resolve_mpvpaper_binary();
@@ -446,12 +447,16 @@ impl WallpaperEngine {
             let mut c = Command::new("systemd-run");
             c.arg("--user")
                 .arg("--scope")
-                .arg("--quiet")
-                .arg(&mpv_bin);
+                .arg("--quiet");
+            for arg in crate::engine::gpu::systemd_run_gpu_args(gpu_pref) {
+                c.arg(arg);
+            }
+            c.arg(&mpv_bin);
             c
         } else {
             Command::new(&mpv_bin)
         };
+        crate::engine::gpu::apply_gpu_env(&mut cmd, gpu_pref);
 
         // Run mpvpaper on `background` layer so COSMIC desktop icons (`cosmic-files-applet`)
         // and right-click desktop interactions remain fully accessible on the `bottom` layer.
@@ -750,11 +755,24 @@ impl WallpaperEngine {
         self.is_paused = false;
     }
 
-    pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, _is_image: bool) -> String {
+    #[allow(dead_code)]
+    pub fn build_mpv_options(scaling: &str, mute: bool, volume: u8, hwdec: &str, is_image: bool) -> String {
+        Self::build_mpv_options_with_gpu(scaling, mute, volume, hwdec, is_image, "auto")
+    }
+
+    pub fn build_mpv_options_with_gpu(scaling: &str, mute: bool, volume: u8, hwdec: &str, _is_image: bool, gpu_pref: &str) -> String {
         let mut opts = format!(
             "loop-file=inf --image-display-duration=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
             hwdec
         );
+
+        if (hwdec == "vaapi" || hwdec == "auto-safe") && gpu_pref != "auto" {
+            let gpus = crate::engine::gpu::detect_available_gpus();
+            if let Some(dev) = crate::engine::gpu::resolve_vaapi_device(gpu_pref, &gpus) {
+                opts.push_str(&format!(" --vaapi-device={}", dev));
+            }
+        }
+
         if mute || volume == 0 {
             opts.push_str(" --no-audio");
         } else {
@@ -871,6 +889,18 @@ mod tests {
         assert!(opts_image.contains("--demuxer-max-bytes=24M"));
         assert!(opts_image.contains("--vd-lavc-threads=2"));
         assert!(opts_image.contains("--panscan=1.0"));
+    }
+
+    #[test]
+    fn test_build_mpv_options_with_gpu() {
+        let opts_auto = WallpaperEngine::build_mpv_options_with_gpu("fit", true, 100, "vaapi", false, "auto");
+        assert!(opts_auto.contains("--hwdec=vaapi"));
+
+        let opts_discrete = WallpaperEngine::build_mpv_options_with_gpu("fit", true, 100, "vaapi", false, "discrete");
+        assert!(opts_discrete.contains("--hwdec=vaapi"));
+
+        let opts_custom = WallpaperEngine::build_mpv_options_with_gpu("fit", true, 100, "vaapi", false, "/dev/dri/renderD129");
+        assert!(opts_custom.contains("--vaapi-device=/dev/dri/renderD129"));
     }
 
     #[test]

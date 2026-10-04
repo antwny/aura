@@ -56,6 +56,8 @@ pub struct Config {
     #[serde(default = "default_volume")]
     pub volume: u8,
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
+    #[serde(default = "default_gpu_preference")]
+    pub gpu_preference: String, // "auto" | "discrete" | "integrated" | render node
     pub smart_pause: bool,
     #[serde(default = "default_auto_pause")]
     pub auto_pause: bool,
@@ -100,6 +102,10 @@ fn default_auto_pause() -> bool {
 
 fn default_volume() -> u8 {
     100
+}
+
+fn default_gpu_preference() -> String {
+    "auto".to_string()
 }
 
 fn default_language() -> String {
@@ -212,6 +218,7 @@ impl Default for Config {
             mute: true,
             volume: 100,
             hwdec: "auto-safe".into(),
+            gpu_preference: default_gpu_preference(),
             smart_pause: true,
             auto_pause: true,
             pause_on_battery: false,
@@ -338,6 +345,7 @@ mod tests {
         assert_eq!(cfg.volume, 100);
         assert!(!cfg.pause_on_battery);
         assert_eq!(cfg.hwdec, "auto-safe");
+        assert_eq!(cfg.gpu_preference, "auto");
         assert_eq!(cfg.output, "*");
         assert!(!cfg.dirs.is_empty());
         assert!(!cfg.dirs.iter().any(|d| d.to_lowercase().ends_with("downloads") || d.to_lowercase().ends_with("descargas")));
@@ -392,6 +400,7 @@ mod tests {
         assert!(!cfg.language.is_empty());
         assert!(cfg.auto_pause);
         assert_eq!(cfg.theme_mode, ThemeMode::Auto);
+        assert_eq!(cfg.gpu_preference, "auto");
     }
 
     #[test]

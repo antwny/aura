@@ -1338,6 +1338,27 @@ impl Language {
         }
     }
 
+    pub fn status_gpu_selected(&self, gpu: &str) -> String {
+        let label = match gpu {
+            "discrete" => match self {
+                Language::Es => "Dedicada",
+                Language::En => "Dedicated",
+            },
+            "integrated" => match self {
+                Language::Es => "Integrada",
+                Language::En => "Integrated",
+            },
+            _ => match self {
+                Language::Es => "Automático",
+                Language::En => "Auto",
+            },
+        };
+        match self {
+            Language::Es => format!("Tarjeta GPU: {}", label),
+            Language::En => format!("GPU Card: {}", label),
+        }
+    }
+
     pub fn status_interval_selected(&self, interval: u64) -> String {
         match self {
             Language::Es => format!("Intervalo de rotación: {} min", interval),
@@ -1584,6 +1605,41 @@ impl Language {
         match self {
             Language::Es => "Configura el decodificador de video para mpv (VA-API / NVDEC)",
             Language::En => "Configure the video hardware decoder for mpv (VA-API / NVDEC)",
+        }
+    }
+
+    pub fn settings_gpu_card_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Adaptador Gráfico (GPU)",
+            Language::En => "Graphics Adapter (GPU)",
+        }
+    }
+
+    pub fn settings_gpu_card_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Selecciona qué tarjeta gráfica ejecuta el renderizado en portátiles con gráficos híbridos (Intel / AMD / NVIDIA)",
+            Language::En => "Select which graphics card renders video on notebooks with hybrid graphics (Intel / AMD / NVIDIA)",
+        }
+    }
+
+    pub fn settings_gpu_auto(&self) -> &'static str {
+        match self {
+            Language::Es => "Automático",
+            Language::En => "Auto",
+        }
+    }
+
+    pub fn settings_gpu_integrated(&self) -> &'static str {
+        match self {
+            Language::Es => "Integrada (Ahorro)",
+            Language::En => "Integrated (Power Saver)",
+        }
+    }
+
+    pub fn settings_gpu_discrete(&self) -> &'static str {
+        match self {
+            Language::Es => "Dedicada (Rendimiento)",
+            Language::En => "Dedicated (Performance)",
         }
     }
 
@@ -1907,6 +1963,12 @@ mod tests {
             assert!(!lang.library_favs_rotation_settings().is_empty());
             assert!(!lang.settings_hwdec_title().is_empty());
             assert!(!lang.settings_hwdec_desc().is_empty());
+            assert!(!lang.settings_gpu_card_title().is_empty());
+            assert!(!lang.settings_gpu_card_desc().is_empty());
+            assert!(!lang.settings_gpu_auto().is_empty());
+            assert!(!lang.settings_gpu_integrated().is_empty());
+            assert!(!lang.settings_gpu_discrete().is_empty());
+            assert!(!lang.status_gpu_selected("discrete").is_empty());
             assert!(!lang.settings_battery_title().is_empty());
             assert!(!lang.settings_battery_desc().is_empty());
             assert!(!lang.status_battery_paused().is_empty());

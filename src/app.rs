@@ -56,6 +56,7 @@ pub enum Message {
     SetLanguage(crate::i18n::Language),
     SelectOutput(String),
     SelectHwdec(String),
+    SelectGpuPreference(String),
     ToggleRotation(bool),
     ToggleRotationOnlyFavorites(bool),
     StartFavoritesRotation,
@@ -356,6 +357,81 @@ impl AuraApp {
         self.notify(msg)
     }
 
+    pub(crate) fn handle_topology_change(&mut self, current_outputs: Vec<MonitorOutput>) {
+        if current_outputs == self.outputs {
+            return;
+        }
+
+        let old_outputs = self.outputs.clone();
+        let new_count = current_outputs.len();
+        self.outputs = current_outputs.clone();
+
+        // 1. If currently selected output was removed, fallback to first output or "*"
+        if self.selected_output != "*" && !self.outputs.iter().any(|o| o.name == self.selected_output) {
+            self.selected_output = self.outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
+        }
+
+        // 2. Stop outputs that were disconnected
+        let active = self.engine.processes_keys();
+        for out in &active {
+            if out != "*" && !self.outputs.iter().any(|o| o.name == *out) {
+                self.engine.stop_output(out);
+            }
+        }
+
+        // 3. Identify newly added outputs (e.g. plugged into docking station)
+        let added_monitors: Vec<_> = self.outputs.iter()
+            .filter(|new_o| !old_outputs.iter().any(|old_o| old_o.name == new_o.name))
+            .cloned()
+            .collect();
+
+        // 4. If wildcard "*" was active, restart it so mpvpaper binds to the new screens
+        if active.contains(&"*".to_string()) {
+            if let Some(curr) = &self.config.current {
+                let sc = self.config.scaling.get("*").cloned().unwrap_or_else(|| "fit".into());
+                let _ = self.engine.set_wallpaper(
+                    "*",
+                    curr,
+                    &sc,
+                    self.config.mute,
+                    self.config.volume,
+                    &self.config.hwdec,
+                    self.config.auto_pause,
+                    &self.config.gpu_preference,
+                );
+            }
+        } else if !added_monitors.is_empty() {
+            // Apply wallpaper to newly connected outputs
+            for monitor in added_monitors {
+                let path_opt = self.config.wallpapers.get(&monitor.name)
+                    .cloned()
+                    .or_else(|| self.config.wallpapers.get("*").cloned())
+                    .or_else(|| self.config.current.clone());
+
+                if let Some(path) = path_opt {
+                    if std::path::Path::new(&path).exists() {
+                        let sc = self.config.scaling.get(&monitor.name)
+                            .cloned()
+                            .unwrap_or_else(|| "fit".into());
+                        let _ = self.engine.set_wallpaper(
+                            &monitor.name,
+                            &path,
+                            &sc,
+                            self.config.mute,
+                            self.config.volume,
+                            &self.config.hwdec,
+                            self.config.auto_pause,
+                            &self.config.gpu_preference,
+                        );
+                    }
+                }
+            }
+        }
+
+        self.status_message = Some(self.language.status_topology_updated(new_count));
+        self.status_timer = 5;
+    }
+
     pub(crate) fn apply_minimalistic_filter(&mut self) -> Vec<OnlineWallpaperItem> {
         let query = self.minimalistic_search.trim().to_lowercase();
         let filtered: Vec<OnlineWallpaperItem> = if query.is_empty() {
@@ -624,7 +700,7 @@ impl cosmic::Application for AuraApp {
             for (out, path) in &config.wallpapers {
                 let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
                 if std::path::Path::new(path).exists() {
-                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause);
+                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference);
                 }
             }
         }
@@ -899,7 +975,7 @@ impl cosmic::Application for AuraApp {
         }
 
         subs.push(
-            cosmic::iced::time::every(Duration::from_secs(5))
+            cosmic::iced::time::every(Duration::from_secs(3))
                 .map(|_| Message::HotplugTick)
         );
 
@@ -959,9 +1035,19 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 for (output, path) in self.config.wallpapers.clone() {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause);
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
                 }
                 return self.set_status(self.language.status_hwdec_selected(&hwdec));
+            }
+
+            Message::SelectGpuPreference(gpu_pref) => {
+                self.config.gpu_preference = gpu_pref.clone();
+                let _ = self.config.save();
+                for (output, path) in self.config.wallpapers.clone() {
+                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
+                }
+                return self.set_status(self.language.status_gpu_selected(&gpu_pref));
             }
 
             Message::ToggleRotation(active) => {
@@ -1897,7 +1983,7 @@ impl cosmic::Application for AuraApp {
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
-                match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause) {
+                match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause, &self.config.gpu_preference) {
                     Ok(_) => {
                         self.config.wallpapers.insert(output.clone(), path_str.clone());
                         self.config.current = Some(path_str.clone());
@@ -1984,7 +2070,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 if !self.engine.set_scaling(&output, &scaling) {
                     if let Some(path) = self.config.wallpapers.get(&output).cloned() {
-                        let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause);
+                        let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
                     }
                 }
                 return self.set_status(self.language.status_scaling_changed(&output, &scaling));
@@ -2080,7 +2166,7 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
                 for (output, path) in self.config.wallpapers.clone() {
                     let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, active);
+                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, active, &self.config.gpu_preference);
                 }
             }
 
@@ -2285,34 +2371,11 @@ impl cosmic::Application for AuraApp {
 
             Message::HotplugTick => {
                 let current_outputs = detect_outputs();
-                if current_outputs != self.outputs {
-                    let new_count = current_outputs.len();
-                    self.outputs = current_outputs;
-                    if self.selected_output != "*" && !self.outputs.iter().any(|o| o.name == self.selected_output) {
-                        self.selected_output = self.outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
-                    }
-                    let active = self.engine.processes_keys();
-                    for out in active {
-                        if out != "*" && !self.outputs.iter().any(|o| o.name == out) {
-                            self.engine.stop_output(&out);
-                        }
-                    }
-                    self.status_message = Some(self.language.status_topology_updated(new_count));
-                    self.status_timer = 5;
-                }
+                self.handle_topology_change(current_outputs);
             }
 
             Message::OutputsUpdated(new_outs) => {
-                self.outputs = new_outs;
-                if self.selected_output != "*" && !self.outputs.iter().any(|o| o.name == self.selected_output) {
-                    self.selected_output = self.outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into());
-                }
-                let active = self.engine.processes_keys();
-                for out in active {
-                    if out != "*" && !self.outputs.iter().any(|o| o.name == out) {
-                        self.engine.stop_output(&out);
-                    }
-                }
+                self.handle_topology_change(new_outs);
             }
 
             Message::SmartPauseTick => {

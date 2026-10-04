@@ -127,7 +127,7 @@ fn cmd_next() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -177,7 +177,7 @@ fn cmd_prev() {
 
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
-    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
+    if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         config.wallpapers.insert(output.clone(), path_str.clone());
         config.current = Some(path_str.clone());
         let _ = config.save();
@@ -253,7 +253,7 @@ fn cmd_apply(path_arg: &str) {
     let mut engine = WallpaperEngine::new();
     let path_str = full_path.to_string_lossy().to_string();
 
-    match engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause) {
+    match engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         Ok(pid) => {
             config.wallpapers.insert(output.clone(), path_str.clone());
             config.current = Some(path_str.clone());
@@ -347,6 +347,7 @@ fn cmd_status() {
     println!("Silenciado:            {}", if config.mute { "Sí" } else { "No" });
     println!("Volumen:               {}%", config.volume);
     println!("Aceleración GPU:       {}", config.hwdec);
+    println!("Preferencia GPU:       {}", config.gpu_preference);
     println!("Inicio automático:     {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
 }
 
