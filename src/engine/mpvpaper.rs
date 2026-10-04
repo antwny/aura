@@ -44,6 +44,20 @@ pub fn socket_dir() -> PathBuf {
     PathBuf::from(home).join(".cache/aura/ipc")
 }
 
+pub fn shader_cache_dir() -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        if !xdg.is_empty() {
+            let p = PathBuf::from(xdg).join("aura/mpv_shaders");
+            let _ = std::fs::create_dir_all(&p);
+            return p;
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let p = PathBuf::from(home).join(".cache/aura/mpv_shaders");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
 pub fn socket_path_for_output(output: &str) -> PathBuf {
     let clean: String = output.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
     let name = if clean.is_empty() { "all".to_string() } else { clean };
@@ -761,9 +775,11 @@ impl WallpaperEngine {
     }
 
     pub fn build_mpv_options_with_gpu(scaling: &str, mute: bool, volume: u8, hwdec: &str, _is_image: bool, gpu_pref: &str) -> String {
+        let shader_cache = shader_cache_dir();
         let mut opts = format!(
-            "loop-file=inf --image-display-duration=inf --hwdec={} --no-config --demuxer-max-bytes=24M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --background-color=#000000",
-            hwdec
+            "loop-file=inf --image-display-duration=inf --hwdec={} --no-config --demuxer-max-bytes=16M --demuxer-readahead-secs=2 --vd-lavc-threads=2 --vd-lavc-dr=yes --gpu-shader-cache-dir={} --sub-auto=no --audio-display=no --no-osc --no-osd-bar --osd-level=0 --hr-seek=no --background-color=#000000",
+            hwdec,
+            shader_cache.display()
         );
 
         if (hwdec == "vaapi" || hwdec == "auto-safe") && gpu_pref != "auto" {
@@ -868,8 +884,16 @@ mod tests {
         let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, 100, "auto-safe", false);
         assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
         assert!(opts_fit_mute.contains("--no-audio"));
-        assert!(opts_fit_mute.contains("--demuxer-max-bytes=24M"));
+        assert!(opts_fit_mute.contains("--demuxer-max-bytes=16M"));
+        assert!(opts_fit_mute.contains("--demuxer-readahead-secs=2"));
         assert!(opts_fit_mute.contains("--vd-lavc-threads=2"));
+        assert!(opts_fit_mute.contains("--vd-lavc-dr=yes"));
+        assert!(opts_fit_mute.contains("--gpu-shader-cache-dir="));
+        assert!(opts_fit_mute.contains("--sub-auto=no"));
+        assert!(opts_fit_mute.contains("--no-osc"));
+        assert!(opts_fit_mute.contains("--no-osd-bar"));
+        assert!(opts_fit_mute.contains("--osd-level=0"));
+        assert!(opts_fit_mute.contains("--hr-seek=no"));
         assert!(opts_fit_mute.contains("--background-color=#000000"));
         assert!(!opts_fit_mute.contains("--panscan"));
 
@@ -886,8 +910,9 @@ mod tests {
         assert!(opts_image.contains("image-display-duration=inf"));
         assert!(opts_image.contains("--hwdec=auto-safe"));
         assert!(opts_image.contains("--no-audio"));
-        assert!(opts_image.contains("--demuxer-max-bytes=24M"));
+        assert!(opts_image.contains("--demuxer-max-bytes=16M"));
         assert!(opts_image.contains("--vd-lavc-threads=2"));
+        assert!(opts_image.contains("--vd-lavc-dr=yes"));
         assert!(opts_image.contains("--panscan=1.0"));
     }
 
