@@ -28,6 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 *Native Rust performance for CachyOS, Arch Linux, Pop!_OS, Fedora, openSUSE, and any distribution running COSMIC Desktop.*
 
 > **💡 Prerequisites for live video playback & video thumbnails:**
+> 
 > - **CachyOS / Arch Linux**: `sudo pacman -S --needed mpv ffmpeg`
 > - **Pop!_OS / Ubuntu / Debian**: `sudo apt install -y libmpv2 ffmpeg`
 > - **Fedora**: `sudo dnf install -y mpv-libs ffmpeg-free`
@@ -36,6 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 <br/>
 
 <!-- GitHub does not render HTML <video> elements in README files. -->
+
 <p align="center">
   <a href="https://antwny.github.io/aura/assets/video/aura-showcase.mp4">
     <img src="docs/assets/video/aura-showcase-preview.webp" alt="Animated preview of the Aura showcase — click to play the full video" width="96%" />
@@ -44,7 +46,6 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 <p align="center"><sub><i>Live recording: COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine — click the image to play</i></sub></p>
 
-<br/>
 <br/>
 
 </div>
@@ -151,15 +152,15 @@ The biggest concern with live wallpapers is performance. Aura solves this comple
 
 Control Aura seamlessly with global keyboard shortcuts. Open **COSMIC Settings → Keyboard → Custom Shortcuts** and assign your favorite key combinations:
 
-| Action | Command | Recommended Shortcut |
-| :--- | :--- | :--- |
-| **Next Wallpaper** | `aura next` | <kbd>Super</kbd> + <kbd>W</kbd> |
-| **Previous Wallpaper** | `aura prev` | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> |
-| **Pause / Resume** (0% GPU) | `aura toggle-pause` | <kbd>Super</kbd> + <kbd>P</kbd> |
-| **Apply Video Directly** | `aura apply /path/to/video.mp4` | Right-click in file manager |
-| **Stop Wallpaper** | `aura stop` | Custom script / shortcut |
-| **System Status** | `aura status` | Terminal check |
-| **Update Aura** | `aura update` | Automatic in-app update |
+| Action                      | Command                         | Recommended Shortcut                               |
+|:--------------------------- |:------------------------------- |:-------------------------------------------------- |
+| **Next Wallpaper**          | `aura next`                     | <kbd>Super</kbd> + <kbd>W</kbd>                    |
+| **Previous Wallpaper**      | `aura prev`                     | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> |
+| **Pause / Resume** (0% GPU) | `aura toggle-pause`             | <kbd>Super</kbd> + <kbd>P</kbd>                    |
+| **Apply Video Directly**    | `aura apply /path/to/video.mp4` | Right-click in file manager                        |
+| **Stop Wallpaper**          | `aura stop`                     | Custom script / shortcut                           |
+| **System Status**           | `aura status`                   | Terminal check                                     |
+| **Update Aura**             | `aura update`                   | Automatic in-app update                            |
 
 ---
 
@@ -174,6 +175,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
 > **Tip**: To install system-wide (`/usr/local` with sudo), pass `--system`:
+> 
 > ```bash
 > curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash -s -- --system
 > ```
@@ -192,6 +194,7 @@ cd aura-v1.6.0-x86_64-linux
 ```
 
 To uninstall at any time:
+
 ```bash
 ./uninstall.sh
 ```
@@ -229,30 +232,35 @@ aura
 
 Tested on Linux with COSMIC Desktop (AMD Ryzen 5 4500U, Radeon Graphics, Wayland Layer-Shell):
 
-| Benchmark | Aura (Compiled Rust) | Legacy Python/GTK Tools | Advantage |
-| :--- | :---: | :---: | :---: |
-| **Cold Startup Time** | **< 20 ms** | ~1,120 ms | **56x faster** |
-| **RAM Footprint** | **Minimal native footprint** | ~220 MB | **Lightweight** |
-| **Idle CPU (Paused/Occluded)** | **0.00%** | 3.5% - 8.0% | **Zero battery drain** |
-| **GPU Usage When Paused** | **0.0%** (Hardware halted) | 4.0% - 10.0% | **100% GPU for games** |
-| **Desktop UI Framerate** | **Smooth 60+ FPS** | 24 - 45 FPS | **Silky smooth** |
+| Benchmark                      | Aura (Compiled Rust)         | Legacy Python/GTK Tools | Advantage              |
+|:------------------------------ |:----------------------------:|:-----------------------:|:----------------------:|
+| **Cold Startup Time**          | **< 20 ms**                  | ~1,120 ms               | **56x faster**         |
+| **RAM Footprint**              | **Minimal native footprint** | ~220 MB                 | **Lightweight**        |
+| **Idle CPU (Paused/Occluded)** | **0.00%**                    | 3.5% - 8.0%             | **Zero battery drain** |
+| **GPU Usage When Paused**      | **0.0%** (Hardware halted)   | 4.0% - 10.0%            | **100% GPU for games** |
+| **Desktop UI Framerate**       | **Smooth 60+ FPS**           | 24 - 45 FPS             | **Silky smooth**       |
 
 ---
 
-## 💬 Community & Support
+### Support the Project ⭐
 
-- **Creator & Maintainer**: [Antwny](https://github.com/antwny)
 - **YouTube Tutorials & Demos**: [@antwny](https://www.youtube.com/@antwny)
 - **Reddit Community**: [@antw-ny](https://www.reddit.com/user/antw-ny/)
 
-### Support the Project ⭐
 If Aura makes your desktop look awesome, please consider:
+
 - Giving the repository a **Star** on [GitHub](https://github.com/antwny/aura) ⭐!
 - [Donating via PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD) to support ongoing development, optimizations, and new features.
 
 ---
 
-## 📜 License
+## Acknowledgments
+
+Aura draws inspiration from several open-source projects, including [Papyrus](https://github.com/PSGtatitos/papyrus) and [skwd-wall](https://github.com/liixini/skwd-wall). Their work served as valuable references during Aura's development.
+
+---
+
+## License
 
 Aura is proudly **Free & Open Source** software licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for details.
 
