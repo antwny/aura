@@ -226,7 +226,7 @@ pub(crate) fn cinematic_card_hover_dimensions(base_w: f32, base_h: f32, offset: 
 pub(crate) fn cinematic_lerp_step(current: f32, target: f32) -> (f32, bool) {
     let diff = target - current;
     if diff.abs() > 0.005 {
-        (current + diff * 0.28, true)
+        (current + diff * 0.15, true)
     } else {
         (target, false)
     }
@@ -427,8 +427,10 @@ impl AuraApp {
 
             let card_widget: Element<'_, Message> = widget::mouse_area(card_content)
                 .on_press(Message::SwitcherApplyIndex(item_idx))
-                .on_enter(Message::SwitcherCinematicHover(Some(offset)))
-                .on_exit(Message::SwitcherCinematicLeave(offset))
+                // NOTE: Do NOT add .on_enter()/.on_exit() here. Each card is wrapped in a
+                // Fill×Fill container for z-stacking, so iced fires enter/exit for the entire
+                // window area — not just the card image. Hover detection is done exclusively via
+                // cinematic_hit_test() in window coordinates, driven by SwitcherCursorMoved.
                 .interaction(cosmic::iced::mouse::Interaction::Pointer)
                 .into();
 
@@ -888,7 +890,7 @@ mod tests {
             }
         }
         assert_eq!(curr, 1.0, "Should cleanly snap to target 1.0");
-        assert!(steps < 25, "Should converge within ~20 frames (~300ms at 60 FPS)");
+        assert!(steps < 45, "Should converge within ~40 frames (~666ms at 60 FPS)");
 
         // Backward transition (1.0 to 0.0)
         let mut curr = 1.0;
@@ -902,6 +904,6 @@ mod tests {
             }
         }
         assert_eq!(curr, 0.0, "Should cleanly snap to target 0.0");
-        assert!(steps < 25, "Should converge within ~20 frames");
+        assert!(steps < 45, "Should converge within ~40 frames");
     }
 }

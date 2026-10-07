@@ -1753,7 +1753,7 @@ impl cosmic::Application for AuraApp {
 
                     // 1. Decay slide offset smoothly towards 0.0
                     if self.switcher_cinematic_slide.abs() > 0.5 {
-                        self.switcher_cinematic_slide *= 0.72;
+                        self.switcher_cinematic_slide *= 0.87;
                         if self.switcher_cinematic_slide.abs() <= 0.5 {
                             self.switcher_cinematic_slide = 0.0;
                         }
