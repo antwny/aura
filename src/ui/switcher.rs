@@ -232,6 +232,31 @@ pub(crate) fn cinematic_lerp_step(current: f32, target: f32) -> (f32, bool) {
     }
 }
 
+pub(crate) fn cinematic_card_contains_point(
+    card_cx: f32,
+    card_cy: f32,
+    w: f32,
+    h: f32,
+    pos_x: f32,
+    pos_y: f32,
+) -> bool {
+    let top = card_cy - h * 0.5;
+    let bottom = card_cy + h * 0.5;
+    if pos_y < top || pos_y > bottom {
+        return false;
+    }
+
+    let t = if h > 0.0 { ((pos_y - top) / h).clamp(0.0, 1.0) } else { 0.5 };
+    let skew_shift = h * 0.32;
+    let body_w = w - skew_shift;
+
+    let card_left = card_cx - w * 0.5;
+    let para_left = card_left + skew_shift * (1.0 - t);
+    let para_right = para_left + body_w;
+
+    pos_x >= para_left && pos_x <= para_right
+}
+
 pub(crate) fn cinematic_hit_test(
     win_w: f32,
     win_h: f32,
@@ -294,12 +319,7 @@ pub(crate) fn cinematic_hit_test(
         let card_cx = cx + x_shift + slide_offset;
         let card_cy = cy;
 
-        let left = card_cx - w * 0.5;
-        let right = card_cx + w * 0.5;
-        let top = card_cy - h * 0.5;
-        let bottom = card_cy + h * 0.5;
-
-        if pos_x >= left && pos_x <= right && pos_y >= top && pos_y <= bottom {
+        if cinematic_card_contains_point(card_cx, card_cy, w, h, pos_x, pos_y) {
             return Some(offset);
         }
     }
@@ -866,6 +886,33 @@ mod tests {
         let (w3, h3) = cinematic_card_hover_dimensions(230.0, 205.0, 3, 1.0);
         assert_eq!(w3, 256.0);
         assert_eq!(h3, 229.0);
+    }
+
+    #[test]
+    fn test_cinematic_card_contains_point_parallelogram() {
+        let card_cx = 500.0;
+        let card_cy = 400.0;
+        let w = 420.0;
+        let h = 380.0;
+
+        // Center of card at mid-height should be inside
+        assert!(cinematic_card_contains_point(card_cx, card_cy, w, h, card_cx, card_cy));
+
+        // Top-left corner: (card_left + 10, top + 10) is in the transparent triangle (outside!)
+        // At top (y = 210), para_left is 290 + 121.6 = 411.6.
+        // A point at x = 310, y = 220 is outside the parallelogram.
+        assert!(!cinematic_card_contains_point(card_cx, card_cy, w, h, 310.0, 220.0));
+
+        // Top-right corner: (card_right - 10, top + 10) is inside the tilted top edge
+        assert!(cinematic_card_contains_point(card_cx, card_cy, w, h, 700.0, 220.0));
+
+        // Bottom-right corner: (card_right - 10, bottom - 10) is in the transparent triangle (outside!)
+        // At bottom (y = 590), para_right is 290 + 298.4 = 588.4.
+        // A point at x = 680, y = 580 is outside the parallelogram.
+        assert!(!cinematic_card_contains_point(card_cx, card_cy, w, h, 680.0, 580.0));
+
+        // Bottom-left corner: (card_left + 20, bottom - 10) is inside the tilted bottom edge
+        assert!(cinematic_card_contains_point(card_cx, card_cy, w, h, 310.0, 580.0));
     }
 
     #[test]
