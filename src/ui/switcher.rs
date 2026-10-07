@@ -211,7 +211,28 @@ impl AuraApp {
         .on_press(Message::CloseQuickSwitcher)
         .into()
     }
+}
 
+pub(crate) fn cinematic_card_hover_dimensions(base_w: f32, base_h: f32, offset: i32, progress: f32) -> (f32, f32) {
+    let (delta_w, delta_h) = match offset.abs() {
+        0 => (24.0, 22.0),
+        1 => (22.0, 20.0),
+        2 => (20.0, 18.0),
+        _ => (18.0, 16.0),
+    };
+    (base_w + progress * delta_w, base_h + progress * delta_h)
+}
+
+pub(crate) fn cinematic_lerp_step(current: f32, target: f32) -> (f32, bool) {
+    let diff = target - current;
+    if diff.abs() > 0.005 {
+        (current + diff * 0.28, true)
+    } else {
+        (target, false)
+    }
+}
+
+impl AuraApp {
     pub(crate) fn view_cinematic_switcher(&self) -> Element<'_, Message> {
         let pool = self.switcher_pool();
         let n = pool.len();
@@ -291,29 +312,28 @@ impl AuraApp {
 
         let mut stack_children: Vec<Element<'_, Message>> = Vec::with_capacity(slots.len());
 
-        for (offset, w, h, x_shift, is_center) in slots {
+        for (offset, base_w, base_h, x_shift, is_center) in slots {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
             let video = pool[item_idx];
 
-            let card_widget: Element<'_, Message> = if let Some(handle) = crate::scanner::thumbs::cinematic_thumb_handle(&video.path, is_center, Some(accent_rgb)) {
-                let img = widget::image(handle)
+            let slot_idx = (offset + 3).clamp(0, 6) as usize;
+            let p = self.switcher_cinematic_scales[slot_idx];
+            let (w, h) = cinematic_card_hover_dimensions(base_w, base_h, offset, p);
+
+            let card_content: Element<'_, Message> = if let Some(handle) = crate::scanner::thumbs::cinematic_thumb_handle(&video.path, is_center, Some(accent_rgb)) {
+                widget::image(handle)
                     .width(Length::Fixed(w))
-                    .height(Length::Fixed(h));
-                widget::mouse_area(img)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .height(Length::Fixed(h))
                     .into()
             } else if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb)) {
-                let img = widget::image(cinematic_thumb)
+                widget::image(cinematic_thumb)
                     .width(Length::Fixed(w))
-                    .height(Length::Fixed(h));
-                widget::mouse_area(img)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                    .height(Length::Fixed(h))
                     .into()
             } else if let Some(thumb) = &video.thumb_path {
-                widget::button::image(thumb.clone())
-                    .width(w)
-                    .height(h)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
+                widget::image(thumb.clone())
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
                     .into()
             } else {
                 let icon_name = if video.is_video {
@@ -328,10 +348,15 @@ impl AuraApp {
                     .align_y(Vertical::Center)
                     .class(cosmic::theme::Container::Card);
 
-                widget::button::custom(placeholder)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
-                    .into()
+                placeholder.into()
             };
+
+            let card_widget: Element<'_, Message> = widget::mouse_area(card_content)
+                .on_press(Message::SwitcherApplyIndex(item_idx))
+                .on_enter(Message::SwitcherCinematicHover(Some(offset)))
+                .on_exit(Message::SwitcherCinematicLeave(offset))
+                .interaction(cosmic::iced::mouse::Interaction::Pointer)
+                .into();
 
             let positioned_card: Element<'_, Message> = if x_shift > 0.0 {
                 let r = widget::row::with_capacity(2)
@@ -367,7 +392,7 @@ impl AuraApp {
 
         let carousel_stack = cosmic::iced::widget::stack(stack_children)
             .width(Length::Fill)
-            .height(Length::Fixed(440.0));
+            .height(Length::Fixed(460.0));
 
         // Prevent clicking on the carousel items from closing the HUD via backdrop
         let content_mouse_area = widget::mouse_area(carousel_stack).on_press(Message::SwitcherNoop);
@@ -716,5 +741,74 @@ mod tests {
 
         // Point far outside grid
         assert_eq!(layout.hit_test(6, 10.0, 10.0), None, "Point far outside grid should hit nothing");
+    }
+
+    #[test]
+    fn test_cinematic_card_hover_dimensions() {
+        // Offset 0 (currently selected center wallpaper):
+        // Base: 420.0 x 380.0 -> Fully hovered: 444.0 x 402.0 (+24px, +22px)
+        let (w_base, h_base) = cinematic_card_hover_dimensions(420.0, 380.0, 0, 0.0);
+        assert_eq!(w_base, 420.0);
+        assert_eq!(h_base, 380.0);
+
+        let (w_half, h_half) = cinematic_card_hover_dimensions(420.0, 380.0, 0, 0.5);
+        assert_eq!(w_half, 432.0);
+        assert_eq!(h_half, 391.0);
+
+        let (w_hover, h_hover) = cinematic_card_hover_dimensions(420.0, 380.0, 0, 1.0);
+        assert_eq!(w_hover, 444.0);
+        assert_eq!(h_hover, 402.0);
+
+        // Offset 1 & -1 (immediate side wallpapers):
+        // Base: 350.0 x 315.0 -> Fully hovered: 372.0 x 335.0 (+22px, +20px)
+        let (w1, h1) = cinematic_card_hover_dimensions(350.0, 315.0, 1, 1.0);
+        let (wm1, hm1) = cinematic_card_hover_dimensions(350.0, 315.0, -1, 1.0);
+        assert_eq!(w1, 372.0);
+        assert_eq!(h1, 335.0);
+        assert_eq!(wm1, 372.0);
+        assert_eq!(hm1, 335.0);
+
+        // Offset 2 & -2:
+        // Base: 290.0 x 260.0 -> Fully hovered: 310.0 x 278.0 (+20px, +18px)
+        let (w2, h2) = cinematic_card_hover_dimensions(290.0, 260.0, 2, 1.0);
+        assert_eq!(w2, 310.0);
+        assert_eq!(h2, 278.0);
+
+        // Offset 3 & -3:
+        // Base: 230.0 x 205.0 -> Fully hovered: 248.0 x 221.0 (+18px, +16px)
+        let (w3, h3) = cinematic_card_hover_dimensions(230.0, 205.0, 3, 1.0);
+        assert_eq!(w3, 248.0);
+        assert_eq!(h3, 221.0);
+    }
+
+    #[test]
+    fn test_cinematic_lerp_step_convergence() {
+        // Forward transition (0.0 to 1.0)
+        let mut curr = 0.0;
+        let mut steps = 0;
+        while steps < 60 {
+            let (next, animating) = cinematic_lerp_step(curr, 1.0);
+            curr = next;
+            steps += 1;
+            if !animating {
+                break;
+            }
+        }
+        assert_eq!(curr, 1.0, "Should cleanly snap to target 1.0");
+        assert!(steps < 25, "Should converge within ~20 frames (~300ms at 60 FPS)");
+
+        // Backward transition (1.0 to 0.0)
+        let mut curr = 1.0;
+        let mut steps = 0;
+        while steps < 60 {
+            let (next, animating) = cinematic_lerp_step(curr, 0.0);
+            curr = next;
+            steps += 1;
+            if !animating {
+                break;
+            }
+        }
+        assert_eq!(curr, 0.0, "Should cleanly snap to target 0.0");
+        assert!(steps < 25, "Should converge within ~20 frames");
     }
 }

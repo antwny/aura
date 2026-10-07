@@ -165,6 +165,9 @@ pub enum Message {
     SwitcherCursorLeft(cosmic::iced::window::Id),
     SwitcherResized { window: cosmic::iced::window::Id, size: cosmic::iced::Size },
     SwitcherEdgeScrollTick,
+    SwitcherCinematicHover(Option<i32>),
+    SwitcherCinematicLeave(i32),
+    SwitcherAnimTick,
     SelectTrayClickAction(String),
     ToggleSwitcherOnlyFavorites(bool),
     SelectSwitcherPosition(String),
@@ -313,6 +316,9 @@ pub struct AuraApp {
     pub(crate) switcher_edge_scroll_dir: i8,
     pub(crate) switcher_last_edge_scroll: Option<Instant>,
     pub(crate) switcher_active_output: Option<String>,
+    pub(crate) switcher_cinematic_hover: Option<i32>,
+    pub(crate) switcher_cinematic_animating: bool,
+    pub(crate) switcher_cinematic_scales: [f32; 7],
 }
 
 impl AuraApp {
@@ -806,6 +812,9 @@ impl cosmic::Application for AuraApp {
             switcher_edge_scroll_dir: 0,
             switcher_last_edge_scroll: None,
             switcher_active_output: None,
+            switcher_cinematic_hover: None,
+            switcher_cinematic_animating: false,
+            switcher_cinematic_scales: [0.0; 7],
         };
 
         app.sort_videos();
@@ -942,6 +951,16 @@ impl cosmic::Application for AuraApp {
             subs.push(
                 cosmic::iced::time::every(Duration::from_millis(180))
                     .map(|_| Message::SwitcherEdgeScrollTick)
+            );
+        }
+
+        if self.switcher_window_id.is_some()
+            && self.config.switcher_style == crate::config::SwitcherStyle::Cinematic
+            && self.switcher_cinematic_animating
+        {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_millis(16))
+                    .map(|_| Message::SwitcherAnimTick)
             );
         }
 
@@ -1314,6 +1333,9 @@ impl cosmic::Application for AuraApp {
                 self.switcher_edge_scroll_dir = 0;
                 self.switcher_last_edge_scroll = None;
                 self.switcher_active_output = None;
+                self.switcher_cinematic_hover = None;
+                self.switcher_cinematic_animating = false;
+                self.switcher_cinematic_scales = [0.0; 7];
                 self.prewarm_switcher_around(curr_idx);
 
                 if let Some(id) = self.switcher_window_id {
@@ -1368,6 +1390,9 @@ impl cosmic::Application for AuraApp {
                 self.switcher_edge_scroll_dir = 0;
                 self.switcher_last_edge_scroll = None;
                 self.switcher_active_output = None;
+                self.switcher_cinematic_hover = None;
+                self.switcher_cinematic_animating = false;
+                self.switcher_cinematic_scales = [0.0; 7];
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1386,6 +1411,9 @@ impl cosmic::Application for AuraApp {
                 let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + n - 1) % n;
+                    self.switcher_cinematic_hover = None;
+                    self.switcher_cinematic_animating = false;
+                    self.switcher_cinematic_scales = [0.0; 7];
                     self.prewarm_switcher_around(self.switcher_index);
                 }
             }
@@ -1394,6 +1422,9 @@ impl cosmic::Application for AuraApp {
                 let n = self.switcher_pool().len();
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + 1) % n;
+                    self.switcher_cinematic_hover = None;
+                    self.switcher_cinematic_animating = false;
+                    self.switcher_cinematic_scales = [0.0; 7];
                     self.prewarm_switcher_around(self.switcher_index);
                 }
             }
@@ -1671,6 +1702,44 @@ impl cosmic::Application for AuraApp {
                 if self.switcher_window_id == Some(window) {
                     self.switcher_cursor_position = None;
                     self.switcher_edge_scroll_dir = 0;
+                    if self.switcher_cinematic_hover.is_some() {
+                        self.switcher_cinematic_hover = None;
+                        self.switcher_cinematic_animating = true;
+                    }
+                }
+            }
+
+            Message::SwitcherCinematicHover(offset) => {
+                if self.switcher_cinematic_hover != offset {
+                    self.switcher_cinematic_hover = offset;
+                    self.switcher_cinematic_animating = true;
+                }
+            }
+
+            Message::SwitcherCinematicLeave(offset) => {
+                if self.switcher_cinematic_hover == Some(offset) {
+                    self.switcher_cinematic_hover = None;
+                    self.switcher_cinematic_animating = true;
+                }
+            }
+
+            Message::SwitcherAnimTick => {
+                if self.switcher_window_id.is_some()
+                    && self.config.switcher_style == crate::config::SwitcherStyle::Cinematic
+                {
+                    let mut any_animating = false;
+                    for (i, current) in self.switcher_cinematic_scales.iter_mut().enumerate() {
+                        let offset = (i as i32) - 3;
+                        let target = if self.switcher_cinematic_hover == Some(offset) { 1.0 } else { 0.0 };
+                        let (next, animating) = crate::ui::switcher::cinematic_lerp_step(*current, target);
+                        *current = next;
+                        if animating {
+                            any_animating = true;
+                        }
+                    }
+                    self.switcher_cinematic_animating = any_animating;
+                } else {
+                    self.switcher_cinematic_animating = false;
                 }
             }
 
