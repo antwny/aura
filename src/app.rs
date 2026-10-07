@@ -1682,6 +1682,11 @@ impl cosmic::Application for AuraApp {
                         if self.switcher_cinematic_hover != new_hover {
                             self.switcher_cinematic_hover = new_hover;
                             self.switcher_cinematic_animating = true;
+                            // Dispatch an immediate tick to bootstrap the animation loop.
+                            // Without this, animating=true only registers the 60 FPS subscription
+                            // on the NEXT render cycle — the first lerp frame is never executed
+                            // and the cards appear frozen until some other event fires.
+                            return Task::done(cosmic::Action::App(Message::SwitcherAnimTick));
                         }
                     } else if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
                         let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
@@ -1727,6 +1732,7 @@ impl cosmic::Application for AuraApp {
                     if self.switcher_cinematic_hover.is_some() {
                         self.switcher_cinematic_hover = None;
                         self.switcher_cinematic_animating = true;
+                        return Task::done(cosmic::Action::App(Message::SwitcherAnimTick));
                     }
                 }
             }
@@ -1753,7 +1759,7 @@ impl cosmic::Application for AuraApp {
 
                     // 1. Decay slide offset smoothly towards 0.0
                     if self.switcher_cinematic_slide.abs() > 0.5 {
-                        self.switcher_cinematic_slide *= 0.87;
+                        self.switcher_cinematic_slide *= 0.80;
                         if self.switcher_cinematic_slide.abs() <= 0.5 {
                             self.switcher_cinematic_slide = 0.0;
                         }
