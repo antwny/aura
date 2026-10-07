@@ -43,7 +43,7 @@ pub fn get_cinematic_cache_dir() -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         PathBuf::from(home).join(".cache")
     };
-    base.join("aura/cinematic")
+    base.join("aura/cinematic_v2")
 }
 
 pub fn get_honeycomb_cache_dir() -> PathBuf {
@@ -171,7 +171,6 @@ pub fn generate_cinematic_thumb_sync(
     let skew_px = (card_h * skew).round();
     let total_w = (card_w + skew_px) as u32;
     let total_h = card_h as u32;
-    let radius = 16.0f32;
     let border_thick = if is_active { 3.5f32 } else { 1.5f32 };
 
     let accent = accent_rgb.unwrap_or([58, 142, 230]);
@@ -198,13 +197,7 @@ pub fn generate_cinematic_thumb_sync(
             let u = x_f - left_edge;
             let v = y_f;
 
-            let d_x = (radius - u).max(0.0).max(u - (card_w - radius));
-            let d_y = (radius - v).max(0.0).max(v - (card_h - radius));
-            let dist = if (u < radius || u > card_w - radius) && (v < radius || v > card_h - radius) {
-                (d_x * d_x + d_y * d_y).sqrt() - radius
-            } else {
-                (-u).max(u - card_w).max(-v).max(v - card_h)
-            };
+            let dist = (-u).max(u - card_w).max(-v).max(v - card_h);
 
             if dist > 0.0 {
                 if is_active && dist <= 14.0 {

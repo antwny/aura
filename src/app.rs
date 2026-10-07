@@ -319,6 +319,7 @@ pub struct AuraApp {
     pub(crate) switcher_cinematic_hover: Option<i32>,
     pub(crate) switcher_cinematic_animating: bool,
     pub(crate) switcher_cinematic_scales: [f32; 7],
+    pub(crate) switcher_cinematic_slide: f32,
 }
 
 impl AuraApp {
@@ -815,6 +816,7 @@ impl cosmic::Application for AuraApp {
             switcher_cinematic_hover: None,
             switcher_cinematic_animating: false,
             switcher_cinematic_scales: [0.0; 7],
+            switcher_cinematic_slide: 0.0,
         };
 
         app.sort_videos();
@@ -954,9 +956,10 @@ impl cosmic::Application for AuraApp {
             );
         }
 
+        let cinematic_animating = self.switcher_cinematic_animating || self.switcher_cinematic_slide.abs() > 0.5;
         if self.switcher_window_id.is_some()
             && self.config.switcher_style == crate::config::SwitcherStyle::Cinematic
-            && self.switcher_cinematic_animating
+            && cinematic_animating
         {
             subs.push(
                 cosmic::iced::time::every(Duration::from_millis(16))
@@ -1336,6 +1339,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_cinematic_hover = None;
                 self.switcher_cinematic_animating = false;
                 self.switcher_cinematic_scales = [0.0; 7];
+                self.switcher_cinematic_slide = 0.0;
                 self.prewarm_switcher_around(curr_idx);
 
                 if let Some(id) = self.switcher_window_id {
@@ -1393,6 +1397,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_cinematic_hover = None;
                 self.switcher_cinematic_animating = false;
                 self.switcher_cinematic_scales = [0.0; 7];
+                self.switcher_cinematic_slide = 0.0;
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1412,8 +1417,9 @@ impl cosmic::Application for AuraApp {
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + n - 1) % n;
                     self.switcher_cinematic_hover = None;
-                    self.switcher_cinematic_animating = false;
+                    self.switcher_cinematic_animating = true;
                     self.switcher_cinematic_scales = [0.0; 7];
+                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide - 200.0).clamp(-400.0, 400.0);
                     self.prewarm_switcher_around(self.switcher_index);
                 }
             }
@@ -1423,8 +1429,9 @@ impl cosmic::Application for AuraApp {
                 if n > 0 {
                     self.switcher_index = (self.switcher_index + 1) % n;
                     self.switcher_cinematic_hover = None;
-                    self.switcher_cinematic_animating = false;
+                    self.switcher_cinematic_animating = true;
                     self.switcher_cinematic_scales = [0.0; 7];
+                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide + 200.0).clamp(-400.0, 400.0);
                     self.prewarm_switcher_around(self.switcher_index);
                 }
             }
@@ -1661,7 +1668,22 @@ impl cosmic::Application for AuraApp {
             Message::SwitcherCursorMoved { window, position } => {
                 if self.switcher_window_id == Some(window) {
                     self.switcher_cursor_position = Some(position);
-                    if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
+                    if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
+                        let pool_len = self.switcher_pool().len();
+                        let new_hover = crate::ui::switcher::cinematic_hit_test(
+                            self.switcher_window_width,
+                            self.switcher_window_height,
+                            position.x,
+                            position.y,
+                            self.switcher_cinematic_slide,
+                            &self.switcher_cinematic_scales,
+                            pool_len,
+                        );
+                        if self.switcher_cinematic_hover != new_hover {
+                            self.switcher_cinematic_hover = new_hover;
+                            self.switcher_cinematic_animating = true;
+                        }
+                    } else if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
                         let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
                         let width = if stored_w > 100.0 { stored_w } else if self.switcher_window_width > 100.0 { self.switcher_window_width } else { 1366.0 };
                         let edge_margin = (width * 0.08).clamp(70.0, 130.0);
@@ -1728,6 +1750,35 @@ impl cosmic::Application for AuraApp {
                     && self.config.switcher_style == crate::config::SwitcherStyle::Cinematic
                 {
                     let mut any_animating = false;
+
+                    // 1. Decay slide offset smoothly towards 0.0
+                    if self.switcher_cinematic_slide.abs() > 0.5 {
+                        self.switcher_cinematic_slide *= 0.72;
+                        if self.switcher_cinematic_slide.abs() <= 0.5 {
+                            self.switcher_cinematic_slide = 0.0;
+                        }
+                        any_animating = true;
+                    }
+
+                    // 2. Re-evaluate hit test if cursor is on window
+                    if let Some(pos) = self.switcher_cursor_position {
+                        let pool_len = self.switcher_pool().len();
+                        let new_hover = crate::ui::switcher::cinematic_hit_test(
+                            self.switcher_window_width,
+                            self.switcher_window_height,
+                            pos.x,
+                            pos.y,
+                            self.switcher_cinematic_slide,
+                            &self.switcher_cinematic_scales,
+                            pool_len,
+                        );
+                        if self.switcher_cinematic_hover != new_hover {
+                            self.switcher_cinematic_hover = new_hover;
+                            any_animating = true;
+                        }
+                    }
+
+                    // 3. Lerp scales towards hover targets
                     for (i, current) in self.switcher_cinematic_scales.iter_mut().enumerate() {
                         let offset = (i as i32) - 3;
                         let target = if self.switcher_cinematic_hover == Some(offset) { 1.0 } else { 0.0 };
@@ -1737,6 +1788,7 @@ impl cosmic::Application for AuraApp {
                             any_animating = true;
                         }
                     }
+
                     self.switcher_cinematic_animating = any_animating;
                 } else {
                     self.switcher_cinematic_animating = false;

@@ -215,10 +215,10 @@ impl AuraApp {
 
 pub(crate) fn cinematic_card_hover_dimensions(base_w: f32, base_h: f32, offset: i32, progress: f32) -> (f32, f32) {
     let (delta_w, delta_h) = match offset.abs() {
-        0 => (24.0, 22.0),
-        1 => (22.0, 20.0),
-        2 => (20.0, 18.0),
-        _ => (18.0, 16.0),
+        0 => (44.0, 40.0),
+        1 => (38.0, 34.0),
+        2 => (32.0, 28.0),
+        _ => (26.0, 24.0),
     };
     (base_w + progress * delta_w, base_h + progress * delta_h)
 }
@@ -230,6 +230,80 @@ pub(crate) fn cinematic_lerp_step(current: f32, target: f32) -> (f32, bool) {
     } else {
         (target, false)
     }
+}
+
+pub(crate) fn cinematic_hit_test(
+    win_w: f32,
+    win_h: f32,
+    pos_x: f32,
+    pos_y: f32,
+    slide_offset: f32,
+    scales: &[f32; 7],
+    pool_len: usize,
+) -> Option<i32> {
+    if pool_len == 0 {
+        return None;
+    }
+    let cx = win_w * 0.5;
+    let cy = win_h * 0.5;
+
+    let hit_candidates: &[(i32, f32, f32, f32)] = if pool_len >= 7 {
+        &[
+            (0, 420.0, 380.0, 0.0),
+            (-1, 350.0, 315.0, -200.0),
+            (1, 350.0, 315.0, 200.0),
+            (-2, 290.0, 260.0, -380.0),
+            (2, 290.0, 260.0, 380.0),
+            (-3, 230.0, 205.0, -540.0),
+            (3, 230.0, 205.0, 540.0),
+        ]
+    } else if pool_len >= 5 {
+        &[
+            (0, 420.0, 380.0, 0.0),
+            (-1, 350.0, 315.0, -200.0),
+            (1, 350.0, 315.0, 200.0),
+            (-2, 290.0, 260.0, -380.0),
+            (2, 290.0, 260.0, 380.0),
+        ]
+    } else if pool_len == 4 {
+        &[
+            (0, 420.0, 380.0, 0.0),
+            (-1, 350.0, 315.0, -200.0),
+            (1, 350.0, 315.0, 200.0),
+            (-2, 290.0, 260.0, -380.0),
+        ]
+    } else if pool_len == 3 {
+        &[
+            (0, 420.0, 380.0, 0.0),
+            (-1, 350.0, 315.0, -200.0),
+            (1, 350.0, 315.0, 200.0),
+        ]
+    } else if pool_len == 2 {
+        &[
+            (0, 420.0, 380.0, 0.0),
+            (1, 350.0, 315.0, 200.0),
+        ]
+    } else {
+        &[(0, 420.0, 380.0, 0.0)]
+    };
+
+    for &(offset, base_w, base_h, x_shift) in hit_candidates {
+        let slot_idx = (offset + 3).clamp(0, 6) as usize;
+        let p = scales[slot_idx];
+        let (w, h) = cinematic_card_hover_dimensions(base_w, base_h, offset, p);
+        let card_cx = cx + x_shift + slide_offset;
+        let card_cy = cy;
+
+        let left = card_cx - w * 0.5;
+        let right = card_cx + w * 0.5;
+        let top = card_cy - h * 0.5;
+        let bottom = card_cy + h * 0.5;
+
+        if pos_x >= left && pos_x <= right && pos_y >= top && pos_y <= bottom {
+            return Some(offset);
+        }
+    }
+    None
 }
 
 impl AuraApp {
@@ -358,9 +432,10 @@ impl AuraApp {
                 .interaction(cosmic::iced::mouse::Interaction::Pointer)
                 .into();
 
-            let positioned_card: Element<'_, Message> = if x_shift > 0.0 {
+            let eff_shift = x_shift + self.switcher_cinematic_slide;
+            let positioned_card: Element<'_, Message> = if eff_shift > 0.0 {
                 let r = widget::row::with_capacity(2)
-                    .push(widget::Space::new().width(Length::Fixed(2.0 * x_shift)))
+                    .push(widget::Space::new().width(Length::Fixed(2.0 * eff_shift)))
                     .push(card_widget);
                 widget::container(r)
                     .width(Length::Fill)
@@ -368,10 +443,10 @@ impl AuraApp {
                     .align_x(Horizontal::Center)
                     .align_y(Vertical::Center)
                     .into()
-            } else if x_shift < 0.0 {
+            } else if eff_shift < 0.0 {
                 let r = widget::row::with_capacity(2)
                     .push(card_widget)
-                    .push(widget::Space::new().width(Length::Fixed(2.0 * x_shift.abs())));
+                    .push(widget::Space::new().width(Length::Fixed(2.0 * eff_shift.abs())));
                 widget::container(r)
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -392,7 +467,7 @@ impl AuraApp {
 
         let carousel_stack = cosmic::iced::widget::stack(stack_children)
             .width(Length::Fill)
-            .height(Length::Fixed(460.0));
+            .height(Length::Fixed(480.0));
 
         // Prevent clicking on the carousel items from closing the HUD via backdrop
         let content_mouse_area = widget::mouse_area(carousel_stack).on_press(Message::SwitcherNoop);
@@ -752,33 +827,51 @@ mod tests {
         assert_eq!(h_base, 380.0);
 
         let (w_half, h_half) = cinematic_card_hover_dimensions(420.0, 380.0, 0, 0.5);
-        assert_eq!(w_half, 432.0);
-        assert_eq!(h_half, 391.0);
+        assert_eq!(w_half, 442.0);
+        assert_eq!(h_half, 400.0);
 
         let (w_hover, h_hover) = cinematic_card_hover_dimensions(420.0, 380.0, 0, 1.0);
-        assert_eq!(w_hover, 444.0);
-        assert_eq!(h_hover, 402.0);
+        assert_eq!(w_hover, 464.0);
+        assert_eq!(h_hover, 420.0);
 
-        // Offset 1 & -1 (immediate side wallpapers):
-        // Base: 350.0 x 315.0 -> Fully hovered: 372.0 x 335.0 (+22px, +20px)
+        // Offset 1 & -1:
         let (w1, h1) = cinematic_card_hover_dimensions(350.0, 315.0, 1, 1.0);
         let (wm1, hm1) = cinematic_card_hover_dimensions(350.0, 315.0, -1, 1.0);
-        assert_eq!(w1, 372.0);
-        assert_eq!(h1, 335.0);
-        assert_eq!(wm1, 372.0);
-        assert_eq!(hm1, 335.0);
+        assert_eq!(w1, 388.0);
+        assert_eq!(h1, 349.0);
+        assert_eq!(wm1, 388.0);
+        assert_eq!(hm1, 349.0);
 
         // Offset 2 & -2:
-        // Base: 290.0 x 260.0 -> Fully hovered: 310.0 x 278.0 (+20px, +18px)
         let (w2, h2) = cinematic_card_hover_dimensions(290.0, 260.0, 2, 1.0);
-        assert_eq!(w2, 310.0);
-        assert_eq!(h2, 278.0);
+        assert_eq!(w2, 322.0);
+        assert_eq!(h2, 288.0);
 
         // Offset 3 & -3:
-        // Base: 230.0 x 205.0 -> Fully hovered: 248.0 x 221.0 (+18px, +16px)
         let (w3, h3) = cinematic_card_hover_dimensions(230.0, 205.0, 3, 1.0);
-        assert_eq!(w3, 248.0);
-        assert_eq!(h3, 221.0);
+        assert_eq!(w3, 256.0);
+        assert_eq!(h3, 229.0);
+    }
+
+    #[test]
+    fn test_cinematic_hit_test() {
+        let scales = [0.0; 7];
+        let win_w = 1920.0;
+        let win_h = 1080.0;
+        let cx = win_w * 0.5;
+        let cy = win_h * 0.5;
+
+        // Center card (offset 0): bounds are [cx - 210, cx + 210]
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx, cy, 0.0, &scales, 7), Some(0));
+
+        // Offset 1: visible in [cx + 210, cx + 375], test at cx + 260
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx + 260.0, cy, 0.0, &scales, 7), Some(1));
+
+        // Offset -1: visible in [cx - 375, cx - 210], test at cx - 260
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx - 260.0, cy, 0.0, &scales, 7), Some(-1));
+
+        // Far outside cards
+        assert_eq!(cinematic_hit_test(win_w, win_h, 100.0, 100.0, 0.0, &scales, 7), None);
     }
 
     #[test]
