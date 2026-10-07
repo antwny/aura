@@ -1419,8 +1419,11 @@ impl cosmic::Application for AuraApp {
                     self.switcher_cinematic_hover = None;
                     self.switcher_cinematic_animating = true;
                     self.switcher_cinematic_scales = [0.0; 7];
-                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide - 200.0).clamp(-400.0, 400.0);
+                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide - 200.0).clamp(-240.0, 240.0);
                     self.prewarm_switcher_around(self.switcher_index);
+                    if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
+                        return Task::done(cosmic::Action::App(Message::SwitcherAnimTick));
+                    }
                 }
             }
 
@@ -1431,8 +1434,11 @@ impl cosmic::Application for AuraApp {
                     self.switcher_cinematic_hover = None;
                     self.switcher_cinematic_animating = true;
                     self.switcher_cinematic_scales = [0.0; 7];
-                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide + 200.0).clamp(-400.0, 400.0);
+                    self.switcher_cinematic_slide = (self.switcher_cinematic_slide + 200.0).clamp(-240.0, 240.0);
                     self.prewarm_switcher_around(self.switcher_index);
+                    if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
+                        return Task::done(cosmic::Action::App(Message::SwitcherAnimTick));
+                    }
                 }
             }
 
@@ -1670,9 +1676,13 @@ impl cosmic::Application for AuraApp {
                     self.switcher_cursor_position = Some(position);
                     if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
                         let pool_len = self.switcher_pool().len();
+                        let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
+                        let stored_h = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_HEIGHT.load(std::sync::atomic::Ordering::Relaxed));
+                        let win_w = if stored_w > 100.0 { stored_w } else if self.switcher_window_width > 100.0 { self.switcher_window_width } else { 1366.0 };
+                        let win_h = if stored_h > 100.0 { stored_h } else if self.switcher_window_height > 100.0 { self.switcher_window_height } else { 768.0 };
                         let new_hover = crate::ui::switcher::cinematic_hit_test(
-                            self.switcher_window_width,
-                            self.switcher_window_height,
+                            win_w,
+                            win_h,
                             position.x,
                             position.y,
                             self.switcher_cinematic_slide,
@@ -1757,21 +1767,28 @@ impl cosmic::Application for AuraApp {
                 {
                     let mut any_animating = false;
 
-                    // 1. Decay slide offset smoothly towards 0.0
-                    if self.switcher_cinematic_slide.abs() > 0.5 {
-                        self.switcher_cinematic_slide *= 0.80;
-                        if self.switcher_cinematic_slide.abs() <= 0.5 {
+                    // 1. Decay slide offset smoothly towards 0.0 with crisp, natural momentum
+                    if self.switcher_cinematic_slide.abs() > 1.0 {
+                        self.switcher_cinematic_slide *= 0.68;
+                        if self.switcher_cinematic_slide.abs() <= 1.0 {
                             self.switcher_cinematic_slide = 0.0;
                         }
+                        any_animating = true;
+                    } else if self.switcher_cinematic_slide != 0.0 {
+                        self.switcher_cinematic_slide = 0.0;
                         any_animating = true;
                     }
 
                     // 2. Re-evaluate hit test if cursor is on window
                     if let Some(pos) = self.switcher_cursor_position {
                         let pool_len = self.switcher_pool().len();
+                        let stored_w = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_WIDTH.load(std::sync::atomic::Ordering::Relaxed));
+                        let stored_h = f32::from_bits(crate::ui::switcher::SWITCHER_LOGICAL_HEIGHT.load(std::sync::atomic::Ordering::Relaxed));
+                        let win_w = if stored_w > 100.0 { stored_w } else if self.switcher_window_width > 100.0 { self.switcher_window_width } else { 1366.0 };
+                        let win_h = if stored_h > 100.0 { stored_h } else if self.switcher_window_height > 100.0 { self.switcher_window_height } else { 768.0 };
                         let new_hover = crate::ui::switcher::cinematic_hit_test(
-                            self.switcher_window_width,
-                            self.switcher_window_height,
+                            win_w,
+                            win_h,
                             pos.x,
                             pos.y,
                             self.switcher_cinematic_slide,

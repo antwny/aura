@@ -99,7 +99,47 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
         }
     }
 
-    // 3. Fallback to mpvpaper -d (or primary for sandboxed Flatpak)
+    // 3. Fallback to Linux sysfs DRM (/sys/class/drm) for native Wayland outputs and exact resolutions
+    if outputs.is_empty() && !is_sandboxed {
+        if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
+            let mut drm_outputs = Vec::new();
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                let status_file = path.join("status");
+                if let Ok(status) = std::fs::read_to_string(&status_file) {
+                    if status.trim() == "connected" {
+                        let modes_file = path.join("modes");
+                        let mut res = "1920x1080".to_string();
+                        if let Ok(modes) = std::fs::read_to_string(&modes_file) {
+                            if let Some(first_mode) = modes.lines().next() {
+                                if !first_mode.trim().is_empty() {
+                                    res = first_mode.trim().to_string();
+                                }
+                            }
+                        }
+                        let (w, h) = parse_resolution(&res);
+                        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        let name = file_name.split_once('-').map(|(_, rest)| rest).unwrap_or(file_name).to_string();
+                        if !name.is_empty() {
+                            drm_outputs.push(MonitorOutput {
+                                name: name.clone(),
+                                description: name,
+                                resolution: res,
+                                width: w,
+                                height: h,
+                                is_primary: drm_outputs.is_empty(),
+                            });
+                        }
+                    }
+                }
+            }
+            if !drm_outputs.is_empty() {
+                outputs = drm_outputs;
+            }
+        }
+    }
+
+    // 4. Fallback to mpvpaper -d (or primary for sandboxed Flatpak)
     if outputs.is_empty() {
         if let Ok(output) = Command::new(crate::engine::mpvpaper::resolve_mpvpaper_binary()).arg("-d").output() {
             if output.status.success() {

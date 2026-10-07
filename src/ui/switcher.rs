@@ -226,7 +226,7 @@ pub(crate) fn cinematic_card_hover_dimensions(base_w: f32, base_h: f32, offset: 
 pub(crate) fn cinematic_lerp_step(current: f32, target: f32) -> (f32, bool) {
     let diff = target - current;
     if diff.abs() > 0.005 {
-        (current + diff * 0.15, true)
+        (current + diff * 0.26, true)
     } else {
         (target, false)
     }
@@ -480,7 +480,20 @@ impl AuraApp {
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center);
 
-        let backdrop = widget::container(centered_content)
+        let size_listener = widget::responsive(|size| {
+            SWITCHER_LOGICAL_WIDTH.store(size.width.to_bits(), std::sync::atomic::Ordering::Relaxed);
+            SWITCHER_LOGICAL_HEIGHT.store(size.height.to_bits(), std::sync::atomic::Ordering::Relaxed);
+            widget::Space::new().width(Length::Fill).height(Length::Fill).into()
+        });
+
+        let full_stack = cosmic::iced::widget::stack(vec![
+            size_listener.into(),
+            centered_content.into(),
+        ])
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        let backdrop = widget::container(full_stack)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(Horizontal::Center)
@@ -877,6 +890,29 @@ mod tests {
     }
 
     #[test]
+    fn test_cinematic_hit_test_1366x768() {
+        let scales = [0.0; 7];
+        let win_w = 1366.0;
+        let win_h = 768.0;
+        let cx = win_w * 0.5; // 683.0
+        let cy = win_h * 0.5; // 384.0
+
+        // Center card (offset 0) at (683, 384): bounds are [473, 893] x [194, 574]
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx, cy, 0.0, &scales, 7), Some(0));
+
+        // Offset 1: cx = 883.0, bounds [708, 1058], non-overlapping at cx + 240
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx + 240.0, cy, 0.0, &scales, 7), Some(1));
+
+        // Offset -1: cx = 483.0, bounds [308, 658], non-overlapping at cx - 240
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx - 240.0, cy, 0.0, &scales, 7), Some(-1));
+
+        // Far outside cards: top area, bottom area, and far left
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx, 50.0, 0.0, &scales, 7), None);
+        assert_eq!(cinematic_hit_test(win_w, win_h, cx, 720.0, 0.0, &scales, 7), None);
+        assert_eq!(cinematic_hit_test(win_w, win_h, 10.0, cy, 0.0, &scales, 7), None);
+    }
+
+    #[test]
     fn test_cinematic_lerp_step_convergence() {
         // Forward transition (0.0 to 1.0)
         let mut curr = 0.0;
@@ -890,7 +926,7 @@ mod tests {
             }
         }
         assert_eq!(curr, 1.0, "Should cleanly snap to target 1.0");
-        assert!(steps < 45, "Should converge within ~40 frames (~666ms at 60 FPS)");
+        assert!(steps < 25, "Should converge within ~20 frames (~300ms at 60 FPS)");
 
         // Backward transition (1.0 to 0.0)
         let mut curr = 1.0;
@@ -904,6 +940,6 @@ mod tests {
             }
         }
         assert_eq!(curr, 0.0, "Should cleanly snap to target 0.0");
-        assert!(steps < 45, "Should converge within ~40 frames");
+        assert!(steps < 25, "Should converge within ~20 frames");
     }
 }
