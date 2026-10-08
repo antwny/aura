@@ -104,15 +104,18 @@ impl AuraApp {
 
         let mut elements: Vec<Element<'_, Message>> = Vec::with_capacity(slots.len());
 
-        for (offset, w, h, is_center) in slots {
+        for (offset, base_w, base_h, is_center) in slots {
             let item_idx = ((curr_idx as i32 + offset).rem_euclid(n as i32)) as usize;
             let video = pool[item_idx];
 
-            let card_widget: Element<'_, Message> = if let Some(thumb) = &video.thumb_path {
-                widget::button::image(thumb.clone())
-                    .width(w)
-                    .height(h)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
+            let slot_idx = (offset + 2).clamp(0, 4) as usize;
+            let p = self.switcher_classic_scales[slot_idx];
+            let (w, h) = classic_card_dimensions(base_w, base_h, offset, p);
+
+            let card_content: Element<'_, Message> = if let Some(thumb) = &video.thumb_path {
+                widget::image(thumb.clone())
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
                     .into()
             } else {
                 let icon_name = if video.is_video {
@@ -124,50 +127,93 @@ impl AuraApp {
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h))
                     .align_x(Horizontal::Center)
-                    .align_y(Vertical::Center);
+                    .align_y(Vertical::Center)
+                    .class(cosmic::theme::Container::Card);
 
-                widget::button::custom(placeholder)
-                    .on_press(Message::SwitcherApplyIndex(item_idx))
-                    .into()
+                placeholder.into()
             };
 
-            if is_center {
+            let is_hovered = self.switcher_classic_hover == Some(offset) || p > 0.02;
+            let bordered_card: Element<'_, Message> = if is_center {
                 // Active middle wallpaper with system COSMIC accent-colored border
-                let bordered_center = widget::container(card_widget)
+                let accent_base = cosmic::theme::active().cosmic().accent.base;
+                let accent_color: cosmic::iced::Color = accent_base.into();
+                widget::container(card_content)
                     .padding(3)
-                    .class(cosmic::theme::Container::custom(move |theme| {
-                        let accent_color: cosmic::iced::Color = theme.cosmic().accent.base.into();
+                    .class(cosmic::theme::Container::custom(move |_theme| {
                         cosmic::iced::widget::container::Style {
                             border: cosmic::iced::Border {
                                 color: accent_color,
-                                width: 3.0,
+                                width: 3.5,
                                 radius: 12.0.into(),
                             },
                             ..Default::default()
                         }
-                    }));
-                elements.push(bordered_center.into());
+                    }))
+                    .into()
+            } else if is_hovered {
+                let accent_base = cosmic::theme::active().cosmic().accent.base;
+                let accent_color: cosmic::iced::Color = accent_base.into();
+                let alpha = (0.85 * p).clamp(0.25, 0.85);
+                widget::container(card_content)
+                    .padding(2)
+                    .class(cosmic::theme::Container::custom(move |_theme| {
+                        cosmic::iced::widget::container::Style {
+                            border: cosmic::iced::Border {
+                                color: cosmic::iced::Color { a: alpha, ..accent_color },
+                                width: 2.5,
+                                radius: 10.0.into(),
+                            },
+                            ..Default::default()
+                        }
+                    }))
+                    .into()
             } else {
-                elements.push(card_widget);
-            }
+                card_content
+            };
+
+            let interactive_card = widget::mouse_area(bordered_card)
+                .interaction(cosmic::iced::mouse::Interaction::Pointer)
+                .on_press(Message::SwitcherApplyIndex(item_idx))
+                .on_enter(Message::SwitcherClassicHover(Some(offset)))
+                .on_exit(Message::SwitcherClassicLeave(offset));
+
+            elements.push(interactive_card.into());
         }
 
+        let max_shift = if n <= 1 { 0.0 } else if is_vertical { 24.0f32 } else { 32.0f32 };
+        let eff_slide = self.switcher_classic_slide;
+        let start_pad = (max_shift + eff_slide).max(0.0);
+        let end_pad = (max_shift - eff_slide).max(0.0);
+
         let floating_pod = if is_vertical {
-            let mut col = widget::column::with_capacity(elements.len())
+            let mut col = widget::column::with_capacity(elements.len() + 2)
                 .spacing(12)
                 .align_x(Alignment::Center);
+            if max_shift > 0.0 {
+                col = col.push(widget::Space::new().height(Length::Fixed(start_pad)));
+            }
             for el in elements {
                 col = col.push(el);
+            }
+            if max_shift > 0.0 {
+                col = col.push(widget::Space::new().height(Length::Fixed(end_pad)));
             }
             widget::container(col)
                 .padding([18, 14])
                 .class(cosmic::theme::Container::Card)
         } else {
-            let mut row = widget::row::with_capacity(elements.len())
+            let mut row = widget::row::with_capacity(elements.len() + 2)
                 .spacing(14)
                 .align_y(Alignment::Center);
+            if max_shift > 0.0 {
+                row = row.push(widget::Space::new().width(Length::Fixed(start_pad)));
+            }
             for el in elements {
                 row = row.push(el);
+            }
+            if max_shift > 0.0 {
+                row = row.push(widget::Space::new().width(Length::Fixed(end_pad)));
             }
             widget::container(row)
                 .padding([14, 18])
@@ -210,6 +256,24 @@ impl AuraApp {
         )
         .on_press(Message::CloseQuickSwitcher)
         .into()
+    }
+}
+
+pub(crate) fn classic_card_dimensions(base_w: f32, base_h: f32, offset: i32, progress: f32) -> (f32, f32) {
+    let (delta_w, delta_h) = match offset.abs() {
+        0 => (24.0, 15.0),
+        1 => (18.0, 11.0),
+        _ => (14.0, 9.0),
+    };
+    (base_w + progress * delta_w, base_h + progress * delta_h)
+}
+
+pub(crate) fn classic_lerp_step(current: f32, target: f32) -> (f32, bool) {
+    let diff = target - current;
+    if diff.abs() > 0.008 {
+        (current + diff * 0.28, true)
+    } else {
+        (target, false)
     }
 }
 
@@ -597,8 +661,8 @@ impl AuraApp {
                     let is_active = item_idx == curr_idx;
                     let is_hovered = hovered_idx == Some(item_idx);
 
-                    // Pop-out scaling: hovered card expands (+8px width, proportional height)
-                    let hover_pad = if is_hovered { 8.0f32 } else { 0.0f32 };
+                    // Pop-out scaling: hovered card expands (+16px width, proportional height)
+                    let hover_pad = if is_hovered { 16.0f32 } else { 0.0f32 };
                     let card_w = layout.w + hover_pad;
                     let card_h = layout.h + hover_pad * 1.1547005f32;
 
@@ -802,6 +866,17 @@ impl HoneycombLayout {
         dx <= self.inradius && (1.7320508 * dy + dx <= 1.7320508 * self.r)
     }
 
+    /// Tests whether a point (px, py) lies inside a pointy-topped hexagon centered at (cx, cy),
+    /// with outward padding (used for seamless hover tracking on popped-out cards).
+    pub fn contains_point_padded(&self, cx: f32, cy: f32, px: f32, py: f32, pad: f32) -> bool {
+        let dx = (px - cx).abs();
+        let dy = (py - cy).abs();
+        let inr = self.inradius + pad;
+        let r = self.r + pad * 1.1547005;
+
+        dx <= inr && (1.7320508 * dy + dx <= 1.7320508 * r)
+    }
+
     /// Geometric hit-test to find the item index at screen coordinates (px, py).
     pub fn hit_test(&self, n: usize, px: f32, py: f32) -> Option<usize> {
         if n == 0 {
@@ -828,6 +903,27 @@ impl HoneycombLayout {
         }
 
         None
+    }
+
+    /// Hit-test prioritizing the currently hovered hexagon with generous expansion (+8px margin)
+    /// so the mouse never loses hover while inside the popped-out card.
+    pub fn hit_test_with_hover(&self, n: usize, px: f32, py: f32, hovered: Option<usize>) -> Option<usize> {
+        if n == 0 {
+            return None;
+        }
+
+        if let Some(idx) = hovered {
+            if idx < n {
+                let col = idx / self.rows_per_col;
+                let row = idx % self.rows_per_col;
+                let (cx, cy) = self.item_center(col, row);
+                if self.contains_point_padded(cx, cy, px, py, 8.0) {
+                    return Some(idx);
+                }
+            }
+        }
+
+        self.hit_test(n, px, py)
     }
 }
 
@@ -1052,5 +1148,77 @@ mod tests {
         }
         assert_eq!(curr, 0.0, "Should cleanly snap to target 0.0");
         assert!(steps < 25, "Should converge within ~20 frames");
+    }
+
+    #[test]
+    fn test_honeycomb_layout_hit_test_with_hover() {
+        let layout = HoneycombLayout::new(1366.0, 768.0, 6, 0);
+        let (c0_x, c0_y) = layout.item_center(0, 0);
+
+        // Point on boundary + 4px (outside unpadded inradius, inside padded inradius +8px)
+        let padded_point_x = c0_x + layout.inradius + 4.0;
+        let padded_point_y = c0_y;
+
+        // Without hover, standard hit_test returns None (outside base inradius)
+        assert_eq!(layout.hit_test(6, padded_point_x, padded_point_y), None);
+
+        // With hover == Some(0), hit_test_with_hover returns Some(0) due to padding expansion
+        assert_eq!(layout.hit_test_with_hover(6, padded_point_x, padded_point_y, Some(0)), Some(0));
+
+        // When hover is Some(1), point does NOT hit item 0 or 1
+        assert_eq!(layout.hit_test_with_hover(6, padded_point_x, padded_point_y, Some(1)), None);
+    }
+
+    #[test]
+    fn test_classic_card_dimensions() {
+        // Offset 0 (center card): base 300x188 -> hovered 324x203 (+24, +15)
+        let (w0_base, h0_base) = classic_card_dimensions(300.0, 188.0, 0, 0.0);
+        assert_eq!(w0_base, 300.0);
+        assert_eq!(h0_base, 188.0);
+
+        let (w0_hover, h0_hover) = classic_card_dimensions(300.0, 188.0, 0, 1.0);
+        assert_eq!(w0_hover, 324.0);
+        assert_eq!(h0_hover, 203.0);
+
+        // Offset 1 (neighbor card): base 180x112 -> hovered 198x123 (+18, +11)
+        let (w1_hover, h1_hover) = classic_card_dimensions(180.0, 112.0, 1, 1.0);
+        assert_eq!(w1_hover, 198.0);
+        assert_eq!(h1_hover, 123.0);
+
+        // Offset 2 (outer card): base 120x75 -> hovered 134x84 (+14, +9)
+        let (w2_hover, h2_hover) = classic_card_dimensions(120.0, 75.0, 2, 1.0);
+        assert_eq!(w2_hover, 134.0);
+        assert_eq!(h2_hover, 84.0);
+    }
+
+    #[test]
+    fn test_classic_lerp_step_convergence() {
+        // Forward transition (0.0 to 1.0)
+        let mut curr = 0.0;
+        let mut steps = 0;
+        while steps < 60 {
+            let (next, animating) = classic_lerp_step(curr, 1.0);
+            curr = next;
+            steps += 1;
+            if !animating {
+                break;
+            }
+        }
+        assert_eq!(curr, 1.0, "Should cleanly snap to target 1.0");
+        assert!(steps < 20, "Should converge within ~15 frames (~200ms at 60 FPS)");
+
+        // Backward transition (1.0 to 0.0)
+        let mut curr = 1.0;
+        let mut steps = 0;
+        while steps < 60 {
+            let (next, animating) = classic_lerp_step(curr, 0.0);
+            curr = next;
+            steps += 1;
+            if !animating {
+                break;
+            }
+        }
+        assert_eq!(curr, 0.0, "Should cleanly snap to target 0.0");
+        assert!(steps < 20, "Should converge within ~15 frames");
     }
 }
