@@ -85,7 +85,7 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.6.0": build
+package version="1.6.1": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"
@@ -99,4 +99,5 @@ package version="1.6.0": build
     chmod +x "target/package/aura-v{{version}}-x86_64-linux/install.sh"
     chmod +x "target/package/aura-v{{version}}-x86_64-linux/uninstall.sh"
     tar -czf "target/package/aura-v{{version}}-x86_64-linux.tar.gz" -C "target/package" "aura-v{{version}}-x86_64-linux"
+    (cd target/package && sha256sum "aura-v{{version}}-x86_64-linux.tar.gz" > "aura-v{{version}}-x86_64-linux.tar.gz.sha256")
     @echo "Package created at target/package/aura-v{{version}}-x86_64-linux.tar.gz"
