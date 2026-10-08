@@ -1454,6 +1454,7 @@ impl cosmic::Application for AuraApp {
                 self.switcher_classic_scales = [0.0; 5];
                 self.switcher_classic_slide = 0.0;
                 self.switcher_classic_animating = false;
+                crate::scanner::thumbs::trim_memory();
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
@@ -1570,6 +1571,7 @@ impl cosmic::Application for AuraApp {
                     self.switcher_active_output = None;
                     tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
                 }
+                crate::scanner::thumbs::trim_memory();
                 return Task::batch(tasks);
             }
 
@@ -2077,6 +2079,7 @@ impl cosmic::Application for AuraApp {
                     self.switcher_edge_scroll_dir = 0;
                     self.switcher_last_edge_scroll = None;
                     self.switcher_active_output = None;
+                    crate::scanner::thumbs::trim_memory();
                     return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
                 }
                 if self.core().main_window_id() == Some(id) {
@@ -2084,12 +2087,14 @@ impl cosmic::Application for AuraApp {
                     self.core_mut().set_main_window_id(None);
                     self.core_mut().window.is_maximized = false;
                     self.core_mut().window.sharp_corners = false;
+                    crate::scanner::thumbs::trim_memory();
                     if self.config.keep_running_on_close {
                         return cosmic::iced::window::close(id);
                     } else {
                         std::process::exit(0);
                     }
                 }
+                crate::scanner::thumbs::trim_memory();
                 return cosmic::iced::window::close(id);
             }
 
@@ -2109,6 +2114,7 @@ impl cosmic::Application for AuraApp {
                     self.core_mut().window.is_maximized = false;
                     self.core_mut().window.sharp_corners = false;
                 }
+                crate::scanner::thumbs::trim_memory();
                 return Task::none();
             }
 

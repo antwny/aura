@@ -112,10 +112,26 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> LruMemoryCache<K, V> {
             self.order.push_back(key);
         }
     }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.order.clear();
+    }
 }
 
 pub static THUMB_HANDLE_CACHE: LazyLock<Mutex<LruMemoryCache<String, cosmic::iced::widget::image::Handle>>> =
     LazyLock::new(|| Mutex::new(LruMemoryCache::new(96)));
+
+/// Trims in-memory texture handles and requests glibc to release unused heap pages back to the OS.
+pub fn trim_memory() {
+    if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
+        cache.clear();
+    }
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
 
 static CINEMATIC_IN_FLIGHT: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 static HONEYCOMB_IN_FLIGHT: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
@@ -772,6 +788,15 @@ mod tests {
         assert_eq!(cache.get(&"a".into()), Some(1));
         assert_eq!(cache.get(&"c".into()), Some(3));
         assert_eq!(cache.get(&"d".into()), Some(4));
+        cache.clear();
+        assert_eq!(cache.get(&"a".into()), None);
+        assert_eq!(cache.get(&"c".into()), None);
+        assert_eq!(cache.get(&"d".into()), None);
+    }
+
+    #[test]
+    fn test_trim_memory_non_panicking() {
+        trim_memory();
     }
 }
 
