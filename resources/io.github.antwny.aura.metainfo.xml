@@ -60,6 +60,18 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.6.1" date="2026-10-08">
+      <description>
+        <p>Aura 1.6.1 brings interactive hover pop-out animations to Honeycomb and Classic HUDs, RAM memory trimming, library UI consistency, and performance optimizations:</p>
+        <ul>
+          <li>Enhanced Honeycomb HUD Hover: Expanded pop-out scaling with padded hit-testing to eliminate edge flicker during interaction.</li>
+          <li>Classic HUD Animations: Smooth 60 FPS lerp hover scaling per card slot, reactive accent borders, and stable slide momentum.</li>
+          <li>Active Memory Trimming: Automatic glibc heap release via malloc_trim and LRU handle cache purging on window/HUD dismissal for minimal idle RAM footprint.</li>
+          <li>Library UI Consistency: Unified pagination Load More button matching the Explore tab with suggested accent styling and downward arrow icon.</li>
+          <li>Settings Clean-up: Removed background persistence informational card for a cleaner interface.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.0" date="2026-10-04">
       <description>
         <p>Aura 1.6.0 introduces the Honeycomb Hexagonal HUD, reactive ambient halo glow, multi-monitor pointer-focused overlay spawning, GPU geometric clipping, and LRU texture caching:</p>
