@@ -564,19 +564,27 @@ impl AuraApp {
             (accent_color.b * 255.0).round() as u8,
         ];
 
+        let hovered_idx = self.switcher_honeycomb_hover;
+        let cam_x = self.switcher_honeycomb_cam_x;
+
         let responsive_honeycomb = widget::responsive(move |size| {
             SWITCHER_LOGICAL_WIDTH.store(size.width.to_bits(), std::sync::atomic::Ordering::Relaxed);
             SWITCHER_LOGICAL_HEIGHT.store(size.height.to_bits(), std::sync::atomic::Ordering::Relaxed);
 
-            let layout = HoneycombLayout::new(size.width, size.height, n, curr_idx);
+            let mut layout = HoneycombLayout::new(size.width, size.height, n, curr_idx);
+            if let Some(cx) = cam_x {
+                layout = layout.with_camera_x(cx);
+            }
 
-            let mut cards = Vec::new();
+            let mut base_cards = Vec::new();
+            let mut active_cards = Vec::new();
+            let mut hovered_cards = Vec::new();
 
             for col in 0..layout.total_cols {
                 let (col_cx, _) = layout.item_center(col, 0);
 
-                // Frustum culling: skip columns completely off screen
-                if col_cx + layout.w < -60.0 || col_cx - layout.w > size.width + 60.0 {
+                // Frustum culling: skip columns completely off screen (expanded margin for smooth glide)
+                if col_cx + layout.w < -120.0 || col_cx - layout.w > size.width + 120.0 {
                     continue;
                 }
 
@@ -587,27 +595,36 @@ impl AuraApp {
                     }
 
                     let is_active = item_idx == curr_idx;
-                    let (draw_x, draw_y) = layout.item_draw_pos(col, row);
+                    let is_hovered = hovered_idx == Some(item_idx);
+
+                    // Pop-out scaling: hovered card expands (+8px width, proportional height)
+                    let hover_pad = if is_hovered { 8.0f32 } else { 0.0f32 };
+                    let card_w = layout.w + hover_pad;
+                    let card_h = layout.h + hover_pad * 1.1547005f32;
+
+                    let (cx, cy) = layout.item_center(col, row);
+                    let draw_x = cx - card_w * 0.5;
+                    let draw_y = cy - card_h * 0.5;
 
                     let video = pool[item_idx];
                     let card_element: Element<'_, Message> = if let Some(handle) =
                         crate::scanner::thumbs::honeycomb_thumb_handle(&video.path, is_active, Some(accent_rgb))
                     {
                         widget::image(handle)
-                            .width(Length::Fixed(layout.w))
-                            .height(Length::Fixed(layout.h))
+                            .width(Length::Fixed(card_w))
+                            .height(Length::Fixed(card_h))
                             .into()
                     } else if let Some(hex_thumb) =
                         crate::scanner::thumbs::honeycomb_thumb_for_media(&video.path, is_active, Some(accent_rgb))
                     {
                         widget::image(hex_thumb)
-                            .width(Length::Fixed(layout.w))
-                            .height(Length::Fixed(layout.h))
+                            .width(Length::Fixed(card_w))
+                            .height(Length::Fixed(card_h))
                             .into()
                     } else if let Some(thumb) = &video.thumb_path {
                         widget::image(thumb.clone())
-                            .width(Length::Fixed(layout.w))
-                            .height(Length::Fixed(layout.h))
+                            .width(Length::Fixed(card_w))
+                            .height(Length::Fixed(card_h))
                             .into()
                     } else {
                         let icon_name = if video.is_video {
@@ -616,27 +633,44 @@ impl AuraApp {
                             "image-x-generic-symbolic"
                         };
                         widget::container(widget::icon::from_name(icon_name).size(28))
-                            .width(Length::Fixed(layout.w))
-                            .height(Length::Fixed(layout.h))
+                            .width(Length::Fixed(card_w))
+                            .height(Length::Fixed(card_h))
                             .align_x(Horizontal::Center)
                             .align_y(Vertical::Center)
                             .class(cosmic::theme::Container::Card)
                             .into()
                     };
 
-                    let pinned = cosmic::iced::widget::pin(card_element)
+                    let interactive_card = widget::mouse_area(card_element)
+                        .interaction(cosmic::iced::mouse::Interaction::Pointer)
+                        .on_press(Message::SwitcherApplyIndex(item_idx));
+
+                    let pinned = cosmic::iced::widget::pin(interactive_card)
                         .x(draw_x)
                         .y(draw_y);
 
-                    cards.push(Element::from(pinned));
+                    if is_hovered {
+                        hovered_cards.push(Element::from(pinned));
+                    } else if is_active {
+                        active_cards.push(Element::from(pinned));
+                    } else {
+                        base_cards.push(Element::from(pinned));
+                    }
                 }
             }
 
-            let stack = cosmic::iced::widget::stack(cards)
+            let mut all_cards = base_cards;
+            all_cards.extend(active_cards);
+            all_cards.extend(hovered_cards);
+
+            let stack = cosmic::iced::widget::stack(all_cards)
                 .width(Length::Fill)
                 .height(Length::Fill);
 
-            widget::container(stack)
+            let pod_mouse_area = widget::mouse_area(stack)
+                .on_press(Message::CloseQuickSwitcher);
+
+            widget::container(pod_mouse_area)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
@@ -739,6 +773,12 @@ impl HoneycombLayout {
         }
     }
 
+    /// Overrides the camera horizontal scroll offset for smooth animations.
+    pub fn with_camera_x(mut self, cam_x: f32) -> Self {
+        self.camera_x = cam_x;
+        self
+    }
+
     /// Center coordinate (x, y) for a given item in (col, row).
     pub fn item_center(&self, col: usize, row: usize) -> (f32, f32) {
         let row_stagger = if row % 2 != 0 { 0.5 * self.step_x } else { 0.0 };
@@ -748,6 +788,7 @@ impl HoneycombLayout {
     }
 
     /// Top-left drawing position (x, y) for a given item in (col, row).
+    #[allow(dead_code)]
     pub fn item_draw_pos(&self, col: usize, row: usize) -> (f32, f32) {
         let (cx, cy) = self.item_center(col, row);
         (cx - self.w * 0.5, cy - self.h * 0.5)
@@ -851,6 +892,29 @@ mod tests {
 
         // Point far outside grid
         assert_eq!(layout.hit_test(6, 10.0, 10.0), None, "Point far outside grid should hit nothing");
+    }
+
+    #[test]
+    fn test_honeycomb_layout_camera_override_and_hit_test() {
+        let layout_orig = HoneycombLayout::new(1366.0, 768.0, 12, 0);
+        let orig_cam = layout_orig.camera_x;
+        let (c0_orig_x, c0_orig_y) = layout_orig.item_center(0, 0);
+        assert_eq!(layout_orig.hit_test(12, c0_orig_x, c0_orig_y), Some(0));
+
+        // Simulate camera glide by a column step
+        let shift = layout_orig.step_x;
+        let layout_shifted = layout_orig.with_camera_x(orig_cam + shift);
+        assert_eq!(layout_shifted.camera_x, orig_cam + shift);
+
+        let (c0_shifted_x, c0_shifted_y) = layout_shifted.item_center(0, 0);
+        assert!((c0_shifted_x - (c0_orig_x + shift)).abs() < 0.001);
+        assert_eq!(c0_shifted_y, c0_orig_y);
+
+        // Hit testing at the new shifted coordinates hits item 0
+        assert_eq!(layout_shifted.hit_test(12, c0_shifted_x, c0_shifted_y), Some(0));
+
+        // The old coordinate no longer hits item 0 (it is shifted away by step_x)
+        assert_ne!(layout_shifted.hit_test(12, c0_orig_x, c0_orig_y), Some(0));
     }
 
     #[test]

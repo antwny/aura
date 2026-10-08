@@ -58,7 +58,7 @@ pub fn get_honeycomb_cache_dir() -> PathBuf {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
         PathBuf::from(home).join(".cache")
     };
-    base.join("aura/honeycomb")
+    base.join("aura/honeycomb_v2")
 }
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -400,9 +400,9 @@ pub fn generate_honeycomb_thumb_sync(
     let total_w = card_w as u32;
     let total_h = card_h as u32;
 
-    let inradius = card_w * 0.5 - 2.0;
+    let inradius = card_w * 0.5 - 8.0;
     let corner_r = 8.0f32;
-    let border_thick = if is_active { 4.0f32 } else { 2.0f32 };
+    let border_thick = if is_active { 4.5f32 } else { 2.0f32 };
 
     let accent = accent_rgb.unwrap_or([58, 142, 230]);
     let border_color = if is_active {
@@ -447,9 +447,9 @@ pub fn generate_honeycomb_thumb_sync(
             let dist = sd_pointy_hex(px, py, r_inner) - corner_r;
 
             if dist > 0.0 {
-                if is_active && dist <= 7.0 {
-                    let glow_factor = ((1.0 - dist / 7.0) * (1.0 - dist / 7.0)).clamp(0.0, 1.0);
-                    let a = (175.0 * glow_factor) as u8;
+                if is_active && dist <= 8.0 {
+                    let glow_factor = ((1.0 - dist / 8.0) * (1.0 - dist / 8.0)).clamp(0.0, 1.0);
+                    let a = (220.0 * glow_factor) as u8;
                     out.put_pixel(x, y, image::Rgba([accent[0], accent[1], accent[2], a]));
                 }
                 continue;
