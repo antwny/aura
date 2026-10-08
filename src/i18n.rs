@@ -569,6 +569,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn settings_persistence_title(&self) -> &'static str {
         match self {
             Language::Es => "Persistencia en segundo plano",
@@ -576,6 +577,7 @@ impl Language {
         }
     }
 
+    #[allow(dead_code)]
     pub fn settings_persistence_desc(&self) -> &'static str {
         match self {
             Language::Es => "Aura funciona como centro de control. Al cerrar esta ventana, tu fondo animado continuará reproduciéndose sin problemas en tu compositor Wayland a través de mpvpaper, liberando el 100% de la memoria de la interfaz.",

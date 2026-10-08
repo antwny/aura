@@ -204,7 +204,7 @@ pub fn default_library_dirs() -> Vec<String> {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: Some("1.6.0".into()),
+            version: Some("1.6.1".into()),
             current: None,
             wallpapers: HashMap::new(),
             dirs: default_library_dirs(),
@@ -265,13 +265,17 @@ impl Config {
                                 cfg.theme_mode = ThemeMode::Manual;
                             }
                         }
-                        // Version 1.6.0 migration:
+                        // Version 1.6.0+ migration:
                         // Ensure all user configurations are preserved, but set the new Honeycomb HUD as default
-                        // on upgrading to 1.6.0 so users see it, while allowing them to change it in settings.
+                        // on upgrading to >= 1.6.0 so users see it, while allowing them to change it in settings.
                         let old_ver = val.get("version").and_then(|v| v.as_str());
-                        if old_ver != Some("1.6.0") {
+                        let is_v16_plus = matches!(old_ver, Some("1.6.0" | "1.6.1"));
+                        if !is_v16_plus {
                             cfg.switcher_style = SwitcherStyle::Honeycomb;
-                            cfg.version = Some("1.6.0".into());
+                            cfg.version = Some("1.6.1".into());
+                            let _ = cfg.save();
+                        } else if old_ver != Some("1.6.1") {
+                            cfg.version = Some("1.6.1".into());
                             let _ = cfg.save();
                         }
                     }
@@ -593,9 +597,12 @@ mod tests {
         // Apply migration logic
         let val: serde_json::Value = serde_json::from_str(legacy_json).expect("parse value");
         let old_ver = val.get("version").and_then(|v| v.as_str());
-        if old_ver != Some("1.6.0") {
+        let is_v16_plus = matches!(old_ver, Some("1.6.0" | "1.6.1"));
+        if !is_v16_plus {
             cfg.switcher_style = SwitcherStyle::Honeycomb;
-            cfg.version = Some("1.6.0".into());
+            cfg.version = Some("1.6.1".into());
+        } else if old_ver != Some("1.6.1") {
+            cfg.version = Some("1.6.1".into());
         }
 
         // All user custom configurations are strictly preserved:
@@ -608,7 +615,7 @@ mod tests {
 
         // But switcher_style upgraded to Honeycomb by default:
         assert_eq!(cfg.switcher_style, SwitcherStyle::Honeycomb);
-        assert_eq!(cfg.version.as_deref(), Some("1.6.0"));
+        assert_eq!(cfg.version.as_deref(), Some("1.6.1"));
 
         // If user now explicitly changes to Classic or Cinematic, it persists:
         cfg.switcher_style = SwitcherStyle::Classic;
@@ -616,9 +623,10 @@ mod tests {
         let val16: serde_json::Value = serde_json::from_str(&v16_json).expect("parse v16 value");
         let mut cfg16: Config = serde_json::from_str(&v16_json).expect("deserialize v16");
         let ver16 = val16.get("version").and_then(|v| v.as_str());
-        if ver16 != Some("1.6.0") {
+        let is_v16_16_plus = matches!(ver16, Some("1.6.0" | "1.6.1"));
+        if !is_v16_16_plus {
             cfg16.switcher_style = SwitcherStyle::Honeycomb;
         }
-        assert_eq!(cfg16.switcher_style, SwitcherStyle::Classic, "User choice must be preserved once on 1.6.0");
+        assert_eq!(cfg16.switcher_style, SwitcherStyle::Classic, "User choice must be preserved once on 1.6.0+");
     }
 }

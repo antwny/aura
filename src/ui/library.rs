@@ -393,19 +393,14 @@ impl AuraApp {
             }
 
             if has_more {
-                let load_more_btn = widget::button::standard(format!(
-                    "{} ({} / {})",
-                    load_more_label,
-                    display_limit,
-                    total_count
-                ))
-                .leading_icon(widget::icon::from_name("view-more-symbolic"))
-                .on_press(Message::LoadMoreLibraryWallpapers);
+                let load_more_btn = widget::button::suggested(load_more_label)
+                    .leading_icon(widget::icon::from_name("go-down-symbolic"))
+                    .on_press(Message::LoadMoreLibraryWallpapers);
 
                 let load_more_container = widget::container(load_more_btn)
                     .width(Length::Fill)
                     .align_x(Horizontal::Center)
-                    .padding(14);
+                    .padding(16);
 
                 cards_column = cards_column.push(load_more_container);
             }

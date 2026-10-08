@@ -552,15 +552,6 @@ impl AuraApp {
 
         col = col.push(widget::container(folders_box).width(Length::Fill));
 
-        // 6. Persistence info card
-        let info_card = widget::column::with_capacity(2)
-            .spacing(6)
-            .padding(14)
-            .push(widget::text::title3(self.language.settings_persistence_title()))
-            .push(widget::text::caption(self.language.settings_persistence_desc()));
-
-        col = col.push(widget::container(info_card).width(Length::Fill));
-
         Element::from(widget::scrollable(col).height(Length::Fill))
     }
 }
