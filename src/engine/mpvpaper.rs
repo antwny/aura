@@ -377,6 +377,10 @@ impl WallpaperEngine {
         auto_pause: bool,
         gpu_pref: &str,
     ) -> Result<u32, std::io::Error> {
+        if crate::engine::gnome::is_active() {
+            return self.set_wallpaper_gnome(video_path, scaling, mute, volume);
+        }
+
         // If applying to all monitors ("*"), stop any specific outputs first
         if output == "*" {
             self.stop_all();
@@ -581,7 +585,33 @@ impl WallpaperEngine {
         Ok(pid)
     }
 
+    // GNOME has a single desktop background, so every output maps to "*".
+    fn set_wallpaper_gnome(&mut self, video_path: &str, scaling: &str, mute: bool, volume: u8) -> Result<u32, std::io::Error> {
+        let path = std::path::Path::new(video_path);
+        let is_image = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+            .unwrap_or(false);
+        let result = if is_image {
+            crate::engine::gnome::set_image(path, scaling)
+        } else {
+            crate::engine::gnome::set_video(path, scaling, mute, volume)
+        };
+        result.map_err(|e| {
+            eprintln!("[Aura Engine] {}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+        })?;
+        self.output_is_image.clear();
+        self.output_is_image.insert("*".to_string(), is_image);
+        self.is_paused = false;
+        Ok(0)
+    }
+
     pub fn set_volume(&mut self, output: Option<&str>, volume: u8) -> bool {
+        if crate::engine::gnome::is_active() {
+            return crate::engine::gnome::set_volume(volume);
+        }
         self.ensure_sockets_discovered();
         let mut success = false;
         let v = volume.min(100);
@@ -602,6 +632,9 @@ impl WallpaperEngine {
     }
 
     pub fn set_mute(&mut self, output: Option<&str>, mute: bool) -> bool {
+        if crate::engine::gnome::is_active() {
+            return crate::engine::gnome::set_mute(mute);
+        }
         self.ensure_sockets_discovered();
         let mut success = false;
         if let Some(out) = output {
@@ -621,6 +654,9 @@ impl WallpaperEngine {
     }
 
     pub fn set_scaling(&mut self, output: &str, scaling: &str) -> bool {
+        if crate::engine::gnome::is_active() {
+            return crate::engine::gnome::set_scaling(scaling);
+        }
         self.ensure_sockets_discovered();
         if let Some(sock) = self.sockets.get(output) {
             match scaling {
@@ -660,6 +696,15 @@ impl WallpaperEngine {
     }
 
     pub fn toggle_pause(&mut self) -> bool {
+        if crate::engine::gnome::is_active() {
+            if self.is_paused {
+                self.resume_all();
+            } else {
+                self.pause_all();
+            }
+            return self.is_paused;
+        }
+
         // Ensure sockets has active sockets if started by an external or previous instance
         self.ensure_sockets_discovered();
 
@@ -692,6 +737,11 @@ impl WallpaperEngine {
     }
 
     pub fn pause_all(&mut self) {
+        if crate::engine::gnome::is_active() {
+            crate::engine::gnome::pause();
+            self.is_paused = true;
+            return;
+        }
         // 1. Send pause via IPC
         for sock in self.sockets.values() {
             let _ = ipc_set_property(sock, "pause", true);
@@ -707,6 +757,11 @@ impl WallpaperEngine {
     }
 
     pub fn resume_all(&mut self) {
+        if crate::engine::gnome::is_active() {
+            crate::engine::gnome::play();
+            self.is_paused = false;
+            return;
+        }
         // 1. Send SIGCONT to unfreeze OS execution
         let pids = find_mpvpaper_pids();
         for pid in pids {
@@ -722,6 +777,11 @@ impl WallpaperEngine {
     }
 
     pub fn stop_output(&mut self, output: &str) {
+        if crate::engine::gnome::is_active() {
+            crate::engine::gnome::stop();
+            self.output_is_image.remove(output);
+            return;
+        }
         let sock_path = socket_path_for_output(output);
         if ipc_is_alive(&sock_path) {
             let _ = send_ipc_command(&sock_path, r#"{"command": ["quit"]}"#);
@@ -767,6 +827,9 @@ impl WallpaperEngine {
         }
         self.output_is_image.clear();
         self.is_paused = false;
+        if crate::engine::gnome::is_active() {
+            crate::engine::gnome::stop();
+        }
     }
 
     #[allow(dead_code)]

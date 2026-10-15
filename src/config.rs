@@ -242,8 +242,9 @@ impl Default for Config {
 impl Config {
     /// Records `path` as active on `output`, keeping the map in step with the engine:
     /// "*" replaces every per-output entry, and a per-output apply ends the wildcard.
+    /// GNOME has a single desktop background, so there everything maps to "*".
     pub fn record_wallpaper(&mut self, output: &str, path: &str) {
-        if output == "*" {
+        if output == "*" || crate::engine::gnome::is_active() {
             self.wallpapers.clear();
             self.wallpapers.insert("*".into(), path.into());
         } else {
@@ -384,6 +385,9 @@ mod tests {
 
     #[test]
     fn test_record_wallpaper_keeps_wildcard_exclusive() {
+        if crate::engine::gnome::is_active() {
+            return;
+        }
         let mut cfg = Config::default();
         cfg.record_wallpaper("DP-1", "/a.mp4");
         cfg.record_wallpaper("HDMI-A-1", "/b.mp4");
