@@ -240,6 +240,19 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Records `path` as active on `output`, keeping the map in step with the engine:
+    /// "*" replaces every per-output entry, and a per-output apply ends the wildcard.
+    pub fn record_wallpaper(&mut self, output: &str, path: &str) {
+        if output == "*" {
+            self.wallpapers.clear();
+            self.wallpapers.insert("*".into(), path.into());
+        } else {
+            self.wallpapers.remove("*");
+            self.wallpapers.insert(output.into(), path.into());
+        }
+        self.current = Some(path.into());
+    }
+
     pub fn config_dir() -> PathBuf {
         if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
             if !xdg.is_empty() {
@@ -367,6 +380,23 @@ mod tests {
         assert!(!cfg.dirs.iter().any(|d| d.to_lowercase().ends_with("downloads") || d.to_lowercase().ends_with("descargas")));
         assert!(!cfg.autostart);
         assert!(!cfg.rotation_only_favorites);
+    }
+
+    #[test]
+    fn test_record_wallpaper_keeps_wildcard_exclusive() {
+        let mut cfg = Config::default();
+        cfg.record_wallpaper("DP-1", "/a.mp4");
+        cfg.record_wallpaper("HDMI-A-1", "/b.mp4");
+        assert_eq!(cfg.wallpapers.len(), 2);
+
+        cfg.record_wallpaper("*", "/c.mp4");
+        assert_eq!(cfg.wallpapers.len(), 1);
+        assert_eq!(cfg.wallpapers.get("*").unwrap(), "/c.mp4");
+
+        cfg.record_wallpaper("DP-1", "/d.mp4");
+        assert!(!cfg.wallpapers.contains_key("*"));
+        assert_eq!(cfg.wallpapers.get("DP-1").unwrap(), "/d.mp4");
+        assert_eq!(cfg.current.as_deref(), Some("/d.mp4"));
     }
 
     #[test]
