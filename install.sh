@@ -16,7 +16,7 @@ YELLOW="$(tput setaf 3 2>/dev/null || printf '')"
 RED="$(tput setaf 1 2>/dev/null || printf '')"
 RESET="$(tput sgr0 2>/dev/null || printf '')"
 
-echo "${BLUE}${BOLD}🌌 Aura — Instalador Rápido de Fondos Animados para COSMIC${RESET}"
+echo "${BLUE}${BOLD}🌌 Aura — Instalador Rápido de Fondos Animados para COSMIC y GNOME${RESET}"
 echo "────────────────────────────────────────────────────────────"
 
 # 1. Check OS and Architecture
@@ -24,7 +24,7 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 if [ "$OS" != "Linux" ]; then
-    echo "${RED}Error: Aura solo es compatible con Linux y entornos de escritorio COSMIC Wayland.${RESET}"
+    echo "${RED}Error: Aura solo es compatible con Linux y entornos de escritorio COSMIC o GNOME en Wayland.${RESET}"
     exit 1
 fi
 
@@ -82,7 +82,7 @@ if [ -z "$TARGET_VERSION" ]; then
     fi
 
     if [ -z "$LATEST_TAG" ]; then
-        LATEST_TAG="v1.6.1"
+        LATEST_TAG="v1.7.0"
     fi
     VERSION="${LATEST_TAG#v}"
 else
@@ -198,11 +198,11 @@ echo "${GREEN}${BOLD}✨ ¡Aura v${VERSION} instalado con éxito!${RESET}"
 echo "────────────────────────────────────────────────────────────"
 echo "🚀 Para abrir Aura:"
 echo "  • Desde la terminal: ${BOLD}aura${RESET}"
-echo "  • O búscalo como '${BOLD}Aura${RESET}' en el lanzador de aplicaciones de COSMIC"
+echo "  • O búscalo como '${BOLD}Aura${RESET}' en el lanzador de aplicaciones de tu escritorio"
 echo ""
 echo "🌌 Atajos y comandos útiles:"
 echo "  • Ver estado actual:    ${BOLD}aura status${RESET}"
-echo "  • Cambiar fondo:        ${BOLD}aura next${RESET}  (¡Asígnalo a Super + W en Ajustes de COSMIC!)"
+echo "  • Cambiar fondo:        ${BOLD}aura next${RESET}  (¡Asígnalo a Super + W en los ajustes de tu escritorio!)"
 echo "  • Pausar/Reanudar (0%): ${BOLD}aura toggle-pause${RESET}"
 
 # If dependencies are missing, the VERY LAST output in the terminal must be this impossible-to-miss alert:
@@ -218,7 +218,7 @@ if [ "$DEPS_MISSING_FLAG" -eq 1 ]; then
     echo "${YELLOW}${BOLD}║${RESET}                                                                          ${YELLOW}${BOLD}║${RESET}"
     echo "${YELLOW}${BOLD}║${RESET}    ${GREEN}${BOLD}${INSTALL_CMD}${RESET}"
     echo "${YELLOW}${BOLD}║${RESET}                                                                          ${YELLOW}${BOLD}║${RESET}"
-    echo "${YELLOW}${BOLD}║${RESET} ¡Listo! Después de ejecutarlo, tus fondos cobrarán vida en COSMIC. 🌌     ${YELLOW}${BOLD}║${RESET}"
+    echo "${YELLOW}${BOLD}║${RESET} ¡Listo! Después de ejecutarlo, tus fondos cobrarán vida en tu escritorio. ${YELLOW}${BOLD}║${RESET}"
     echo "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════════════════════╝${RESET}"
 fi
 echo ""

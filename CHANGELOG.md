@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-15
+
+### Added
+- **Soporte de GNOME Wayland (Mutter)**:
+  - Nuevo backend nativo para GNOME con deteccion automatica via `XDG_CURRENT_DESKTOP=GNOME` y seleccion de motor anulable con `AURA_BACKEND=gnome|mpvpaper`.
+  - Fondos estaticos aplicados de forma nativa mediante GSettings (`org.gnome.desktop.background`).
+  - Fondos de video mediante la extension Hanabi (gnome-ext-hanabi) con comunicacion D-Bus para reproduccion, volumen y escalado.
+  - Notificacion proactiva en la app con accion directa de instalacion cuando se aplica un video sin Hanabi.
+- **HUD interactivo en GNOME**: los tres estilos del Quick Switcher (Clasico, Cinematico y Panal de Abeja) se renderizan con paridad visual en GNOME mediante ventanas toplevel transparentes sin bordes.
+
+### Changed
+- Ajustes: pestana reestructurada en siete tarjetas semanticas con deteccion del entorno en tiempo real e iconos simbolicos nativos.
+- Iconos: respaldo automatico al tema Adwaita en escritorios donde el tema de iconos de Cosmic no esta instalado.
+
+### Fixed
+- Sincronizacion del mapa de fondos: la logica de aplicacion con comodin mantiene los mapas por salida sincronizados al alternar entre aplicacion global y por pantalla.
+- Migracion de configuracion: los archivos de la version 1.7.0 ya no se tratan como configuraciones heredadas, preservando el estilo de switcher elegido por el usuario.
+
 ## [1.6.1] - 2026-10-08
 
 ### Changed

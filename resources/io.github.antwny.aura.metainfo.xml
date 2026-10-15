@@ -60,6 +60,19 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.7.0" date="2026-10-15">
+      <description>
+        <p>Aura 1.7.0 introduces experimental GNOME Wayland support, interactive HUD on GNOME via transparent toplevel windows, icon theme fallback, wildcard wallpaper map synchronization, and a modernized modular settings tab:</p>
+        <ul>
+          <li>GNOME Desktop Support: Native background engine for GNOME Wayland sessions using GSettings for images and Hanabi extension integration for videos.</li>
+          <li>Interactive HUD on GNOME: All three Quick Switcher styles (Classic, Cinematic, Honeycomb) render with visual parity on GNOME Mutter via borderless transparent fullscreen toplevel windows.</li>
+          <li>Proactive Extension Notification: Clear in-app notification with direct installation action when applying video wallpapers on GNOME without Hanabi.</li>
+          <li>Modular Settings Interface: Settings tab restructured into seven semantic cards with real-time environment detection and native symbolic icons.</li>
+          <li>Icon Theme Fallback: Automatic fallback to Adwaita icons on desktop environments where the Cosmic icon theme is not installed.</li>
+          <li>Wallpaper Map Sync: Refactored wildcard apply logic ensuring wallpaper maps remain in sync when alternating between per-output and global applies.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.1" date="2026-10-08">
       <description>
         <p>Aura 1.6.1 brings interactive hover pop-out animations to Honeycomb and Classic HUDs, RAM memory trimming, library UI consistency, and performance optimizations:</p>
