@@ -661,17 +661,29 @@ impl Language {
 
     // --- About View ---
     pub fn about_tagline(&self) -> &'static str {
-        match self {
-            Language::Es => "Gestor Nativo de Fondos Animados para COSMIC Desktop",
-            Language::En => "Native Live Wallpaper Manager for COSMIC Desktop",
+        if crate::engine::gnome::is_active() {
+            match self {
+                Language::Es => "Gestor de Fondos Animados para GNOME y Wayland",
+                Language::En => "Live Wallpaper Manager for GNOME & Wayland",
+            }
+        } else {
+            match self {
+                Language::Es => "Gestor Nativo de Fondos Animados para COSMIC Desktop",
+                Language::En => "Native Live Wallpaper Manager for COSMIC Desktop",
+            }
         }
     }
 
     pub fn about_version_info(&self) -> String {
         let os = crate::engine::mpvpaper::detect_os_pretty_name();
+        let desktop = if crate::engine::gnome::is_active() {
+            "GNOME Shell"
+        } else {
+            "COSMIC Desktop"
+        };
         match self {
-            Language::Es => format!("Versión {} • {} • COSMIC Desktop", env!("CARGO_PKG_VERSION"), os),
-            Language::En => format!("Version {} • {} • COSMIC Desktop", env!("CARGO_PKG_VERSION"), os),
+            Language::Es => format!("Versión {} • {} • {}", env!("CARGO_PKG_VERSION"), os, desktop),
+            Language::En => format!("Version {} • {} • {}", env!("CARGO_PKG_VERSION"), os, desktop),
         }
     }
 
