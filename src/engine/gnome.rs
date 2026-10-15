@@ -151,7 +151,7 @@ pub fn set_image(path: &Path, scaling: &str) -> Result<(), String> {
     gsettings_set(None, BACKGROUND_SCHEMA, "picture-uri-dark", &uri)?;
     // A Hanabi video left running would cover the new image.
     if hanabi_installed() {
-        set_hanabi_enabled(false).map_err(|e| format!("No se pudo desactivar Hanabi: {}", e))?;
+        set_hanabi_enabled(false).map_err(|e| format!("Could not disable Hanabi: {}", e))?;
     }
     Ok(())
 }
@@ -166,10 +166,12 @@ fn hanabi_content_fit(scaling: &str) -> &'static str {
 }
 
 /// Hands a video to Hanabi and makes sure the extension is enabled and playing.
+/// NOTE: callers should check `hanabi_installed()` before this and surface a user-friendly
+/// message via i18n (see `app.rs` `Message::ApplyWallpaper` handler).
 pub fn set_video(path: &Path, scaling: &str, mute: bool, volume: u8) -> Result<(), String> {
     if !hanabi_installed() {
         return Err(
-            "GNOME no permite fondos de vídeo con mpvpaper. Instala la extensión Hanabi (gnome-ext-hanabi) para usar vídeos."
+            "Hanabi extension is required for video wallpapers on GNOME. Install gnome-ext-hanabi."
                 .to_string(),
         );
     }
@@ -181,7 +183,7 @@ pub fn set_video(path: &Path, scaling: &str, mute: bool, volume: u8) -> Result<(
     gsettings_set(dir, HANABI_SCHEMA, "content-fit", hanabi_content_fit(scaling))?;
     set_hanabi_enabled(true).map_err(|e| {
         format!(
-            "Hanabi está instalado pero GNOME no lo ha cargado ({}). Cierra sesión y vuelve a entrar.",
+            "Hanabi is installed but GNOME has not loaded it ({}). Log out and back in.",
             e
         )
     })?;
@@ -221,7 +223,7 @@ pub fn play() {
 pub fn stop() {
     if hanabi_installed() {
         if let Err(e) = set_hanabi_enabled(false) {
-            eprintln!("[Aura Engine] No se pudo desactivar Hanabi: {}", e);
+            eprintln!("[Aura Engine] Could not disable Hanabi: {}", e);
         }
     }
 }

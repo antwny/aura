@@ -907,6 +907,48 @@ impl Language {
         }
     }
 
+    // --- GNOME backend ---
+
+    /// Shown as a toast when the user picks a video on GNOME but Hanabi is not installed.
+    pub fn gnome_hanabi_required_toast(&self) -> &'static str {
+        match self {
+            Language::Es => "Los vídeos en GNOME requieren la extensión Hanabi",
+            Language::En => "Videos on GNOME require the Hanabi extension",
+        }
+    }
+
+    /// Action label on the Hanabi toast that opens the extension page.
+    pub fn gnome_hanabi_install_action(&self) -> &'static str {
+        match self {
+            Language::Es => "Instalar Hanabi",
+            Language::En => "Install Hanabi",
+        }
+    }
+
+    /// Full error message when Hanabi is missing (used in engine error path).
+    pub fn gnome_hanabi_missing_error(&self) -> &'static str {
+        match self {
+            Language::Es => "GNOME no permite fondos de vídeo sin la extensión Hanabi. Instala gnome-ext-hanabi para usar vídeos.",
+            Language::En => "GNOME does not support video wallpapers without the Hanabi extension. Install gnome-ext-hanabi to use videos.",
+        }
+    }
+
+    /// Shown when Hanabi is installed but GNOME has not loaded it yet.
+    pub fn gnome_hanabi_not_loaded(&self) -> &'static str {
+        match self {
+            Language::Es => "Hanabi está instalado pero GNOME no lo ha cargado. Cierra sesión y vuelve a entrar.",
+            Language::En => "Hanabi is installed but GNOME has not loaded it yet. Log out and back in.",
+        }
+    }
+
+    /// Shown when Hanabi cannot be disabled while switching to an image wallpaper.
+    pub fn gnome_hanabi_disable_failed(&self) -> &'static str {
+        match self {
+            Language::Es => "No se pudo desactivar Hanabi.",
+            Language::En => "Could not disable Hanabi.",
+        }
+    }
+
     pub fn explore_btn_load_more(&self) -> &'static str {
         match self {
             Language::Es => "Cargar más fondos",

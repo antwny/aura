@@ -175,6 +175,8 @@ pub enum Message {
     SelectSwitcherPosition(String),
     SelectSwitcherStyle(crate::config::SwitcherStyle),
     CopySwitcherCommand,
+    /// Opens the Hanabi GNOME extension page in the default browser.
+    OpenHanabiPage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2194,6 +2196,10 @@ impl cosmic::Application for AuraApp {
                 let _ = open::that_detached("https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD");
             }
 
+            Message::OpenHanabiPage => {
+                let _ = open::that_detached("https://github.com/jeffshee/gnome-ext-hanabi");
+            }
+
             Message::CheckForUpdates { user_initiated } => {
                 self.last_update_check = Some(Instant::now());
                 self.update_status = UpdateStatus::Checking;
@@ -2321,6 +2327,21 @@ impl cosmic::Application for AuraApp {
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
+                // On GNOME, video wallpapers require the Hanabi extension. Detect this proactively
+                // so we can show a helpful toast with an install action instead of a raw engine error.
+                let is_video = video_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| crate::scanner::VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                    .unwrap_or(false);
+                if crate::engine::gnome::is_active() && is_video && !crate::engine::gnome::hanabi_installed() {
+                    return self.notify_with_action(
+                        self.language.gnome_hanabi_required_toast(),
+                        self.language.gnome_hanabi_install_action(),
+                        Message::OpenHanabiPage,
+                    );
+                }
+
                 match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause, &self.config.gpu_preference) {
                     Ok(_) => {
                         self.config.record_wallpaper(&output, &path_str);
@@ -2360,9 +2381,23 @@ impl cosmic::Application for AuraApp {
                     Err(e) => {
                         let err_text = e.to_string();
                         eprintln!("[Aura] Fallo al aplicar fondo: {}", err_text);
-                        self.status_message = Some(format!("Error: {}", err_text));
+
+                        // On GNOME, translate known engine error markers to user-friendly i18n strings.
+                        let display_msg = if crate::engine::gnome::is_active() {
+                            if err_text.contains("has not loaded it") || err_text.contains("Log out and back in") {
+                                self.language.gnome_hanabi_not_loaded().to_string()
+                            } else if err_text.contains("Could not disable Hanabi") {
+                                self.language.gnome_hanabi_disable_failed().to_string()
+                            } else {
+                                err_text.clone()
+                            }
+                        } else {
+                            err_text.clone()
+                        };
+
+                        self.status_message = Some(format!("Error: {}", display_msg));
                         self.status_timer = 8;
-                        return self.notify(format!("⚠️ {}", err_text));
+                        return self.notify(format!("⚠️ {}", display_msg));
                     }
                 }
             }
