@@ -128,8 +128,7 @@ fn cmd_next() {
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
     if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
-        config.wallpapers.insert(output.clone(), path_str.clone());
-        config.current = Some(path_str.clone());
+        config.record_wallpaper(&output, &path_str);
         let _ = config.save();
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
@@ -178,8 +177,7 @@ fn cmd_prev() {
     let mut engine = WallpaperEngine::new();
     let path_str = video.path.to_string_lossy().to_string();
     if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
-        config.wallpapers.insert(output.clone(), path_str.clone());
-        config.current = Some(path_str.clone());
+        config.record_wallpaper(&output, &path_str);
         let _ = config.save();
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
@@ -255,8 +253,7 @@ fn cmd_apply(path_arg: &str) {
 
     match engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         Ok(pid) => {
-            config.wallpapers.insert(output.clone(), path_str.clone());
-            config.current = Some(path_str.clone());
+            config.record_wallpaper(&output, &path_str);
             if !config.custom_videos.contains(&path_str) {
                 config.custom_videos.push(path_str.clone());
             }

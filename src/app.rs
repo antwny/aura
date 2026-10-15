@@ -2323,8 +2323,7 @@ impl cosmic::Application for AuraApp {
 
                 match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause, &self.config.gpu_preference) {
                     Ok(_) => {
-                        self.config.wallpapers.insert(output.clone(), path_str.clone());
-                        self.config.current = Some(path_str.clone());
+                        self.config.record_wallpaper(&output, &path_str);
                         let _ = self.config.save();
                         self.is_paused = false;
 
