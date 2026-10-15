@@ -393,10 +393,84 @@ impl Language {
         }
     }
 
-    pub fn settings_integration_title(&self) -> &'static str {
+    pub fn settings_section_general(&self) -> &'static str {
         match self {
-            Language::Es => "Integración y Rendimiento",
-            Language::En => "Integration & Performance",
+            Language::Es => "General y Sistema",
+            Language::En => "General & System",
+        }
+    }
+
+    pub fn settings_section_engine(&self) -> &'static str {
+        match self {
+            Language::Es => "Entorno y Motor",
+            Language::En => "Environment & Engine",
+        }
+    }
+
+    pub fn settings_section_performance(&self) -> &'static str {
+        match self {
+            Language::Es => "Rendimiento y Energía",
+            Language::En => "Performance & Energy",
+        }
+    }
+
+    pub fn settings_section_appearance(&self) -> &'static str {
+        match self {
+            Language::Es => "Apariencia y Colores",
+            Language::En => "Appearance & Colors",
+        }
+    }
+
+    pub fn settings_engine_desktop_lbl(&self) -> &'static str {
+        match self {
+            Language::Es => "Entorno detectado:",
+            Language::En => "Detected environment:",
+        }
+    }
+
+    pub fn settings_engine_backend_lbl(&self) -> &'static str {
+        match self {
+            Language::Es => "Motor activo:",
+            Language::En => "Active engine:",
+        }
+    }
+
+    pub fn settings_engine_hanabi_status_ok(&self) -> &'static str {
+        match self {
+            Language::Es => "Extensión Hanabi detectada y operativa para fondos animados.",
+            Language::En => "Hanabi extension detected and ready for animated wallpapers.",
+        }
+    }
+
+    pub fn settings_engine_hanabi_status_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "Se requiere la extensión Hanabi para reproducir vídeos en GNOME.",
+            Language::En => "Hanabi extension is required to play video wallpapers on GNOME.",
+        }
+    }
+
+    pub fn settings_engine_hanabi_install_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "Instalar Hanabi",
+            Language::En => "Install Hanabi",
+        }
+    }
+
+    pub fn settings_cosmic_badge(&self) -> &'static str {
+        match self {
+            Language::Es => "COSMIC Desktop",
+            Language::En => "COSMIC Desktop",
+        }
+    }
+
+    pub fn settings_autostart_desktop(&self, is_gnome: bool) -> &'static str {
+        if is_gnome {
+            match self {
+                Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión en GNOME",
+                Language::En => "Launch animated wallpaper automatically upon login to GNOME",
+            }
+        } else {
+            self.settings_autostart()
         }
     }
 

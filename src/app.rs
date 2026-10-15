@@ -1399,6 +1399,28 @@ impl cosmic::Application for AuraApp {
 
                 self.closing_switcher_window_id = None;
 
+                if crate::engine::gnome::is_active() {
+                    let mut win_settings = cosmic::iced::window::Settings::default();
+                    win_settings.size = cosmic::iced::Size::new(def_w, def_h);
+                    win_settings.decorations = false;
+                    win_settings.transparent = true;
+                    win_settings.resizable = false;
+                    win_settings.fullscreen = true;
+                    win_settings.exit_on_close_request = false;
+                    win_settings.level = cosmic::iced::window::Level::AlwaysOnTop;
+                    #[cfg(target_os = "linux")]
+                    {
+                        win_settings.platform_specific.application_id = "io.github.antwny.aura".to_string();
+                    }
+
+                    let (new_id, open_task) = cosmic::iced::window::open(win_settings);
+                    self.switcher_window_id = Some(new_id);
+                    return Task::batch(vec![
+                        open_task.discard(),
+                        cosmic::iced::window::gain_focus(new_id),
+                    ]);
+                }
+
                 let id = cosmic::iced::window::Id::unique();
                 self.switcher_window_id = Some(id);
 
@@ -1459,7 +1481,11 @@ impl cosmic::Application for AuraApp {
                 crate::scanner::thumbs::trim_memory();
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
-                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
+                    if crate::engine::gnome::is_active() {
+                        return cosmic::iced::window::close(id);
+                    } else {
+                        return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
+                    }
                 }
             }
 
@@ -1571,7 +1597,11 @@ impl cosmic::Application for AuraApp {
                 if let Some(id) = self.switcher_window_id.take() {
                     self.closing_switcher_window_id = Some(id);
                     self.switcher_active_output = None;
-                    tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
+                    if crate::engine::gnome::is_active() {
+                        tasks.push(cosmic::iced::window::close(id));
+                    } else {
+                        tasks.push(Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id)))));
+                    }
                 }
                 crate::scanner::thumbs::trim_memory();
                 return Task::batch(tasks);
@@ -2082,7 +2112,11 @@ impl cosmic::Application for AuraApp {
                     self.switcher_last_edge_scroll = None;
                     self.switcher_active_output = None;
                     crate::scanner::thumbs::trim_memory();
-                    return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
+                    if crate::engine::gnome::is_active() {
+                        return cosmic::iced::window::close(id);
+                    } else {
+                        return Task::done(cosmic::Action::Cosmic(cosmic::app::Action::Surface(destroy_layer_shell(id))));
+                    }
                 }
                 if self.core().main_window_id() == Some(id) {
                     self.is_window_open = false;
@@ -2384,7 +2418,9 @@ impl cosmic::Application for AuraApp {
 
                         // On GNOME, translate known engine error markers to user-friendly i18n strings.
                         let display_msg = if crate::engine::gnome::is_active() {
-                            if err_text.contains("has not loaded it") || err_text.contains("Log out and back in") {
+                            if err_text.contains("Hanabi extension is required") {
+                                self.language.gnome_hanabi_missing_error().to_string()
+                            } else if err_text.contains("has not loaded it") || err_text.contains("Log out and back in") {
                                 self.language.gnome_hanabi_not_loaded().to_string()
                             } else if err_text.contains("Could not disable Hanabi") {
                                 self.language.gnome_hanabi_disable_failed().to_string()
