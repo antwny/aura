@@ -2492,12 +2492,14 @@ impl cosmic::Application for AuraApp {
                     self.status_message = Some(match self.language {
                         crate::i18n::Language::Es => "Inicio automático activado".into(),
                         crate::i18n::Language::En => "Autostart enabled".into(),
+                        crate::i18n::Language::Fr => "Démarrage automatique activé".into(),
                     });
                 } else {
                     let _ = WallpaperEngine::remove_autostart();
                     self.status_message = Some(match self.language {
                         crate::i18n::Language::Es => "Inicio automático desactivado".into(),
                         crate::i18n::Language::En => "Autostart disabled".into(),
+                        crate::i18n::Language::Fr => "Démarrage automatique désactivé".into(),
                     });
                 }
                 let _ = self.config.save();
@@ -3691,4 +3693,3 @@ mod tests {
         assert!(!(sel_col_last + 1 < total_cols), "Should not scroll right past last column");
     }
 }
-
