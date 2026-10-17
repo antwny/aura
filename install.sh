@@ -16,7 +16,8 @@ YELLOW="$(tput setaf 3 2>/dev/null || printf '')"
 RED="$(tput setaf 1 2>/dev/null || printf '')"
 RESET="$(tput sgr0 2>/dev/null || printf '')"
 
-echo "${BLUE}${BOLD}🌌 Aura — Instalador Rápido de Fondos Animados para COSMIC y GNOME${RESET}"
+echo "${BLUE}${BOLD}🌌 Aura — The definitive live wallpaper engine for COSMIC Desktop${RESET}"
+echo "${BLUE}   │ (With experimental support for GNOME & Wayland)${RESET}"
 echo "────────────────────────────────────────────────────────────"
 
 # 1. Check OS and Architecture
@@ -24,7 +25,7 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 if [ "$OS" != "Linux" ]; then
-    echo "${RED}Error: Aura solo es compatible con Linux y entornos de escritorio COSMIC o GNOME en Wayland.${RESET}"
+    echo "${RED}Error: Aura solo es compatible con Linux (COSMIC Desktop, Niri, GNOME y compositores Wayland).${RESET}"
     exit 1
 fi
 
@@ -204,6 +205,26 @@ echo "🌌 Atajos y comandos útiles:"
 echo "  • Ver estado actual:    ${BOLD}aura status${RESET}"
 echo "  • Cambiar fondo:        ${BOLD}aura next${RESET}  (¡Asígnalo a Super + W en los ajustes de tu escritorio!)"
 echo "  • Pausar/Reanudar (0%): ${BOLD}aura toggle-pause${RESET}"
+
+# Detección de entorno y notas de compatibilidad
+DESKTOP_ENV="${XDG_CURRENT_DESKTOP:-}"
+if [[ "$DESKTOP_ENV" =~ [Cc][Oo][Ss][Mm][Ii][Cc] ]] || [ -n "${COSMIC_DATA_CONTROL_VERSION:-}" ]; then
+    echo ""
+    echo "${GREEN}🌟 Entorno detectado: COSMIC Desktop (Soporte Nativo Tier 1)${RESET}"
+    echo "  • Fondos animados y estáticos con aceleración por hardware (Wayland Layer-Shell)."
+    echo "  • Quick Switcher HUD integrado con transparencia y sincronización de temas."
+elif [[ "$DESKTOP_ENV" =~ [Nn][Ii][Rr][Ii] ]] || [ -n "${NIRI_SOCKET:-}" ]; then
+    echo ""
+    echo "${GREEN}🌟 Entorno detectado: Niri Wayland (Soporte Completo Layer-Shell)${RESET}"
+    echo "  • Fondos animados y estáticos funcionando al 100% mediante Layer-Shell."
+    echo "  • Quick Switcher HUD con transparencia y respuesta instantánea."
+elif [[ "$DESKTOP_ENV" =~ [Gg][Nn][Oo][Mm][Ee] ]]; then
+    echo ""
+    echo "${YELLOW}⚠️  Entorno detectado: GNOME Wayland (Soporte Experimental)${RESET}"
+    echo "  • Fondos estáticos: Funcionan de forma nativa mediante GSettings."
+    echo "  • Fondos animados (Live): Requieren la extensión externa Hanabi (gnome-ext-hanabi)."
+    echo "  • Quick Switcher HUD: Debido a que Mutter no implementa layer-shell, el fondo puede lucir oscuro."
+fi
 
 # If dependencies are missing, the VERY LAST output in the terminal must be this impossible-to-miss alert:
 if [ "$DEPS_MISSING_FLAG" -eq 1 ]; then

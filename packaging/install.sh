@@ -54,6 +54,8 @@ ICONS_DIR="${DATA_DIR}/icons/hicolor/scalable/apps"
 ACTION_ICONS_DIR="${DATA_DIR}/icons/hicolor/scalable/actions"
 META_DIR="${DATA_DIR}/metainfo"
 
+echo "🌌 Aura — The definitive live wallpaper engine for COSMIC Desktop"
+echo "   │ (With experimental support for GNOME & Wayland)"
 echo "Installing Aura (${INSTALL_TYPE}) to ${PREFIX}..."
 
 # Create target directories

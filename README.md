@@ -4,14 +4,15 @@
 
 # Aura
 
-### Alive wallpapers for Linux. Built for the modern desktop.
+### The definitive live wallpaper engine for COSMIC Desktop.
+*(With experimental support for GNOME & Wayland)*
 
-**Transform your Linux, COSMIC, and GNOME workspace with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
+**Transform your COSMIC and Wayland workspace (including Niri) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
 
 [![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
 [![COSMIC Desktop](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/pop-os/libcosmic)
-[![GNOME](https://img.shields.io/badge/GNOME-Wayland-4A86CF.svg?style=for-the-badge&logo=gnome&logoColor=white)](https://www.gnome.org/)
-[![Wayland Native](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
+[![Wayland Layer-Shell](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
+[![GNOME Experimental](https://img.shields.io/badge/GNOME-Experimental-4A86CF.svg?style=for-the-badge&logo=gnome&logoColor=white)](https://www.gnome.org/)
 [![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
 [![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
@@ -24,7 +25,7 @@
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-*Bundled video engine included. Compatible with CachyOS, Arch Linux, Pop!_OS, Ubuntu, Fedora, openSUSE, and any distribution running COSMIC Desktop or GNOME on Wayland.*
+*Bundled video engine included. Compatible with Pop!_OS, CachyOS, Arch Linux, Fedora, and any distribution running COSMIC Desktop or Wayland layer-shell compositors (such as Niri, Hyprland, Sway), with experimental support for GNOME.*
 
 > **Prerequisites for video playback & thumbnails:**
 > - **Arch / CachyOS**: `sudo pacman -S --needed mpv ffmpeg`
@@ -101,14 +102,14 @@ Summon a floating overlay anywhere on your desktop with `aura switcher`:
 
 ---
 
-### 🖥️ GNOME Desktop Support (Wayland)
+### 🖥️ GNOME Desktop Support (Wayland) — Experimental
 
-Aura v1.7.0 introduces support for GNOME on Wayland:
+Aura includes experimental support for GNOME on Wayland:
 
 - **Automatic Detection**: Aura detects `XDG_CURRENT_DESKTOP=GNOME` and selects the appropriate backend automatically (override with `AURA_BACKEND=gnome|mpvpaper`).
 - **Static Wallpapers**: Applied natively via GSettings (`org.gnome.desktop.background`).
 - **Live Video Wallpapers**: Powered by the [Hanabi GNOME Shell extension](https://github.com/jeffshee/gnome-ext-hanabi) (`gnome-ext-hanabi`). Aura communicates with Hanabi over D-Bus for synchronized playback, volume, and scaling controls.
-- **Interactive HUD**: All Quick Switcher styles (Classic, Cinematic, Honeycomb) work seamlessly on GNOME via borderless transparent fullscreen toplevel windows.
+- **Interactive HUD**: Runs via borderless toplevel windows (note: background may appear opaque/dark due to Mutter's lack of the Wayland layer-shell protocol).
 - **Icon Fallback**: Automatically falls back to Adwaita icons on systems where the Cosmic icon theme is not installed.
 
 ---
