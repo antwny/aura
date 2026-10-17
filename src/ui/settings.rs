@@ -41,7 +41,7 @@ impl AuraApp {
                     .push(widget::text::body(self.language.settings_lang_title()))
                     .push(widget::text::caption(self.language.settings_lang_desc()))
                     .push(
-                        widget::row::with_capacity(2)
+                        widget::row::with_capacity(3)
                             .spacing(10)
                             .push(
                                 if self.language == crate::i18n::Language::Es {
@@ -58,6 +58,14 @@ impl AuraApp {
                                     widget::button::standard("English")
                                 }
                                 .on_press(Message::SetLanguage(crate::i18n::Language::En))
+                            )
+                            .push(
+                                if self.language == crate::i18n::Language::Fr {
+                                    widget::button::suggested("Français")
+                                } else {
+                                    widget::button::standard("Français")
+                                }
+                                .on_press(Message::SetLanguage(crate::i18n::Language::Fr))
                             )
                     )
             )
