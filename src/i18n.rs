@@ -1208,6 +1208,15 @@ impl Language {
         }
     }
 
+    /// Shown when Hanabi accepts settings but its renderer does not start playback.
+    pub fn gnome_hanabi_playback_failed(&self) -> &'static str {
+        match self {
+            Language::Es => "Hanabi no inició el fondo animado. Comprueba que el vídeo se pueda reproducir y que Hanabi esté activo.",
+            Language::En => "Hanabi did not start the animated wallpaper. Check that the video is playable and Hanabi is enabled.",
+            Language::Fr => "Hanabi n’a pas lancé le fond d’écran animé. Vérifiez que la vidéo est lisible et que Hanabi est activé.",
+        }
+    }
+
     pub fn explore_btn_load_more(&self) -> &'static str {
         match self {
             Language::Es => "Cargar más fondos",
@@ -2210,17 +2219,17 @@ impl Language {
 
     pub fn settings_switcher_shortcut_title(&self) -> &'static str {
         match self {
-            Language::Es => "Atajo global en COSMIC Desktop",
-            Language::En => "Global shortcut in COSMIC Desktop",
-            Language::Fr => "Raccourci global dans COSMIC Desktop",
+            Language::Es => "Atajo global en GNOME o COSMIC",
+            Language::En => "Global shortcut in GNOME or COSMIC",
+            Language::Fr => "Raccourci global dans GNOME ou COSMIC",
         }
     }
 
     pub fn settings_switcher_shortcut_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Puedes abrir el HUD con una combinación de teclas añadiendo en Configuración de COSMIC → Teclado → Atajos personalizados:",
-            Language::En => "You can open the HUD with a key combo by adding in COSMIC Settings → Keyboard → Custom shortcuts:",
-            Language::Fr => "Vous pouvez ouvrir le HUD avec une combinaison de touches en l’ajoutant dans Paramètres COSMIC → Clavier → Raccourcis personnalisés :",
+            Language::Es => "Abre el HUD con una combinación de teclas: añade el comando en Atajos personalizados del teclado en los ajustes de GNOME o COSMIC:",
+            Language::En => "Open the HUD with a key combo by adding this command under Custom Keyboard Shortcuts in GNOME or COSMIC Settings:",
+            Language::Fr => "Ouvrez le HUD avec un raccourci clavier en ajoutant cette commande aux raccourcis clavier personnalisés de GNOME ou COSMIC :",
         }
     }
 

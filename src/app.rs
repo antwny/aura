@@ -2424,6 +2424,8 @@ impl cosmic::Application for AuraApp {
                                 self.language.gnome_hanabi_not_loaded().to_string()
                             } else if err_text.contains("Could not disable Hanabi") {
                                 self.language.gnome_hanabi_disable_failed().to_string()
+                            } else if err_text.contains("Hanabi did not start the wallpaper") {
+                                self.language.gnome_hanabi_playback_failed().to_string()
                             } else {
                                 err_text.clone()
                             }

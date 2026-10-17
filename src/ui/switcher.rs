@@ -37,7 +37,12 @@ impl AuraApp {
                 .height(Length::Fill)
                 .align_x(Horizontal::Center)
                 .align_y(Vertical::Center)
-                .class(cosmic::theme::Container::Transparent);
+                .class(cosmic::theme::Container::custom(|_theme| {
+                    cosmic::iced::widget::container::Style {
+                        background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.0, 0.38))),
+                        ..Default::default()
+                    }
+                }));
             return widget::mouse_area(positioned)
                 .on_press(Message::CloseQuickSwitcher)
                 .into();
@@ -261,7 +266,12 @@ impl AuraApp {
         };
 
         widget::mouse_area(
-            positioned.class(cosmic::theme::Container::Transparent)
+            positioned.class(cosmic::theme::Container::custom(|_theme| {
+                cosmic::iced::widget::container::Style {
+                    background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.0, 0.38))),
+                    ..Default::default()
+                }
+            }))
         )
         .on_press(Message::CloseQuickSwitcher)
         .into()
@@ -416,7 +426,7 @@ impl AuraApp {
                 .align_y(Vertical::Center)
                 .class(cosmic::theme::Container::custom(|_theme| {
                     cosmic::iced::widget::container::Style {
-                        background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.38, 0.58))),
+                        background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.38, 0.38))),
                         ..Default::default()
                     }
                 }));
@@ -593,7 +603,7 @@ impl AuraApp {
             .align_y(Vertical::Center)
             .class(cosmic::theme::Container::custom(|_theme| {
                 cosmic::iced::widget::container::Style {
-                    background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.38, 0.58))),
+                    background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.38, 0.38))),
                     ..Default::default()
                 }
             }));
@@ -619,7 +629,7 @@ impl AuraApp {
                 .align_y(Vertical::Center)
                 .class(cosmic::theme::Container::custom(|_theme| {
                     cosmic::iced::widget::container::Style {
-                        background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.42, 0.62))),
+                        background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.42, 0.38))),
                         ..Default::default()
                     }
                 }));
@@ -754,7 +764,7 @@ impl AuraApp {
             .height(Length::Fill)
             .class(cosmic::theme::Container::custom(|_theme| {
                 cosmic::iced::widget::container::Style {
-                    background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.42, 0.62))),
+                    background: Some(cosmic::iced::Background::Color(switcher_scrim_color(0.42, 0.38))),
                     ..Default::default()
                 }
             }))

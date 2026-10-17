@@ -44,6 +44,7 @@ remove_from_prefix() {
         rm -f "${P}/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
         REMOVED=1
     fi
+    rm -f "${P}/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg" "${P}/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg"
     if [ -f "${P}/share/metainfo/io.github.antwny.aura.metainfo.xml" ]; then
         rm -f "${P}/share/metainfo/io.github.antwny.aura.metainfo.xml"
         REMOVED=1

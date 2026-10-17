@@ -60,6 +60,16 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.7.1" date="2026-10-17">
+      <description>
+        <p>Aura 1.7.1 adds French localization and refines GNOME video wallpaper startup and Quick Switcher presentation:</p>
+        <ul>
+          <li>French interface translations, system language detection, and a language selector.</li>
+          <li>Hanabi playback readiness checks with a clear localized error when playback does not start.</li>
+          <li>Quick Switcher shortcut guidance for GNOME and COSMIC, plus improved overlay opacity and sidebar icons.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.0" date="2026-10-15">
       <description>
         <p>Aura 1.7.0 introduces experimental GNOME Wayland support, interactive HUD on GNOME via transparent toplevel windows, icon theme fallback, wildcard wallpaper map synchronization, and a modernized modular settings tab:</p>

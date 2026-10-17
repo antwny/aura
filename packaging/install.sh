@@ -51,6 +51,7 @@ BIN_DIR="${PREFIX}/bin"
 DATA_DIR="${PREFIX}/share"
 APPS_DIR="${DATA_DIR}/applications"
 ICONS_DIR="${DATA_DIR}/icons/hicolor/scalable/apps"
+ACTION_ICONS_DIR="${DATA_DIR}/icons/hicolor/scalable/actions"
 META_DIR="${DATA_DIR}/metainfo"
 
 echo "Installing Aura (${INSTALL_TYPE}) to ${PREFIX}..."
@@ -59,6 +60,7 @@ echo "Installing Aura (${INSTALL_TYPE}) to ${PREFIX}..."
 install -d "${BIN_DIR}"
 install -d "${APPS_DIR}"
 install -d "${ICONS_DIR}"
+install -d "${ACTION_ICONS_DIR}"
 install -d "${META_DIR}"
 
 # Install binary
@@ -71,6 +73,8 @@ fi
 
 # Install icon & metainfo
 install -m 644 io.github.antwny.aura.svg "${ICONS_DIR}/io.github.antwny.aura.svg"
+install -m 644 navbar-open-symbolic.svg "${ACTION_ICONS_DIR}/navbar-open-symbolic.svg"
+install -m 644 navbar-closed-symbolic.svg "${ACTION_ICONS_DIR}/navbar-closed-symbolic.svg"
 install -m 644 io.github.antwny.aura.metainfo.xml "${META_DIR}/io.github.antwny.aura.metainfo.xml"
 rm -f "${DATA_DIR}/icons/hicolor"/*/apps/io.github.antwny.aura.png 2>/dev/null || true
 
