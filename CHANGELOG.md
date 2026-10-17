@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-10-17
+
+### Added
+- Localización completa de la interfaz en francés, detección del idioma del sistema y selector de idioma.
+- Iconos simbólicos para mostrar u ocultar la barra lateral, instalados en los paquetes y en Flatpak.
+
+### Changed
+- Los atajos del Quick Switcher indican cómo configurarlos tanto en GNOME como en COSMIC.
+
+### Fixed
+- El backend GNOME espera a que Hanabi confirme el inicio del vídeo y muestra un error localizado si no comienza la reproducción.
+- Se ajustó la opacidad del fondo del switcher en GNOME.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added

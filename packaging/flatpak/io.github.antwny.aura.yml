@@ -121,6 +121,8 @@ modules:
       - install -Dm755 target/release/aura /app/bin/aura
       - install -Dm644 resources/io.github.antwny.aura.desktop /app/share/applications/io.github.antwny.aura.desktop
       - install -Dm644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg /app/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg
+      - install -Dm644 resources/icons/navbar-open-symbolic.svg /app/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg
+      - install -Dm644 resources/icons/navbar-closed-symbolic.svg /app/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg
       - install -Dm644 resources/io.github.antwny.aura.metainfo.xml /app/share/metainfo/io.github.antwny.aura.metainfo.xml
       - install -Dm644 LICENSE -t /app/share/licenses/io.github.antwny.aura/
     sources:

@@ -14,6 +14,7 @@ const HANABI_SCHEMA: &str = "io.github.jeffshee.hanabi-extension";
 const BACKGROUND_SCHEMA: &str = "org.gnome.desktop.background";
 const RENDERER_DEST: &str = "io.github.jeffshee.HanabiRenderer";
 const RENDERER_PATH: &str = "/io/github/jeffshee/HanabiRenderer";
+const RENDERER_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 
 /// True when Aura runs on a GNOME session. `AURA_BACKEND=gnome|mpvpaper` overrides detection.
 pub fn is_active() -> bool {
@@ -122,8 +123,8 @@ fn set_hanabi_enabled(enabled: bool) -> Result<(), String> {
         .arg(HANABI_UUID))
 }
 
-fn renderer_call(method: &str) {
-    let _ = run(Command::new("gdbus").args([
+fn renderer_call(method: &str) -> Result<(), String> {
+    run(Command::new("gdbus").args([
         "call",
         "--session",
         // The UI thread waits on this call; never block it for the 25 s D-Bus default.
@@ -135,7 +136,44 @@ fn renderer_call(method: &str) {
         RENDERER_PATH,
         "--method",
         &format!("{}.{}", RENDERER_DEST, method),
-    ]));
+    ]))
+}
+
+/// The TypeScript Hanabi extension starts its renderer asynchronously after activation.
+/// Wait for its D-Bus name before issuing playback commands, then confirm playback began.
+fn wait_for_renderer_playing() -> Result<(), String> {
+    let deadline = std::time::Instant::now() + RENDERER_READY_TIMEOUT;
+    let mut last_error = String::from("Hanabi renderer did not become available");
+    let mut play_requested = false;
+    while std::time::Instant::now() < deadline {
+        if !play_requested {
+            match renderer_call("setPlay") {
+                Ok(()) => play_requested = true,
+                Err(e) => last_error = e,
+            }
+        }
+        if play_requested {
+            let mut cmd = Command::new("gdbus");
+            cmd.args([
+                "call", "--session", "--timeout", "1", "--dest", RENDERER_DEST,
+                "--object-path", RENDERER_PATH, "--method",
+                "org.freedesktop.DBus.Properties.Get", RENDERER_DEST, "isPlaying",
+            ]);
+            match cmd.output() {
+                Ok(out) if out.status.success() => {
+                    let value = String::from_utf8_lossy(&out.stdout);
+                    if value.contains("<true>") {
+                        return Ok(());
+                    }
+                    last_error = "Hanabi renderer responded but playback has not started".into();
+                }
+                Ok(out) => last_error = String::from_utf8_lossy(&out.stderr).trim().to_string(),
+                Err(e) => last_error = format!("Could not query Hanabi playback state: {}", e),
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    Err(format!("Hanabi did not start the wallpaper: {}", last_error))
 }
 
 /// Sets a static image as the GNOME background (light and dark) and stops any Hanabi video.
@@ -187,8 +225,7 @@ pub fn set_video(path: &Path, scaling: &str, mute: bool, volume: u8) -> Result<(
             e
         )
     })?;
-    renderer_call("setPlay");
-    Ok(())
+    wait_for_renderer_playing()
 }
 
 pub fn set_mute(mute: bool) -> bool {
@@ -212,11 +249,11 @@ pub fn set_scaling(scaling: &str) -> bool {
 }
 
 pub fn pause() {
-    renderer_call("setPause");
+    let _ = renderer_call("setPause");
 }
 
 pub fn play() {
-    renderer_call("setPlay");
+    let _ = renderer_call("setPlay");
 }
 
 /// Stops the video wallpaper. The GNOME image background stays as the fallback.

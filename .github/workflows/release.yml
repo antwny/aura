@@ -64,6 +64,7 @@ jobs:
           cp target/release/aura "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.desktop "target/package/${PKG_NAME}/"
           cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/${PKG_NAME}/"
+          cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.metainfo.xml "target/package/${PKG_NAME}/"
           cp LICENSE "target/package/${PKG_NAME}/"
           if [ -f "packaging/mpvpaper" ]; then
@@ -82,4 +83,8 @@ jobs:
           files: |
             target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz
             target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz.sha256
-          generate_release_notes: true
+          generate_release_notes: false
+          body: |
+            Aura v1.7.1 adds French localization and improves GNOME video startup and Quick Switcher behavior.
+
+            The Linux archive includes the precompiled mpvpaper binary.
