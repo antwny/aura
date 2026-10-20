@@ -1,64 +1,33 @@
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
-pub fn get_cache_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+fn cache_base_dir() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
         if !xdg.is_empty() {
-            PathBuf::from(xdg)
-        } else {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".cache")
+            return PathBuf::from(xdg);
         }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".cache")
-    };
-    base.join("aura/thumbs")
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    PathBuf::from(home).join(".cache")
+}
+
+pub fn get_cache_dir() -> PathBuf {
+    cache_base_dir().join("aura/thumbs")
 }
 
 pub fn get_scaled_cache_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
-            PathBuf::from(xdg)
-        } else {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".cache")
-        }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".cache")
-    };
-    base.join("aura/scaled")
+    cache_base_dir().join("aura/scaled")
 }
 
 pub fn get_cinematic_cache_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
-            PathBuf::from(xdg)
-        } else {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".cache")
-        }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".cache")
-    };
-    base.join("aura/cinematic_v2")
+    cache_base_dir().join("aura/cinematic_v2")
 }
 
 pub fn get_honeycomb_cache_dir() -> PathBuf {
-    let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        if !xdg.is_empty() {
-            PathBuf::from(xdg)
-        } else {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".cache")
-        }
-    } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".cache")
-    };
-    base.join("aura/honeycomb_v2")
+    cache_base_dir().join("aura/honeycomb_v2")
 }
 
 use std::collections::{HashMap, HashSet, VecDeque};

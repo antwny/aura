@@ -34,7 +34,7 @@ jobs:
 
       - name: Build mpvpaper Wayland Engine
         run: |
-          git clone --depth 1 https://github.com/GhostNaN/mpvpaper.git /tmp/mpvpaper-src
+          git clone --depth 1 --branch 1.9 https://github.com/GhostNaN/mpvpaper.git /tmp/mpvpaper-src
           meson setup /tmp/mpvpaper-src/build /tmp/mpvpaper-src
           ninja -C /tmp/mpvpaper-src/build
           mkdir -p packaging
@@ -51,7 +51,17 @@ jobs:
         id: get_version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          CARGO_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "Tag v$VERSION does not match Cargo.toml version $CARGO_VERSION" >&2
+            exit 1
+          fi
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Validate Desktop Entry & AppStream Metadata
+        run: |
+          desktop-file-validate resources/io.github.antwny.aura.desktop
+          appstreamcli validate --pedantic resources/io.github.antwny.aura.metainfo.xml
 
       - name: Build Release Binary
         run: cargo build --release
@@ -83,8 +93,8 @@ jobs:
           files: |
             target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz
             target/package/aura-v${{ steps.get_version.outputs.VERSION }}-x86_64-linux.tar.gz.sha256
-          generate_release_notes: false
+          generate_release_notes: true
           body: |
-            Aura v1.7.1 adds French localization and improves GNOME video startup and Quick Switcher behavior.
+            Aura v${{ steps.get_version.outputs.VERSION }}.
 
-            The Linux archive includes the precompiled mpvpaper binary.
+            The Linux archive includes the precompiled mpvpaper 1.9 binary and a SHA-256 checksum file used by the in-app updater.

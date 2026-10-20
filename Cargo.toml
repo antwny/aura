@@ -1,6 +1,6 @@
 [package]
 name = "aura"
-version = "1.7.1"
+version = "1.7.2"
 edition = "2021"
 description = "Next-generation animated live wallpaper manager built natively in Rust for COSMIC Desktop"
 authors = ["Antwny"]
@@ -25,6 +25,8 @@ ksni = "0.3.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 libc = "0.2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
+sha2 = "0.10"
+tempfile = "3"
 
 [profile.release]
 opt-level = 3

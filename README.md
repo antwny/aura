@@ -110,7 +110,7 @@ Aura includes experimental support for GNOME on Wayland:
 - **Static Wallpapers**: Applied natively via GSettings (`org.gnome.desktop.background`).
 - **Live Video Wallpapers**: Powered by the [Hanabi GNOME Shell extension](https://github.com/jeffshee/gnome-ext-hanabi) (`gnome-ext-hanabi`). Aura communicates with Hanabi over D-Bus for synchronized playback, volume, and scaling controls.
 - **Interactive HUD**: Runs via borderless toplevel windows (note: background may appear opaque/dark due to Mutter's lack of the Wayland layer-shell protocol).
-- **Icon Fallback**: Automatically falls back to Adwaita icons on systems where the Cosmic icon theme is not installed.
+- **Icon Fallback**: Navigation and window-control icons are bundled into a temporary hicolor overlay, with automatic Adwaita fallback when the Cosmic icon theme is not installed.
 
 ---
 
@@ -136,10 +136,10 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
 ### Precompiled Release Package
-Download `aura-v1.7.1-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
+Download `aura-v1.7.2-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
 ```bash
-tar -xzf aura-v1.7.1-x86_64-linux.tar.gz
-cd aura-v1.7.1-x86_64-linux
+tar -xzf aura-v1.7.2-x86_64-linux.tar.gz
+cd aura-v1.7.2-x86_64-linux
 ./install.sh
 ```
 

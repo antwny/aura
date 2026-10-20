@@ -67,7 +67,14 @@ pub enum Message {
     SelectRotationOrder(String),
     TogglePauseOnBattery(bool),
     ChangeVolume(u8),
+    VolumeDebounceTick,
     ApplyWallpaper { video_path: PathBuf, output: String },
+    GnomeApplyFinished {
+        video_path: PathBuf,
+        output: String,
+        token: u64,
+        result: Result<(), String>,
+    },
     StopWallpaper(Option<String>),
     TogglePause,
     SelectScaling { output: String, scaling: String },
@@ -140,8 +147,8 @@ pub enum Message {
     OpenWallpapersFolder,
     ShowInFileManager(PathBuf),
     CheckForUpdates { user_initiated: bool },
-    UpdateCheckResult { result: Result<(String, String, Option<String>), String>, user_initiated: bool },
-    PerformGuiUpdate { download_url: String, version: String },
+    UpdateCheckResult { result: Result<crate::online::updater::ReleaseInfo, String>, user_initiated: bool },
+    PerformGuiUpdate { download_url: String, checksum_url: String, version: String },
     GuiUpdateResult(Result<String, String>),
     RestartApp,
     OpenQuickSwitcher,
@@ -184,7 +191,12 @@ pub enum UpdateStatus {
     Idle,
     Checking,
     UpToDate,
-    Available { latest_tag: String, notes: String, download_url: Option<String> },
+    Available {
+        latest_tag: String,
+        notes: String,
+        download_url: Option<String>,
+        checksum_url: Option<String>,
+    },
     Downloading,
     UpdatedSuccess { new_version: String },
     Error(String),
@@ -267,6 +279,8 @@ pub struct AuraApp {
     pub(crate) autostart_active: bool,
     pub(crate) status_message: Option<String>,
     pub(crate) status_timer: u8,
+    pub(crate) pending_volume: Option<u8>,
+    pub(crate) gnome_apply_token: u64,
     pub(crate) toasts: cosmic::widget::Toasts<Message>,
     pub(crate) is_paused: bool,
     pub(crate) is_paused_by_smart: bool,
@@ -375,8 +389,77 @@ impl AuraApp {
         self.notify(msg)
     }
 
+    pub(crate) fn finish_wallpaper_applied(
+        &mut self,
+        video_path: &std::path::Path,
+        output: &str,
+        path_str: &str,
+    ) -> Task<cosmic::Action<Message>> {
+        self.config.record_wallpaper(output, path_str);
+        let _ = self.config.save();
+        self.is_paused = false;
+
+        let file_name = video_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Video".into());
+        self.tray_controller.update_state(file_name.clone(), false, true);
+
+        if self.switcher_window_id.is_some() {
+            let pool = self.switcher_pool();
+            if let Some(pos) = pool.iter().position(|v| v.path == video_path) {
+                self.switcher_index = pos;
+            }
+        }
+
+        if self.config.auto_theme || self.config.theme_mode != crate::config::ThemeMode::Manual {
+            if let Some(thumb) = self
+                .videos
+                .iter()
+                .find(|v| v.path == video_path)
+                .and_then(|v| v.thumb_path.as_ref())
+            {
+                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
+            } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
+                if crate::scanner::is_supported_wallpaper_ext(ext) {
+                    apply_cosmic_theme(video_path, self.config.auto_theme, self.config.theme_mode);
+                }
+            }
+        }
+
+        let status_msg = self.language.status_applied(output, &file_name);
+        self.status_message = Some(status_msg.clone());
+        self.notify_applied(
+            status_msg,
+            self.language.toast_show_in_files(),
+            Message::OpenWallpapersFolder,
+        )
+    }
+
+    fn wallpaper_error_text(&self, err_text: &str) -> String {
+        if crate::engine::gnome::is_active() {
+            if err_text.contains("Hanabi extension is required") {
+                self.language.gnome_hanabi_missing_error().to_string()
+            } else if err_text.contains("has not loaded it") || err_text.contains("Log out and back in") {
+                self.language.gnome_hanabi_not_loaded().to_string()
+            } else if err_text.contains("Could not disable Hanabi") {
+                self.language.gnome_hanabi_disable_failed().to_string()
+            } else if err_text.contains("Hanabi did not start the wallpaper") {
+                self.language.gnome_hanabi_playback_failed().to_string()
+            } else {
+                err_text.to_string()
+            }
+        } else {
+            err_text.to_string()
+        }
+    }
+
     pub(crate) fn handle_topology_change(&mut self, current_outputs: Vec<MonitorOutput>) {
         if current_outputs == self.outputs {
+            return;
+        }
+        if crate::engine::gnome::is_active() {
+            self.outputs = current_outputs;
             return;
         }
 
@@ -632,7 +715,7 @@ impl cosmic::Application for AuraApp {
     }
 
     fn init(mut core: Core, flags: Self::Flags) -> (Self, Task<cosmic::Action<Self::Message>>) {
-        let config = Config::load();
+        let mut config = Config::load();
         let language = crate::i18n::Language::from_code(&config.language);
         let nav = Self::build_nav(language, Page::Library);
 
@@ -715,10 +798,21 @@ impl cosmic::Application for AuraApp {
         let mut engine = WallpaperEngine::new();
         let has_initial_action = flags.action.is_some();
         if !has_initial_action {
-            for (out, path) in &config.wallpapers {
-                let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
-                if std::path::Path::new(path).exists() {
-                    let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference);
+            if crate::engine::gnome::is_active() {
+                for (out, path) in &config.wallpapers {
+                    if std::path::Path::new(path).exists() {
+                        tasks.push(Task::done(cosmic::Action::App(Message::ApplyWallpaper {
+                            video_path: PathBuf::from(path),
+                            output: out.clone(),
+                        })));
+                    }
+                }
+            } else {
+                for (out, path) in &config.wallpapers {
+                    let sc = config.scaling.get(out).cloned().unwrap_or_else(|| "fit".into());
+                    if std::path::Path::new(path).exists() {
+                        let _ = engine.set_wallpaper(out, path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference);
+                    }
                 }
             }
         }
@@ -739,6 +833,9 @@ impl cosmic::Application for AuraApp {
                 "switcher" => tasks.push(Task::done(cosmic::Action::App(Message::ToggleQuickSwitcher))),
                 "stop" => {
                     engine.stop_all();
+                    config.wallpapers.clear();
+                    config.current = None;
+                    let _ = config.save();
                     std::process::exit(0);
                 }
                 "toggle-pause" | "pause" => {
@@ -771,6 +868,8 @@ impl cosmic::Application for AuraApp {
             autostart_active,
             status_message: None,
             status_timer: 0,
+            pending_volume: None,
+            gnome_apply_token: 0,
             toasts: cosmic::widget::Toasts::new(Message::CloseToast),
             is_paused: false,
             is_paused_by_smart: false,
@@ -1007,6 +1106,13 @@ impl cosmic::Application for AuraApp {
             );
         }
 
+        if self.pending_volume.is_some() {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_millis(250))
+                    .map(|_| Message::VolumeDebounceTick),
+            );
+        }
+
         if self.status_timer > 0 {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(1))
@@ -1095,9 +1201,11 @@ impl cosmic::Application for AuraApp {
             Message::SelectHwdec(hwdec) => {
                 self.config.hwdec = hwdec.clone();
                 let _ = self.config.save();
-                for (output, path) in self.config.wallpapers.clone() {
-                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
+                if !crate::engine::gnome::is_active() {
+                    for (output, path) in self.config.wallpapers.clone() {
+                        let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                        let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
+                    }
                 }
                 return self.set_status(self.language.status_hwdec_selected(&hwdec));
             }
@@ -1105,9 +1213,11 @@ impl cosmic::Application for AuraApp {
             Message::SelectGpuPreference(gpu_pref) => {
                 self.config.gpu_preference = gpu_pref.clone();
                 let _ = self.config.save();
-                for (output, path) in self.config.wallpapers.clone() {
-                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
+                if !crate::engine::gnome::is_active() {
+                    for (output, path) in self.config.wallpapers.clone() {
+                        let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                        let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
+                    }
                 }
                 return self.set_status(self.language.status_gpu_selected(&gpu_pref));
             }
@@ -1210,9 +1320,15 @@ impl cosmic::Application for AuraApp {
 
             Message::ChangeVolume(vol) => {
                 self.config.volume = vol;
-                let _ = self.config.save();
-                if !self.config.mute {
-                    self.engine.set_volume(None, vol);
+                self.pending_volume = Some(vol);
+            }
+
+            Message::VolumeDebounceTick => {
+                if let Some(vol) = self.pending_volume.take() {
+                    if !self.config.mute {
+                        self.engine.set_volume(None, vol);
+                    }
+                    let _ = self.config.save();
                 }
             }
 
@@ -1319,14 +1435,18 @@ impl cosmic::Application for AuraApp {
                 }
 
                 if !crate::online::updater::is_flatpak() {
-                    if let UpdateStatus::Available { ref latest_tag, ref download_url, .. } = self.update_status {
+                    if let UpdateStatus::Available { ref latest_tag, ref download_url, ref checksum_url, .. } = self.update_status {
                         let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
-                        if let Some(url) = download_url {
+                        if let (Some(url), Some(checksum_url)) = (download_url, checksum_url) {
                             let action_lbl = self.language.toast_update_available_action();
                             tasks.push(self.notify_with_action(
                                 toast_text,
                                 action_lbl,
-                                Message::PerformGuiUpdate { download_url: url.clone(), version: latest_tag.clone() },
+                                Message::PerformGuiUpdate {
+                                    download_url: url.clone(),
+                                    checksum_url: checksum_url.clone(),
+                                    version: latest_tag.clone(),
+                                },
                             ));
                         } else {
                             tasks.push(self.notify_with_action(
@@ -2127,6 +2247,9 @@ impl cosmic::Application for AuraApp {
                     if self.config.keep_running_on_close {
                         return cosmic::iced::window::close(id);
                     } else {
+                        if self.pending_volume.take().is_some() {
+                            let _ = self.config.save();
+                        }
                         std::process::exit(0);
                     }
                 }
@@ -2214,6 +2337,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::QuitApp => {
+                if self.pending_volume.take().is_some() {
+                    let _ = self.config.save();
+                }
                 self.engine.stop_all();
                 std::process::exit(0);
             }
@@ -2248,23 +2374,28 @@ impl cosmic::Application for AuraApp {
 
             Message::UpdateCheckResult { result, user_initiated } => {
                 match result {
-                    Ok((latest_tag, notes, download_url)) => {
-                        let clean_latest = latest_tag.trim_start_matches('v');
+                    Ok(release) => {
+                        let clean_latest = release.tag.trim_start_matches('v');
                         let current_version = env!("CARGO_PKG_VERSION");
                         if crate::online::updater::is_newer_version(clean_latest, current_version) {
                             self.update_status = UpdateStatus::Available {
-                                latest_tag: latest_tag.clone(),
-                                notes,
-                                download_url: download_url.clone(),
+                                latest_tag: release.tag.clone(),
+                                notes: release.body,
+                                download_url: release.download_url.clone(),
+                                checksum_url: release.checksum_url.clone(),
                             };
                             if self.is_window_open {
-                                let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
-                                if let Some(url) = download_url {
+                                let toast_text = format!("🚀 {} {}", self.language.about_update_available(), release.tag);
+                                if let (Some(url), Some(checksum_url)) = (release.download_url, release.checksum_url) {
                                     let action_lbl = self.language.toast_update_available_action();
                                     return self.notify_with_action(
                                         toast_text,
                                         action_lbl,
-                                        Message::PerformGuiUpdate { download_url: url, version: latest_tag },
+                                        Message::PerformGuiUpdate {
+                                            download_url: url,
+                                            checksum_url,
+                                            version: release.tag,
+                                        },
                                     );
                                 } else {
                                     return self.notify_with_action(
@@ -2290,13 +2421,13 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::PerformGuiUpdate { download_url, version } => {
+            Message::PerformGuiUpdate { download_url, checksum_url, version } => {
                 self.update_status = UpdateStatus::Downloading;
                 let client = self.http_client.clone();
                 let notify_task = self.notify(self.language.about_updating());
                 let update_task = Task::perform(
                     async move {
-                        match crate::online::updater::perform_update(&client, &download_url).await {
+                        match crate::online::updater::perform_update(&client, &download_url, &checksum_url).await {
                             Ok(_) => Ok(version),
                             Err(e) => Err(e),
                         }
@@ -2351,8 +2482,13 @@ impl cosmic::Application for AuraApp {
             Message::ApplyWallpaper { video_path, output } => {
                 let path_str = video_path.to_string_lossy().to_string();
 
-                // If this wallpaper is already running on this output and not paused, do nothing to avoid redundant respawns and toast spam
-                if self.config.wallpapers.get(&output).map(|s| s.as_str()) == Some(&path_str) && !self.is_paused {
+                // If this wallpaper is already running on this output and not paused, do nothing to avoid redundant respawns and toast spam.
+                // GNOME has no process to inspect, so always let Hanabi confirm the current wallpaper.
+                if !crate::engine::gnome::is_active()
+                    && self.config.wallpapers.get(&output).map(|s| s.as_str()) == Some(&path_str)
+                    && !self.is_paused
+                    && self.engine.is_output_running(&output)
+                {
                     return Task::none();
                 }
 
@@ -2376,63 +2512,78 @@ impl cosmic::Application for AuraApp {
                     );
                 }
 
+                if crate::engine::gnome::is_active() {
+                    self.gnome_apply_token = self.gnome_apply_token.wrapping_add(1);
+                    let token = self.gnome_apply_token;
+                    let task_path = video_path.clone();
+                    let message_path = video_path.clone();
+                    let task_output = output.clone();
+                    let task_scaling = scaling.clone();
+                    return Task::perform(
+                        async move {
+                            let result = tokio::task::spawn_blocking(move || {
+                                let is_image = task_path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|ext| {
+                                        crate::scanner::IMAGE_EXTENSIONS
+                                            .contains(&ext.to_lowercase().as_str())
+                                    })
+                                    .unwrap_or(false);
+                                if is_image {
+                                    crate::engine::gnome::set_image(&task_path, &task_scaling)
+                                } else {
+                                    crate::engine::gnome::set_video(
+                                        &task_path,
+                                        &task_scaling,
+                                        mute,
+                                        volume,
+                                    )
+                                }
+                            })
+                            .await;
+                            let result = match result {
+                                Ok(result) => result,
+                                Err(e) => Err(format!("Hanabi apply task failed: {}", e)),
+                            };
+                            Message::GnomeApplyFinished {
+                                video_path: message_path,
+                                output: task_output,
+                                token,
+                                result,
+                            }
+                        },
+                        move |msg| cosmic::Action::App(msg),
+                    );
+                }
+
                 match self.engine.set_wallpaper(&output, &path_str, &scaling, mute, volume, &hwdec, self.config.auto_pause, &self.config.gpu_preference) {
                     Ok(_) => {
-                        self.config.record_wallpaper(&output, &path_str);
-                        let _ = self.config.save();
-                        self.is_paused = false;
-
-                        let file_name = video_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Video".into());
-                        self.tray_controller.update_state(file_name.clone(), false, true);
-
-                        // Live sync with quick switcher HUD if it is open
-                        if self.switcher_window_id.is_some() {
-                            let pool = self.switcher_pool();
-                            if let Some(pos) = pool.iter().position(|v| v.path == video_path) {
-                                self.switcher_index = pos;
-                            }
-                        }
-
-                        // COSMIC dynamic accent theme and appearance mode
-                        if self.config.auto_theme || self.config.theme_mode != crate::config::ThemeMode::Manual {
-                            if let Some(thumb) = self.videos.iter().find(|v| v.path == video_path).and_then(|v| v.thumb_path.as_ref()) {
-                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
-                            } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
-                                if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                    apply_cosmic_theme(&video_path, self.config.auto_theme, self.config.theme_mode);
-                                }
-                            }
-                        }
-
-                        let status_msg = self.language.status_applied(&output, &file_name);
-                        self.status_message = Some(status_msg.clone());
-                        return self.notify_applied(
-                            status_msg,
-                            self.language.toast_show_in_files(),
-                            Message::OpenWallpapersFolder,
-                        );
+                        return self.finish_wallpaper_applied(&video_path, &output, &path_str);
                     }
                     Err(e) => {
                         let err_text = e.to_string();
                         eprintln!("[Aura] Fallo al aplicar fondo: {}", err_text);
+                        let display_msg = self.wallpaper_error_text(&err_text);
+                        self.status_message = Some(format!("Error: {}", display_msg));
+                        self.status_timer = 8;
+                        return self.notify(format!("⚠️ {}", display_msg));
+                    }
+                }
+            }
 
-                        // On GNOME, translate known engine error markers to user-friendly i18n strings.
-                        let display_msg = if crate::engine::gnome::is_active() {
-                            if err_text.contains("Hanabi extension is required") {
-                                self.language.gnome_hanabi_missing_error().to_string()
-                            } else if err_text.contains("has not loaded it") || err_text.contains("Log out and back in") {
-                                self.language.gnome_hanabi_not_loaded().to_string()
-                            } else if err_text.contains("Could not disable Hanabi") {
-                                self.language.gnome_hanabi_disable_failed().to_string()
-                            } else if err_text.contains("Hanabi did not start the wallpaper") {
-                                self.language.gnome_hanabi_playback_failed().to_string()
-                            } else {
-                                err_text.clone()
-                            }
-                        } else {
-                            err_text.clone()
-                        };
-
+            Message::GnomeApplyFinished { video_path, output, token, result } => {
+                if token != self.gnome_apply_token {
+                    return Task::none();
+                }
+                match result {
+                    Ok(()) => {
+                        let path_str = video_path.to_string_lossy().to_string();
+                        return self.finish_wallpaper_applied(&video_path, &output, &path_str);
+                    }
+                    Err(err_text) => {
+                        eprintln!("[Aura] Fallo al aplicar fondo en GNOME: {}", err_text);
+                        let display_msg = self.wallpaper_error_text(&err_text);
                         self.status_message = Some(format!("Error: {}", display_msg));
                         self.status_timer = 8;
                         return self.notify(format!("⚠️ {}", display_msg));
@@ -2454,9 +2605,15 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::StopWallpaper(output) => {
+                self.gnome_apply_token = self.gnome_apply_token.wrapping_add(1);
                 let msg = if let Some(out) = &output {
                     self.engine.stop_output(out);
-                    self.config.wallpapers.remove(out);
+                    if crate::engine::gnome::is_active() {
+                        self.config.wallpapers.clear();
+                        self.config.current = None;
+                    } else {
+                        self.config.wallpapers.remove(out);
+                    }
                     self.language.status_stopped_output(out)
                 } else {
                     self.engine.stop_all();
@@ -2478,7 +2635,7 @@ impl cosmic::Application for AuraApp {
             Message::SelectScaling { output, scaling } => {
                 self.config.scaling.insert(output.clone(), scaling.clone());
                 let _ = self.config.save();
-                if !self.engine.set_scaling(&output, &scaling) {
+                if !self.engine.set_scaling(&output, &scaling) && !crate::engine::gnome::is_active() {
                     if let Some(path) = self.config.wallpapers.get(&output).cloned() {
                         let _ = self.engine.set_wallpaper(&output, &path, &scaling, self.config.mute, self.config.volume, &self.config.hwdec, self.config.auto_pause, &self.config.gpu_preference);
                     }
@@ -2576,9 +2733,11 @@ impl cosmic::Application for AuraApp {
             Message::ToggleAutoPause(active) => {
                 self.config.auto_pause = active;
                 let _ = self.config.save();
-                for (output, path) in self.config.wallpapers.clone() {
-                    let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                    let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, active, &self.config.gpu_preference);
+                if !crate::engine::gnome::is_active() {
+                    for (output, path) in self.config.wallpapers.clone() {
+                        let sc = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
+                        let _ = self.engine.set_wallpaper(&output, &path, &sc, self.config.mute, self.config.volume, &self.config.hwdec, active, &self.config.gpu_preference);
+                    }
                 }
             }
 
@@ -2591,6 +2750,9 @@ impl cosmic::Application for AuraApp {
                 self.config.mute = mute;
                 let _ = self.config.save();
                 self.engine.set_mute(None, mute);
+                if !mute {
+                    self.engine.set_volume(None, self.config.volume);
+                }
                 self.status_message = Some(if mute { self.language.status_muted().into() } else { self.language.status_unmuted().into() });
                 self.status_timer = 5;
             }

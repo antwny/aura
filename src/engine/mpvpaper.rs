@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 pub fn resolve_mpvpaper_binary() -> std::ffi::OsString {
     // 1. Check if mpvpaper exists alongside current_exe
@@ -35,6 +36,9 @@ pub fn resolve_mpvpaper_binary() -> std::ffi::OsString {
 }
 
 pub fn socket_dir() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
     if let Some(xdg) = std::env::var_os("XDG_RUNTIME_DIR") {
         if !xdg.is_empty() {
             return PathBuf::from(xdg).join("aura");
@@ -45,6 +49,9 @@ pub fn socket_dir() -> PathBuf {
 }
 
 pub fn shader_cache_dir() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
     if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
         if !xdg.is_empty() {
             let p = PathBuf::from(xdg).join("aura/mpv_shaders");
@@ -87,17 +94,66 @@ pub fn send_ipc_command(sock_path: &Path, json_cmd: &str) -> Result<String, Stri
     Ok(String::from_utf8_lossy(&buf[..n]).to_string())
 }
 
-pub fn ipc_is_alive(sock_path: &Path) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpcStatus {
+    Alive,
+    Dead,
+    Unknown,
+}
+
+pub fn ipc_status(sock_path: &Path) -> IpcStatus {
     if !sock_path.exists() {
-        return false;
+        return IpcStatus::Dead;
     }
-    match send_ipc_command(sock_path, r#"{"command": ["get_property", "pause"]}"#) {
-        Ok(resp) => resp.contains("error") && resp.contains("success"),
-        Err(_) => {
-            let _ = std::fs::remove_file(sock_path);
-            false
+
+    let mut stream = match UnixStream::connect(sock_path) {
+        Ok(stream) => stream,
+        Err(e) => {
+            if matches!(
+                e.kind(),
+                ErrorKind::NotFound
+                    | ErrorKind::ConnectionRefused
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+            ) {
+                let _ = std::fs::remove_file(sock_path);
+                return IpcStatus::Dead;
+            }
+            return IpcStatus::Unknown;
         }
+    };
+
+    let timeout = Some(Duration::from_millis(400));
+    if stream.set_read_timeout(timeout).is_err() || stream.set_write_timeout(timeout).is_err() {
+        return IpcStatus::Unknown;
     }
+    if stream
+        .write_all(b"{\"command\": [\"get_property\", \"pause\"]}\n")
+        .is_err()
+    {
+        return IpcStatus::Unknown;
+    }
+
+    let mut buf = [0u8; 4096];
+    match stream.read(&mut buf) {
+        Ok(0) => IpcStatus::Unknown,
+        Ok(n) => {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            if response.contains(r#""error":"success""#) || response.contains("success") {
+                IpcStatus::Alive
+            } else {
+                IpcStatus::Unknown
+            }
+        }
+        Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+            IpcStatus::Unknown
+        }
+        Err(_) => IpcStatus::Unknown,
+    }
+}
+
+pub fn ipc_is_alive(sock_path: &Path) -> bool {
+    matches!(ipc_status(sock_path), IpcStatus::Alive)
 }
 
 pub fn ipc_loadfile(sock_path: &Path, file_path: &str) -> Result<(), String> {
@@ -194,6 +250,34 @@ pub fn is_pid_stopped(pid: u32) -> bool {
         }
     }
     false
+}
+
+pub fn is_mpvpaper_pid(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{}/comm", pid))
+        .map(|comm| comm.trim() == "mpvpaper")
+        .unwrap_or(false)
+}
+
+fn pid_for_socket(sock_path: &Path) -> Option<u32> {
+    let expected = format!("--input-ipc-server={}", sock_path.display());
+    let entries = std::fs::read_dir("/proc").ok()?;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Ok(pid) = name.parse::<u32>() else {
+            continue;
+        };
+        if !is_mpvpaper_pid(pid) {
+            continue;
+        }
+        let Ok(cmdline) = std::fs::read(format!("/proc/{}/cmdline", pid)) else {
+            continue;
+        };
+        if String::from_utf8_lossy(&cmdline).contains(&expected) {
+            return Some(pid);
+        }
+    }
+    None
 }
 
 pub fn find_mpvpaper_pids() -> Vec<u32> {
@@ -307,6 +391,8 @@ pub struct WallpaperEngine {
     sockets: HashMap<String, PathBuf>,
     // Stores whether active wallpaper on output is an image
     output_is_image: HashMap<String, bool>,
+    // Stores the last successfully applied path per output for rollback
+    current_paths: HashMap<String, String>,
     pub is_paused: bool,
 }
 
@@ -316,7 +402,59 @@ impl WallpaperEngine {
             processes: HashMap::new(),
             sockets: HashMap::new(),
             output_is_image: HashMap::new(),
+            current_paths: HashMap::new(),
             is_paused: false,
+        }
+    }
+
+    fn own_pids(&self) -> Vec<u32> {
+        let mut pids: Vec<u32> = self
+            .sockets
+            .values()
+            .filter_map(|sock| {
+                pid_for_socket(sock).or_else(|| ipc_get_pid(sock).filter(|pid| is_mpvpaper_pid(*pid)))
+            })
+            .collect();
+        for child in self.processes.values() {
+            pids.push(child.id());
+        }
+        pids.sort_unstable();
+        pids.dedup();
+        pids.retain(|pid| is_mpvpaper_pid(*pid));
+        pids
+    }
+
+    fn previous_wallpapers(&self, output: &str) -> Vec<(String, String)> {
+        let mut previous = Vec::new();
+        if let Some(path) = self.current_paths.get("*") {
+            previous.push(("*".to_string(), path.clone()));
+        }
+        if output == "*" {
+            for (out, path) in &self.current_paths {
+                if out != "*" {
+                    previous.push((out.clone(), path.clone()));
+                }
+            }
+        } else if let Some(path) = self.current_paths.get(output) {
+            previous.push((output.to_string(), path.clone()));
+        }
+        previous
+    }
+
+    fn restore_previous(
+        &mut self,
+        previous: &[(String, String)],
+        scaling: &str,
+        mute: bool,
+        volume: u8,
+        hwdec: &str,
+        auto_pause: bool,
+        gpu_pref: &str,
+    ) {
+        for (output, path) in previous {
+            let _ = self.set_wallpaper_inner(
+                output, path, scaling, mute, volume, hwdec, auto_pause, gpu_pref, false,
+            );
         }
     }
 
@@ -324,44 +462,70 @@ impl WallpaperEngine {
         self.processes.keys().cloned().collect()
     }
 
+    pub fn is_output_running(&mut self, output: &str) -> bool {
+        if crate::engine::gnome::is_active() {
+            return false;
+        }
+        if ipc_is_alive(&socket_path_for_output(output)) {
+            return true;
+        }
+        self.processes
+            .get_mut(output)
+            .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
     pub fn reap_dead_processes(&mut self) -> Vec<String> {
         let mut dead = Vec::new();
-        self.processes.retain(|output, child| {
-            match child.try_wait() {
-                Ok(Some(_status)) => {
+        let sockets = self.sockets.clone();
+        self.processes.retain(|output, child| match child.try_wait() {
+            Ok(Some(_status)) => {
+                let ipc_alive = sockets
+                    .get(output)
+                    .map(|sock| ipc_is_alive(sock))
+                    .unwrap_or(false);
+                if ipc_alive {
+                    true
+                } else {
                     dead.push(output.clone());
                     false
                 }
-                Ok(None) => true,
-                Err(_) => {
-                    dead.push(output.clone());
-                    false
-                }
+            }
+            Ok(None) => true,
+            Err(_) => {
+                dead.push(output.clone());
+                false
             }
         });
         for out in &dead {
             if let Some(sock) = self.sockets.remove(out) {
-                let _ = std::fs::remove_file(sock);
+                if !ipc_is_alive(&sock) {
+                    let _ = std::fs::remove_file(sock);
+                }
             }
             self.output_is_image.remove(out);
+            self.current_paths.remove(out);
         }
         dead
     }
 
     pub fn ensure_sockets_discovered(&mut self) {
-        if self.sockets.is_empty() {
-            let sock_dir = socket_dir();
-            if let Ok(entries) = std::fs::read_dir(&sock_dir) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let p = entry.path();
-                    if p.extension().and_then(|e| e.to_str()) == Some("sock") {
-                        if ipc_is_alive(&p) {
-                            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-                            let out_name = name.strip_prefix("mpv_").unwrap_or(name);
-                            self.sockets.insert(out_name.to_string(), p);
-                        }
-                    }
-                }
+        let sock_dir = socket_dir();
+        let Ok(entries) = std::fs::read_dir(&sock_dir) else {
+            return;
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("sock") {
+                continue;
+            }
+            let status = ipc_status(&path);
+            if matches!(status, IpcStatus::Alive | IpcStatus::Unknown) {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                let output = name.strip_prefix("mpv_").unwrap_or(name);
+                self.sockets.insert(output.to_string(), path);
             }
         }
     }
@@ -377,16 +541,86 @@ impl WallpaperEngine {
         auto_pause: bool,
         gpu_pref: &str,
     ) -> Result<u32, std::io::Error> {
+        self.set_wallpaper_inner(
+            output, video_path, scaling, mute, volume, hwdec, auto_pause, gpu_pref, true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_wallpaper_inner(
+        &mut self,
+        output: &str,
+        video_path: &str,
+        scaling: &str,
+        mute: bool,
+        volume: u8,
+        hwdec: &str,
+        auto_pause: bool,
+        gpu_pref: &str,
+        allow_restore: bool,
+    ) -> Result<u32, std::io::Error> {
         if crate::engine::gnome::is_active() {
-            return self.set_wallpaper_gnome(video_path, scaling, mute, volume);
+            let result = self.set_wallpaper_gnome(video_path, scaling, mute, volume);
+            if result.is_ok() {
+                self.current_paths.clear();
+                self.current_paths.insert("*".to_string(), video_path.to_string());
+            }
+            return result;
         }
 
+        let is_remote = video_path.starts_with("http://")
+            || video_path.starts_with("https://")
+            || video_path.starts_with("rtsp://");
+        if !is_remote && !Path::new(video_path).is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("El archivo de fondo no existe: {}", video_path),
+            ));
+        }
+
+        let previous = if allow_restore {
+            self.previous_wallpapers(output)
+        } else {
+            Vec::new()
+        };
+        let result = self.apply_wallpaper(
+            output, video_path, scaling, mute, volume, hwdec, auto_pause, gpu_pref,
+        );
+
+        match result {
+            Ok(pid) => Ok(pid),
+            Err(e) => {
+                if allow_restore && !previous.is_empty() {
+                    eprintln!(
+                        "[Aura Engine] No se pudo aplicar '{}', restaurando el fondo anterior.",
+                        video_path
+                    );
+                    self.restore_previous(&previous, scaling, mute, volume, hwdec, auto_pause, gpu_pref);
+                }
+                Err(e)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_wallpaper(
+        &mut self,
+        output: &str,
+        video_path: &str,
+        scaling: &str,
+        mute: bool,
+        volume: u8,
+        hwdec: &str,
+        auto_pause: bool,
+        gpu_pref: &str,
+    ) -> Result<u32, std::io::Error> {
         // If applying to all monitors ("*"), stop any specific outputs first
         if output == "*" {
             self.stop_all();
         } else {
             // Stop wildcard if running, and stop this specific output's previous process
             self.stop_output("*");
+            self.current_paths.remove("*");
         }
 
         let is_image = std::path::Path::new(video_path)
@@ -440,6 +674,8 @@ impl WallpaperEngine {
             if ipc_loadfile(&sock_path, &effective_path_str).is_ok() {
                 self.is_paused = false;
                 self.output_is_image.insert(output.to_string(), is_image);
+                self.current_paths
+                    .insert(output.to_string(), video_path.to_string());
                 self.sockets.insert(output.to_string(), sock_path.clone());
                 if let Some(child) = self.processes.get(output) {
                     return Ok(child.id());
@@ -459,7 +695,8 @@ impl WallpaperEngine {
         opts.push_str(&format!(" --input-ipc-server={}", sock_path.display()));
 
         let mpv_bin = resolve_mpvpaper_binary();
-        let use_systemd_run = can_use_systemd_run();
+        let use_systemd_run =
+            can_use_systemd_run() && !crate::engine::gpu::systemd_run_gpu_args(gpu_pref).is_empty();
 
         let mut cmd = if use_systemd_run {
             let mut c = Command::new("systemd-run");
@@ -509,6 +746,7 @@ impl WallpaperEngine {
             Err(e) => {
                 if use_systemd_run {
                     let mut fallback = Command::new(&mpv_bin);
+                    crate::engine::gpu::apply_gpu_env(&mut fallback, gpu_pref);
                     fallback.arg("-l").arg("background");
                     if auto_pause {
                         fallback.arg("-p");
@@ -558,29 +796,66 @@ impl WallpaperEngine {
             }
         };
 
-        // Give dynamic linker 25ms to verify process didn't terminate immediately (e.g. exit 127: missing libmpv)
-        std::thread::sleep(std::time::Duration::from_millis(25));
-        if let Ok(Some(status)) = child.try_wait() {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut exited_status = None;
+        let mut ready = false;
+        while Instant::now() < deadline {
+            if ipc_is_alive(&sock_path) {
+                ready = true;
+                break;
+            }
+            if let Ok(Some(status)) = child.try_wait() {
+                exited_status = Some(status);
+                if !use_systemd_run {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        if !ready {
             let (distro, cmd_str) = detect_distro_command();
-            let err_msg = if status.code() == Some(127) {
-                format!(
+            let err_msg = match exited_status {
+                Some(status) if status.code() == Some(127) => format!(
                     "mpvpaper falló al cargar librerías multimedia (código 127). En {}, ejecuta: {}",
                     distro, cmd_str
-                )
-            } else {
-                format!(
-                    "mpvpaper terminó inmediatamente con código {:?}. Verifica el formato y dependencias multimedia.",
+                ),
+                Some(status) => format!(
+                    "mpvpaper terminó antes de iniciar el IPC (código {:?}). Verifica el formato y dependencias multimedia.",
                     status.code()
-                )
+                ),
+                None => "mpvpaper no inició su socket IPC a tiempo. Verifica el formato y las dependencias multimedia.".to_string(),
             };
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&sock_path);
             eprintln!("[Aura Engine] {}", err_msg);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, err_msg));
         }
 
-        let pid = child.id();
+        let pid = match ipc_get_pid(&sock_path)
+            .filter(|pid| is_mpvpaper_pid(*pid))
+            .or_else(|| {
+                let child_pid = child.id();
+                is_mpvpaper_pid(child_pid).then_some(child_pid)
+            }) {
+            Some(pid) => pid,
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&sock_path);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "No se pudo obtener el PID real de mpvpaper",
+                ));
+            }
+        };
+
         self.processes.insert(output.to_string(), child);
         self.sockets.insert(output.to_string(), sock_path);
         self.output_is_image.insert(output.to_string(), is_image);
+        self.current_paths
+            .insert(output.to_string(), video_path.to_string());
         self.is_paused = false;
         Ok(pid)
     }
@@ -685,14 +960,14 @@ impl WallpaperEngine {
     }
 
     #[allow(dead_code)]
-    pub fn is_any_paused(&self) -> bool {
+    pub fn is_any_paused(&mut self) -> bool {
+        self.ensure_sockets_discovered();
         for sock in self.sockets.values() {
-            if let Some(p) = ipc_get_pause(sock) {
-                return p;
+            if ipc_get_pause(sock) == Some(true) {
+                return true;
             }
         }
-        let pids = find_mpvpaper_pids();
-        pids.iter().any(|&pid| is_pid_stopped(pid))
+        self.own_pids().iter().any(|&pid| is_pid_stopped(pid))
     }
 
     pub fn toggle_pause(&mut self) -> bool {
@@ -723,8 +998,11 @@ impl WallpaperEngine {
             return now_paused;
         }
 
-        // Fallback: check /proc for stopped state and toggle via POSIX signals
-        let pids = find_mpvpaper_pids();
+        // Fallback: check only Aura-tracked PIDs and toggle via POSIX signals
+        let pids = self.own_pids();
+        if pids.is_empty() {
+            return self.is_paused;
+        }
         let any_stopped = pids.iter().any(|&pid| is_pid_stopped(pid));
 
         if any_stopped {
@@ -742,13 +1020,13 @@ impl WallpaperEngine {
             self.is_paused = true;
             return;
         }
+        self.ensure_sockets_discovered();
         // 1. Send pause via IPC
         for sock in self.sockets.values() {
             let _ = ipc_set_property(sock, "pause", true);
         }
         // 2. Also send SIGSTOP to freeze CPU/GPU via OS scheduler
-        let pids = find_mpvpaper_pids();
-        for pid in pids {
+        for pid in self.own_pids() {
             unsafe {
                 libc::kill(pid as i32, libc::SIGSTOP);
             }
@@ -762,9 +1040,9 @@ impl WallpaperEngine {
             self.is_paused = false;
             return;
         }
+        self.ensure_sockets_discovered();
         // 1. Send SIGCONT to unfreeze OS execution
-        let pids = find_mpvpaper_pids();
-        for pid in pids {
+        for pid in self.own_pids() {
             unsafe {
                 libc::kill(pid as i32, libc::SIGCONT);
             }
@@ -779,57 +1057,89 @@ impl WallpaperEngine {
     pub fn stop_output(&mut self, output: &str) {
         if crate::engine::gnome::is_active() {
             crate::engine::gnome::stop();
-            self.output_is_image.remove(output);
+            self.sockets.clear();
+            self.output_is_image.clear();
+            self.current_paths.clear();
             return;
         }
-        let sock_path = socket_path_for_output(output);
-        if ipc_is_alive(&sock_path) {
+        let sock_path = self
+            .sockets
+            .get(output)
+            .cloned()
+            .unwrap_or_else(|| socket_path_for_output(output));
+        let status = ipc_status(&sock_path);
+        if matches!(status, IpcStatus::Alive | IpcStatus::Unknown) {
             let _ = send_ipc_command(&sock_path, r#"{"command": ["quit"]}"#);
         }
-        if let Some(sock) = self.sockets.remove(output) {
-            let _ = std::fs::remove_file(sock);
-        }
-        let _ = std::fs::remove_file(&sock_path);
-        if let Some(mut child) = self.processes.remove(output) {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        self.output_is_image.remove(output);
-    }
 
-    pub fn stop_all(&mut self) {
-        for (_, sock) in self.sockets.drain() {
-            if ipc_is_alive(&sock) {
-                let _ = send_ipc_command(&sock, r#"{"command": ["quit"]}"#);
-            }
-            let _ = std::fs::remove_file(sock);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline && !matches!(ipc_status(&sock_path), IpcStatus::Dead) {
+            std::thread::sleep(Duration::from_millis(25));
         }
-        for (_, mut child) in self.processes.drain() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        // Also terminate any running mpvpaper processes from other instances/PIDs
-        let pids = find_mpvpaper_pids();
-        for pid in pids {
-            unsafe {
-                libc::kill(pid as i32, libc::SIGTERM);
-            }
-        }
-        // Clean up any stray sockets in socket_dir()
-        let sock_dir = socket_dir();
-        if let Ok(entries) = std::fs::read_dir(&sock_dir) {
-            for entry in entries.filter_map(|e| e.ok()) {
-                let p = entry.path();
-                if p.extension().and_then(|e| e.to_str()) == Some("sock") {
-                    let _ = std::fs::remove_file(p);
+
+        if !matches!(ipc_status(&sock_path), IpcStatus::Dead) {
+            if let Some(pid) = pid_for_socket(&sock_path).filter(|pid| is_mpvpaper_pid(*pid)) {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGCONT);
+                    libc::kill(pid as i32, libc::SIGTERM);
+                }
+                let deadline = Instant::now() + Duration::from_secs(1);
+                while Instant::now() < deadline
+                    && !matches!(ipc_status(&sock_path), IpcStatus::Dead)
+                {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                if !matches!(ipc_status(&sock_path), IpcStatus::Dead) {
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGKILL);
+                    }
                 }
             }
         }
-        self.output_is_image.clear();
-        self.is_paused = false;
+
+        if let Some(mut child) = self.processes.remove(output) {
+            if let Ok(None) = child.try_wait() {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+
+        let socket_has_process = pid_for_socket(&sock_path).is_some();
+        if matches!(ipc_status(&sock_path), IpcStatus::Dead) || !socket_has_process {
+            let _ = std::fs::remove_file(&sock_path);
+        }
+        self.sockets.remove(output);
+        self.output_is_image.remove(output);
+        self.current_paths.remove(output);
+    }
+
+    pub fn stop_all(&mut self) {
         if crate::engine::gnome::is_active() {
             crate::engine::gnome::stop();
+            self.processes.clear();
+            self.sockets.clear();
+            self.output_is_image.clear();
+            self.current_paths.clear();
+            self.is_paused = false;
+            return;
         }
+
+        self.ensure_sockets_discovered();
+        let mut outputs: Vec<String> = self
+            .sockets
+            .keys()
+            .chain(self.processes.keys())
+            .chain(self.current_paths.keys())
+            .cloned()
+            .collect();
+        outputs.sort();
+        outputs.dedup();
+        for output in outputs {
+            self.stop_output(&output);
+        }
+        self.output_is_image.clear();
+        self.current_paths.clear();
+        self.is_paused = false;
     }
 
     #[allow(dead_code)]
@@ -852,11 +1162,8 @@ impl WallpaperEngine {
             }
         }
 
-        if mute || volume == 0 {
-            opts.push_str(" --no-audio");
-        } else {
-            opts.push_str(&format!(" --volume={}", volume.min(100)));
-        }
+        opts.push_str(if mute { " --mute=yes" } else { " --mute=no" });
+        opts.push_str(&format!(" --volume={}", volume.min(100)));
 
         match scaling {
             "fill" => opts.push_str(" --panscan=1.0"),
@@ -867,8 +1174,7 @@ impl WallpaperEngine {
     }
 
     pub fn autostart_dir() -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        PathBuf::from(home).join(".config").join("autostart")
+        crate::config::config_home().join("autostart")
     }
 
     pub fn autostart_file() -> PathBuf {
@@ -884,16 +1190,24 @@ impl WallpaperEngine {
             || std::env::var_os("SNAP").is_some();
 
         let (exec_cmd, try_exec) = if is_sandboxed {
-            ("flatpak run io.github.antwny.aura --hidden".to_string(), "flatpak".to_string())
+            (
+                "flatpak run io.github.antwny.aura --hidden".to_string(),
+                "flatpak".to_string(),
+            )
         } else {
             let home = std::env::var("HOME").unwrap_or_default();
             let user_bin = PathBuf::from(&home).join(".local/bin/aura");
-            if user_bin.exists() {
-                (format!("{} --hidden", user_bin.display()), user_bin.display().to_string())
-            } else if let Ok(exe) = std::env::current_exe() {
-                (format!("{} --hidden", exe.display()), exe.display().to_string())
+            let path = if user_bin.exists() {
+                Some(user_bin)
             } else {
-                ("aura --hidden".to_string(), "aura".to_string())
+                std::env::current_exe().ok()
+            };
+            match path {
+                Some(path) => (
+                    format!("{} --hidden", desktop_exec_quote(&path.to_string_lossy())),
+                    path.to_string_lossy().to_string(),
+                ),
+                None => ("aura --hidden".to_string(), "aura".to_string()),
             }
         };
 
@@ -938,6 +1252,15 @@ pub fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+pub fn desktop_exec_quote(s: &str) -> String {
+    let escaped = s
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
+    format!("\"{}\"", escaped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -946,7 +1269,9 @@ mod tests {
     fn test_build_mpv_options() {
         let opts_fit_mute = WallpaperEngine::build_mpv_options("fit", true, 100, "auto-safe", false);
         assert!(opts_fit_mute.contains("--hwdec=auto-safe"));
-        assert!(opts_fit_mute.contains("--no-audio"));
+        assert!(opts_fit_mute.contains("--mute=yes"));
+        assert!(opts_fit_mute.contains("--volume=100"));
+        assert!(!opts_fit_mute.contains("--no-audio"));
         assert!(opts_fit_mute.contains("--demuxer-max-bytes=16M"));
         assert!(opts_fit_mute.contains("--demuxer-readahead-secs=2"));
         assert!(opts_fit_mute.contains("--vd-lavc-threads=2"));
@@ -962,6 +1287,7 @@ mod tests {
 
         let opts_fill_sound = WallpaperEngine::build_mpv_options("fill", false, 80, "vaapi", false);
         assert!(opts_fill_sound.contains("--hwdec=vaapi"));
+        assert!(opts_fill_sound.contains("--mute=no"));
         assert!(!opts_fill_sound.contains("--no-audio"));
         assert!(opts_fill_sound.contains("--volume=80"));
         assert!(opts_fill_sound.contains("--panscan=1.0"));
@@ -972,7 +1298,7 @@ mod tests {
         let opts_image = WallpaperEngine::build_mpv_options("fill", true, 100, "auto-safe", true);
         assert!(opts_image.contains("image-display-duration=inf"));
         assert!(opts_image.contains("--hwdec=auto-safe"));
-        assert!(opts_image.contains("--no-audio"));
+        assert!(opts_image.contains("--mute=yes"));
         assert!(opts_image.contains("--demuxer-max-bytes=16M"));
         assert!(opts_image.contains("--vd-lavc-threads=2"));
         assert!(opts_image.contains("--vd-lavc-dr=yes"));
@@ -1001,6 +1327,19 @@ mod tests {
     }
 
     #[test]
+    fn test_desktop_exec_quote() {
+        assert_eq!(desktop_exec_quote("/home/user/Aura"), "\"/home/user/Aura\"");
+        assert_eq!(
+            desktop_exec_quote("/home/user/My Aura/aura"),
+            "\"/home/user/My Aura/aura\""
+        );
+        assert_eq!(
+            desktop_exec_quote("/tmp/a\"b$c`d\\e"),
+            "\"/tmp/a\\\"b\\$c\\`d\\\\e\""
+        );
+    }
+
+    #[test]
     fn test_socket_paths() {
         let sock_default = socket_path_for_output("*");
         assert!(sock_default.to_string_lossy().ends_with("mpv_all.sock"));
@@ -1014,9 +1353,10 @@ mod tests {
 
     #[test]
     fn test_engine_init() {
-        let engine = WallpaperEngine::new();
+        let mut engine = WallpaperEngine::new();
         assert!(!engine.is_paused);
         assert!(!engine.is_running());
+        assert!(!engine.is_output_running("eDP-1"));
     }
 
     #[test]
@@ -1049,6 +1389,39 @@ mod tests {
     fn test_ipc_get_pid_non_existent() {
         let dummy = PathBuf::from("/tmp/non_existent_sock_123456.sock");
         assert_eq!(ipc_get_pid(&dummy), None);
+    }
+
+    #[test]
+    fn test_ipc_status_missing_socket_is_dead() {
+        let dummy = PathBuf::from("/tmp/non_existent_sock_123456.sock");
+        assert_eq!(ipc_status(&dummy), IpcStatus::Dead);
+        assert!(!ipc_is_alive(&dummy));
+    }
+
+    #[test]
+    fn test_previous_wallpapers_includes_wildcard() {
+        let mut engine = WallpaperEngine::new();
+        engine
+            .current_paths
+            .insert("*".to_string(), "/tmp/all.mp4".to_string());
+        engine
+            .current_paths
+            .insert("eDP-1".to_string(), "/tmp/old.mp4".to_string());
+
+        let previous = engine.previous_wallpapers("eDP-1");
+        assert!(previous.contains(&("*".to_string(), "/tmp/all.mp4".to_string())));
+        assert!(previous.contains(&("eDP-1".to_string(), "/tmp/old.mp4".to_string())));
+
+        let mut all = engine.previous_wallpapers("*");
+        all.sort();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_own_pids_ignores_foreign_processes() {
+        let engine = WallpaperEngine::new();
+        assert!(engine.own_pids().is_empty());
+        assert!(!is_mpvpaper_pid(std::process::id()));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,9 +115,56 @@ fn default_language() -> String {
     crate::i18n::detect_system_language().code().to_string()
 }
 
+pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn parse_version(version: &str) -> Option<(u64, u64, u64)> {
+    let clean = version.trim().trim_start_matches('v');
+    let mut parts = clean.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next().unwrap_or("0").parse().ok()?;
+    Some((major, minor, patch))
+}
+
+fn migrate_config(cfg: &mut Config) -> bool {
+    let old_version = cfg.version.as_deref().and_then(parse_version);
+    let current_version = parse_version(CURRENT_VERSION).unwrap_or((0, 0, 0));
+    let mut changed = false;
+
+    if let Some(old) = old_version {
+        if old < (1, 6, 0) && cfg.switcher_style != SwitcherStyle::Honeycomb {
+            cfg.switcher_style = SwitcherStyle::Honeycomb;
+            changed = true;
+        }
+        if old < current_version {
+            cfg.version = Some(CURRENT_VERSION.into());
+            changed = true;
+        }
+    } else {
+        // Missing or malformed version: stamp it without discarding user choices.
+        cfg.version = Some(CURRENT_VERSION.into());
+        changed = true;
+    }
+
+    changed
+}
+
+pub fn config_home() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg);
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".config")
+}
+
 fn resolve_xdg_user_dir(name: &str) -> Option<PathBuf> {
     if let Ok(home) = std::env::var("HOME") {
-        let user_dirs_file = PathBuf::from(&home).join(".config/user-dirs.dirs");
+        let user_dirs_file = config_home().join("user-dirs.dirs");
         if let Ok(content) = std::fs::read_to_string(user_dirs_file) {
             let key = format!("XDG_{}_DIR=", name.to_uppercase());
             for line in content.lines() {
@@ -204,7 +252,7 @@ pub fn default_library_dirs() -> Vec<String> {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: Some("1.7.1".into()),
+            version: Some(CURRENT_VERSION.into()),
             current: None,
             wallpapers: HashMap::new(),
             dirs: default_library_dirs(),
@@ -255,91 +303,176 @@ impl Config {
     }
 
     pub fn config_dir() -> PathBuf {
-        if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-            if !xdg.is_empty() {
-                return PathBuf::from(xdg).join("aura");
-            }
-        }
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-        PathBuf::from(home).join(".config").join("aura")
+        config_home().join("aura")
     }
 
     pub fn config_file() -> PathBuf {
         Self::config_dir().join("config.json")
     }
 
+    fn backup_file() -> PathBuf {
+        Self::config_dir().join("config.json.bak")
+    }
+
+    fn load_from_path(path: &Path) -> Option<(Config, serde_json::Value)> {
+        let content = std::fs::read_to_string(path).ok()?;
+        match serde_json::from_str::<Config>(&content) {
+            Ok(cfg) => {
+                let value = serde_json::from_str::<serde_json::Value>(&content).ok()?;
+                Some((cfg, value))
+            }
+            Err(e) => {
+                eprintln!("[Aura Config] No se pudo interpretar {}: {}", path.display(), e);
+                None
+            }
+        }
+    }
+
+    fn quarantine(path: &Path) {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("config.json");
+        let dest = path.with_file_name(format!("{}.corrupt.{}", name, stamp));
+        if std::fs::rename(path, &dest).is_ok() {
+            eprintln!(
+                "[Aura Config] Configuración corrupta guardada en {}",
+                dest.display()
+            );
+        }
+    }
+
     pub fn load() -> Self {
         let path = Self::config_file();
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(mut cfg) = serde_json::from_str::<Config>(&content) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if val.get("theme_mode").is_none() {
-                            if let Some(false) = val.get("auto_dark").and_then(|v| v.as_bool()) {
-                                cfg.theme_mode = ThemeMode::Manual;
-                            }
-                        }
-                        // Version 1.6.0+ migration:
-                        // Ensure all user configurations are preserved, but set the new Honeycomb HUD as default
-                        // on upgrading to >= 1.6.0 so users see it, while allowing them to change it in settings.
-                        let old_ver = val.get("version").and_then(|v| v.as_str());
-                        let is_v16_plus = matches!(old_ver, Some("1.6.0" | "1.6.1" | "1.7.0" | "1.7.1"));
-                        if !is_v16_plus {
-                            cfg.switcher_style = SwitcherStyle::Honeycomb;
-                            cfg.version = Some("1.7.1".into());
-                            let _ = cfg.save();
-                        } else if old_ver != Some("1.7.1") {
-                            cfg.version = Some("1.7.1".into());
-                            let _ = cfg.save();
-                        }
-                    }
-                    let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
-                    if !cfg.dirs.contains(&online_dir) {
-                        cfg.dirs.insert(0, online_dir);
-                    }
-                    // Sanitize dirs: remove default Downloads / Descargas if present from previous versions
-                    cfg.dirs.retain(|d| {
-                        let p = std::path::Path::new(d);
-                        let is_downloads = p.file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|name| name.eq_ignore_ascii_case("downloads") || name.eq_ignore_ascii_case("descargas"))
-                            .unwrap_or(false);
-                        !is_downloads
-                    });
+        let mut should_save = false;
 
-                    // If all dirs in config no longer exist, refresh with default library dirs
-                    let has_valid_dir = cfg.dirs.iter().any(|d| std::path::Path::new(d).exists());
-                    if !has_valid_dir {
-                        for d in default_library_dirs() {
-                            if !cfg.dirs.contains(&d) {
-                                cfg.dirs.push(d);
-                            }
-                        }
-                    }
-                    // Sanitize interval to reasonable range [1, 1440] (default to 30 if zero)
-                    if cfg.interval == 0 {
-                        cfg.interval = 30;
-                    } else {
-                        cfg.interval = cfg.interval.clamp(1, 1440);
-                    }
+        let loaded = match Self::load_from_path(&path) {
+            Some(loaded) => Some(loaded),
+            None => {
+                if path.exists() {
+                    Self::quarantine(&path);
+                    should_save = true;
+                }
+                Self::load_from_path(&Self::backup_file()).map(|loaded| {
+                    should_save = true;
+                    loaded
+                })
+            }
+        };
 
-                    return cfg;
+        let Some((mut cfg, val)) = loaded else {
+            let cfg = Self::default();
+            let _ = cfg.save();
+            return cfg;
+        };
+
+        let mut changed = should_save || migrate_config(&mut cfg);
+
+        if val.get("theme_mode").is_none() {
+            if let Some(false) = val.get("auto_dark").and_then(|v| v.as_bool()) {
+                cfg.theme_mode = ThemeMode::Manual;
+                changed = true;
+            }
+        }
+
+        let online_dir = crate::online::wallpapers_online_dir().to_string_lossy().to_string();
+        if !cfg.dirs.contains(&online_dir) {
+            cfg.dirs.insert(0, online_dir);
+            changed = true;
+        }
+
+        let dirs_before = cfg.dirs.len();
+        cfg.dirs.retain(|d| {
+            let p = std::path::Path::new(d);
+            let is_downloads = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|name| {
+                    name.eq_ignore_ascii_case("downloads")
+                        || name.eq_ignore_ascii_case("descargas")
+                })
+                .unwrap_or(false);
+            !is_downloads
+        });
+        changed |= cfg.dirs.len() != dirs_before;
+
+        let has_valid_dir = cfg.dirs.iter().any(|d| std::path::Path::new(d).exists());
+        if !has_valid_dir {
+            for d in default_library_dirs() {
+                if !cfg.dirs.contains(&d) {
+                    cfg.dirs.push(d);
+                    changed = true;
                 }
             }
         }
-        Self::default()
+
+        let old_interval = cfg.interval;
+        if cfg.interval == 0 {
+            cfg.interval = 30;
+        } else {
+            cfg.interval = cfg.interval.clamp(1, 1440);
+        }
+        changed |= cfg.interval != old_interval;
+
+        if changed {
+            let _ = cfg.save();
+        }
+        cfg
     }
 
     pub fn save(&self) -> Result<(), std::io::Error> {
-        let dir = Self::config_dir();
-        std::fs::create_dir_all(&dir)?;
+        self.save_to(&Self::config_file())
+    }
+
+    fn save_to(&self, target: &Path) -> Result<(), std::io::Error> {
+        let dir = target.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(dir)?;
+
+        let file_name = target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("config.json");
+        let backup = dir.join(format!("{}.bak", file_name));
+        if target.exists() {
+            let _ = std::fs::copy(target, &backup);
+        }
+
         let content = serde_json::to_string_pretty(self)?;
-        let target = Self::config_file();
-        let pid = std::process::id();
-        let tmp = dir.join(format!("config.json.tmp.{}", pid));
-        std::fs::write(&tmp, content)?;
-        std::fs::rename(&tmp, &target)?;
-        Ok(())
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let tmp = dir.join(format!(
+            "{}.tmp.{}.{}",
+            file_name,
+            std::process::id(),
+            stamp
+        ));
+
+        let result = (|| -> Result<(), std::io::Error> {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&tmp)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&tmp, target)?;
+            if let Ok(dir_handle) = std::fs::File::open(dir) {
+                let _ = dir_handle.sync_all();
+            }
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        result
     }
 
     pub fn is_favorite(&self, path: &str) -> bool {
@@ -585,8 +718,8 @@ mod tests {
     }
 
     #[test]
-    fn test_v16_config_upgrade_migration() {
-        // Simulate a legacy v1.5.0 config without "version" field and with "switcher_style": "cinematic"
+    fn test_legacy_config_migration_preserves_user_choices() {
+        // Simulate a legacy config without "version" field and with an explicit switcher style.
         let legacy_json = r#"{
             "current": "/wallpapers/live.mp4",
             "wallpapers": { "eDP-1": "/wallpapers/live.mp4" },
@@ -628,61 +761,55 @@ mod tests {
         assert_eq!(cfg.theme_mode, ThemeMode::Dark);
         assert!(cfg.rotation_only_favorites);
 
-        // Apply migration logic
-        let val: serde_json::Value = serde_json::from_str(legacy_json).expect("parse value");
-        let old_ver = val.get("version").and_then(|v| v.as_str());
-        let is_v16_plus = matches!(old_ver, Some("1.6.0" | "1.6.1" | "1.7.0" | "1.7.1"));
-        if !is_v16_plus {
-            cfg.switcher_style = SwitcherStyle::Honeycomb;
-            cfg.version = Some("1.7.1".into());
-        } else if old_ver != Some("1.7.1") {
-            cfg.version = Some("1.7.1".into());
-        }
+        assert!(migrate_config(&mut cfg));
 
-        // All user custom configurations are strictly preserved:
         assert_eq!(cfg.interval, 15);
         assert_eq!(cfg.volume, 80);
         assert_eq!(cfg.theme_mode, ThemeMode::Dark);
         assert!(cfg.rotation_only_favorites);
         assert_eq!(cfg.favorites.len(), 1);
         assert_eq!(cfg.output, "eDP-1");
-
-        // But switcher_style upgraded to Honeycomb by default:
-        assert_eq!(cfg.switcher_style, SwitcherStyle::Honeycomb);
-        assert_eq!(cfg.version.as_deref(), Some("1.7.1"));
-
-        // If user now explicitly changes to Classic or Cinematic, it persists:
-        cfg.switcher_style = SwitcherStyle::Classic;
-        let v16_json = serde_json::to_string(&cfg).expect("serialize v16");
-        let val16: serde_json::Value = serde_json::from_str(&v16_json).expect("parse v16 value");
-        let mut cfg16: Config = serde_json::from_str(&v16_json).expect("deserialize v16");
-        let ver16 = val16.get("version").and_then(|v| v.as_str());
-        let is_v16_16_plus = matches!(ver16, Some("1.6.0" | "1.6.1" | "1.7.0" | "1.7.1"));
-        if !is_v16_16_plus {
-            cfg16.switcher_style = SwitcherStyle::Honeycomb;
-        }
-        assert_eq!(cfg16.switcher_style, SwitcherStyle::Classic, "User choice must be preserved once on 1.6.0+");
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Cinematic);
+        assert_eq!(cfg.version.as_deref(), Some(CURRENT_VERSION));
     }
 
     #[test]
     fn test_v171_config_does_not_reset_switcher_style() {
-        // Existing 1.7.0 configurations must keep the user's explicit style after the patch release.
-        let mut base = Config::default();
-        base.version = Some("1.7.0".into());
-        base.switcher_style = SwitcherStyle::Cinematic;
-        let v17_json = serde_json::to_string(&base).expect("serialize v17 config");
+        let mut cfg = Config::default();
+        cfg.version = Some("1.7.0".into());
+        cfg.switcher_style = SwitcherStyle::Cinematic;
 
-        let mut cfg: Config = serde_json::from_str(&v17_json).expect("deserialize v17 json");
-        let val: serde_json::Value = serde_json::from_str(&v17_json).expect("parse v17 value");
-        let old_ver = val.get("version").and_then(|v| v.as_str());
-        let is_v16_plus = matches!(old_ver, Some("1.6.0" | "1.6.1" | "1.7.0" | "1.7.1"));
-        if !is_v16_plus {
-            cfg.switcher_style = SwitcherStyle::Honeycomb;
-        }
-        assert_eq!(
-            cfg.switcher_style,
-            SwitcherStyle::Cinematic,
-            "1.7.0/1.7.1 configs must not be treated as legacy"
-        );
+        assert!(migrate_config(&mut cfg));
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Cinematic);
+        assert_eq!(cfg.version.as_deref(), Some(CURRENT_VERSION));
+    }
+
+    #[test]
+    fn test_future_config_version_is_not_downgraded() {
+        let mut cfg = Config::default();
+        cfg.version = Some("99.0.0".into());
+        cfg.switcher_style = SwitcherStyle::Classic;
+
+        assert!(!migrate_config(&mut cfg));
+        assert_eq!(cfg.version.as_deref(), Some("99.0.0"));
+        assert_eq!(cfg.switcher_style, SwitcherStyle::Classic);
+    }
+
+    #[test]
+    fn test_save_creates_backup_and_loads_it_on_corruption() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.json");
+        let mut cfg = Config::default();
+        cfg.volume = 42;
+        cfg.save_to(&path).expect("save config");
+        cfg.save_to(&path).expect("save config again");
+        assert!(path.exists());
+
+        std::fs::write(&path, "{ not valid json").expect("corrupt config");
+        assert!(Config::load_from_path(&path).is_none());
+        let backup = dir.path().join("config.json.bak");
+        assert!(backup.exists());
+        let (restored, _) = Config::load_from_path(&backup).expect("load backup");
+        assert_eq!(restored.volume, 42);
     }
 }

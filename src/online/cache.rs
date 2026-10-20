@@ -1,13 +1,44 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const MAX_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_THUMBNAIL_SOURCE_BYTES: usize = 50 * 1024 * 1024;
+const MAX_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
+
+fn unique_destination(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_path_buf();
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("wallpaper");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+    for index in 2..10_000 {
+        let candidate = parent.join(format!("{} ({}).{}", stem, index, ext));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path.to_path_buf()
+}
+
+fn starts_like_error_document(bytes: &[u8]) -> bool {
+    let first = bytes
+        .iter()
+        .copied()
+        .find(|b| !b.is_ascii_whitespace());
+    matches!(first, Some(b'<') | Some(b'{') | Some(b'['))
+}
 
 /// Determines the user's standard Pictures / Imágenes directory via XDG or standard paths.
 pub fn user_pictures_dir() -> PathBuf {
-    // 1. Try parsing ~/.config/user-dirs.dirs (instant in-memory file read, avoids spawning subprocesses)
+    #[cfg(test)]
+    crate::test_support::init();
+
+    // 1. Try parsing $XDG_CONFIG_HOME/user-dirs.dirs (instant in-memory file read, avoids spawning subprocesses)
     if let Ok(home) = std::env::var("HOME") {
         let home_path = PathBuf::from(&home);
-        let user_dirs = home_path.join(".config/user-dirs.dirs");
+        let user_dirs = crate::config::config_home().join("user-dirs.dirs");
         if let Ok(content) = std::fs::read_to_string(user_dirs) {
             for line in content.lines() {
                 let trimmed = line.trim();
@@ -54,6 +85,9 @@ pub fn user_pictures_dir() -> PathBuf {
 }
 
 pub fn wallpapers_online_dir() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
     static CACHED: OnceLock<PathBuf> = OnceLock::new();
     CACHED.get_or_init(|| {
         let pics = user_pictures_dir();
@@ -95,6 +129,9 @@ pub fn wallpapers_online_dir() -> PathBuf {
 }
 
 pub fn thumbs_online_cache_dir() -> PathBuf {
+    #[cfg(test)]
+    crate::test_support::init();
+
     static CACHED: OnceLock<PathBuf> = OnceLock::new();
     CACHED.get_or_init(|| {
         let base = if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
@@ -302,6 +339,10 @@ where
     use std::sync::atomic::Ordering;
     use tokio::io::AsyncWriteExt;
 
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Unsupported download URL scheme".into());
+    }
+
     if let Some(parent) = destination.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
@@ -325,15 +366,50 @@ where
         return Err(format!("Server returned HTTP error {}", response.status()));
     }
 
-    let total_len = response.content_length();
+    if let Some(content_type) = response.headers().get(reqwest::header::CONTENT_TYPE) {
+        let content_type = content_type.to_str().unwrap_or_default().to_ascii_lowercase();
+        if content_type.starts_with("text/")
+            || content_type.contains("json")
+            || content_type.contains("html")
+        {
+            return Err(format!(
+                "Server returned an unexpected content type: {}",
+                content_type
+            ));
+        }
+    }
 
-    let tmp_path = destination.with_extension("tmp");
+    let total_len = response.content_length();
+    if let Some(total) = total_len {
+        if total > MAX_DOWNLOAD_BYTES {
+            return Err(format!(
+                "File is too large ({} bytes, maximum {})",
+                total, MAX_DOWNLOAD_BYTES
+            ));
+        }
+    }
+
+    let destination = unique_destination(destination);
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let tmp_path = destination.with_file_name(format!(
+        "{}.tmp.{}.{}",
+        destination
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("wallpaper"),
+        std::process::id(),
+        stamp
+    ));
     let mut file = tokio::fs::File::create(&tmp_path)
         .await
         .map_err(|e| format!("Failed to create temporary file: {}", e))?;
 
     let mut response = response;
     let mut total_bytes: u64 = 0;
+    let mut prefix = Vec::with_capacity(64);
     let mut last_progress_time = std::time::Instant::now();
 
     // Initial progress report (0%)
@@ -370,6 +446,11 @@ where
             None => break, // Stream complete
         };
 
+        if prefix.len() < 64 {
+            let take = (64 - prefix.len()).min(chunk.len());
+            prefix.extend_from_slice(&chunk[..take]);
+        }
+
         if let Err(e) = file.write_all(&chunk).await {
             drop(file);
             let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -377,6 +458,14 @@ where
         }
 
         total_bytes += chunk.len() as u64;
+        if total_bytes > MAX_DOWNLOAD_BYTES {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(format!(
+                "File exceeded the maximum size of {} bytes",
+                MAX_DOWNLOAD_BYTES
+            ));
+        }
 
         // Throttle updates to at most once every 100ms
         if last_progress_time.elapsed() >= Duration::from_millis(100) {
@@ -390,6 +479,29 @@ where
         }
     }
 
+    if total_bytes == 0 {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err("Received empty file from server".into());
+    }
+
+    if starts_like_error_document(&prefix) {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err("Server returned an HTML/JSON document instead of media".into());
+    }
+
+    let is_image_destination = destination
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| crate::scanner::IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        .unwrap_or(false);
+    if is_image_destination && !is_image_data(&prefix) {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err("Downloaded file is not a valid image".into());
+    }
+
     // Final progress report (100%)
     if let Some(tot) = total_len {
         progress_cb(total_bytes, Some(tot), 1.0);
@@ -397,21 +509,24 @@ where
         progress_cb(total_bytes, None, 1.0);
     }
 
-    file.flush()
-        .await
-        .map_err(|e| format!("Failed to flush downloaded file: {}", e))?;
+    if let Err(e) = file.flush().await {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(format!("Failed to flush downloaded file: {}", e));
+    }
+    if let Err(e) = file.sync_all().await {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(format!("Failed to sync downloaded file: {}", e));
+    }
     drop(file);
 
-    if total_bytes == 0 {
+    if let Err(e) = tokio::fs::rename(&tmp_path, &destination).await {
         let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err("Received empty file from server".into());
+        return Err(format!("Failed to finalize downloaded file: {}", e));
     }
 
-    tokio::fs::rename(&tmp_path, destination)
-        .await
-        .map_err(|e| format!("Failed to finalize downloaded file: {}", e))?;
-
-    Ok(destination.to_path_buf())
+    Ok(destination)
 }
 
 /// Verifies whether raw bytes belong to a valid image format (JPEG, PNG, WEBP, GIF).
@@ -440,6 +555,9 @@ pub fn is_image_data(bytes: &[u8]) -> bool {
 
 /// Decodes an image from memory, downscales it to fit within max dimensions, and saves as JPEG.
 pub fn save_downscaled_image(bytes: &[u8], destination: &Path, max_w: u32, max_h: u32) -> Result<PathBuf, String> {
+    if bytes.len() > MAX_THUMBNAIL_SOURCE_BYTES {
+        return Err("Image is too large to process safely".into());
+    }
     if let Some(parent) = destination.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -447,21 +565,36 @@ pub fn save_downscaled_image(bytes: &[u8], destination: &Path, max_w: u32, max_h
         .map_err(|e| format!("Failed to decode image: {}", e))?;
     let thumb = img.thumbnail(max_w, max_h);
     let tmp_path = destination.with_extension("tmp.jpg");
-    thumb.save(&tmp_path)
-        .map_err(|e| format!("Failed to encode/save thumbnail: {}", e))?;
-    let _ = std::fs::rename(&tmp_path, destination);
+    if let Err(e) = thumb.save(&tmp_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("Failed to encode/save thumbnail: {}", e));
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, destination) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("Failed to finalize thumbnail: {}", e));
+    }
     Ok(destination.to_path_buf())
 }
 
 /// Downscales an existing on-disk image file in place to reduce storage and RAM footprint.
 pub fn downscale_image_file_in_place(file_path: &Path, max_w: u32, max_h: u32) -> Result<PathBuf, String> {
+    if let Ok(meta) = file_path.metadata() {
+        if meta.len() > MAX_THUMBNAIL_SOURCE_BYTES as u64 {
+            return Err("Image is too large to process safely".into());
+        }
+    }
     let img = image::open(file_path)
         .map_err(|e| format!("Failed to open image {}: {}", file_path.display(), e))?;
     let thumb = img.thumbnail(max_w, max_h);
     let tmp_path = file_path.with_extension("tmp.jpg");
-    thumb.save(&tmp_path)
-        .map_err(|e| format!("Failed to encode/save downscaled thumbnail: {}", e))?;
-    let _ = std::fs::rename(&tmp_path, file_path);
+    if let Err(e) = thumb.save(&tmp_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("Failed to encode/save downscaled thumbnail: {}", e));
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, file_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("Failed to finalize downscaled image: {}", e));
+    }
     Ok(file_path.to_path_buf())
 }
 
@@ -508,9 +641,14 @@ pub async fn download_online_thumbnail(
         .await;
 
     if let Ok(resp) = req_res {
-        if resp.status().is_success() {
+        if resp.status().is_success()
+            && resp
+                .content_length()
+                .map(|len| len <= MAX_THUMBNAIL_BYTES)
+                .unwrap_or(true)
+        {
             if let Ok(bytes) = resp.bytes().await {
-                if is_image_data(&bytes) {
+                if bytes.len() <= MAX_THUMBNAIL_SOURCE_BYTES && is_image_data(&bytes) {
                     if bytes.len() <= 400_000 {
                         let tmp_path = destination.with_extension("tmp.jpg");
                         if tokio::fs::write(&tmp_path, &bytes).await.is_ok() {
@@ -543,12 +681,19 @@ pub async fn download_online_thumbnail(
             .map_err(|e| format!("Fallback download failed: {}", e))?;
 
         if full_resp.status().is_success() {
+            if full_resp
+                .content_length()
+                .map(|len| len > MAX_THUMBNAIL_BYTES)
+                .unwrap_or(false)
+            {
+                return Err("Fallback thumbnail is too large".into());
+            }
             let bytes = full_resp
                 .bytes()
                 .await
                 .map_err(|e| format!("Failed to read fallback bytes: {}", e))?;
 
-            if is_image_data(&bytes) {
+            if bytes.len() <= MAX_THUMBNAIL_SOURCE_BYTES && is_image_data(&bytes) {
                 let dest_clone = destination.to_path_buf();
                 let opt_res = tokio::task::spawn_blocking(move || {
                     save_downscaled_image(&bytes, &dest_clone, 400, 225)
@@ -606,6 +751,32 @@ mod tests {
 
         let invalid = b"<html>404 Not Found</html>";
         assert!(!is_image_data(invalid));
+    }
+
+    #[test]
+    fn test_unique_destination_avoids_overwrite() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("wallpaper.jpg");
+        assert_eq!(unique_destination(&first), first);
+
+        std::fs::write(&first, b"data").unwrap();
+        let second = unique_destination(&first);
+        assert_eq!(second, temp.path().join("wallpaper (2).jpg"));
+
+        std::fs::write(&second, b"data").unwrap();
+        assert_eq!(
+            unique_destination(&first),
+            temp.path().join("wallpaper (3).jpg")
+        );
+    }
+
+    #[test]
+    fn test_error_document_detection() {
+        assert!(starts_like_error_document(b"  \n<html>"));
+        assert!(starts_like_error_document(b"{\"error\":\"nope\"}"));
+        assert!(starts_like_error_document(b"[1,2,3]"));
+        assert!(!starts_like_error_document(b"\xFF\xD8\xFF"));
+        assert!(!starts_like_error_document(b""));
     }
 
     #[test]

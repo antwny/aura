@@ -1,8 +1,12 @@
 use ksni::menu::StandardItem;
 use ksni::{Handle, MenuItem, ToolTip, Tray, TrayMethods};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex as TokioMutex;
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
@@ -38,8 +42,8 @@ impl Tray for AuraTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        let lang = *self.language.lock().unwrap();
-        let name = self.current_name.lock().unwrap().clone();
+        let lang = *lock(&self.language);
+        let name = lock(&self.current_name).clone();
         let desc = if name.is_empty() {
             lang.tray_tooltip_idle().to_string()
         } else {
@@ -58,9 +62,9 @@ impl Tray for AuraTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        let lang = *self.language.lock().unwrap();
-        let is_paused = *self.is_paused.lock().unwrap();
-        let has_wall = *self.has_wallpaper.lock().unwrap();
+        let lang = *lock(&self.language);
+        let is_paused = *lock(&self.is_paused);
+        let has_wall = *lock(&self.has_wallpaper);
 
         vec![
             StandardItem {
@@ -171,8 +175,8 @@ impl TrayController {
     }
 
     pub fn set_language(&self, lang: crate::i18n::Language) {
-        *self.language.lock().unwrap() = lang;
-        let handle_opt = self.handle.lock().unwrap().clone();
+        *lock(&self.language) = lang;
+        let handle_opt = lock(&self.handle).clone();
         if let Some(handle) = handle_opt {
             tokio::spawn(async move {
                 let _ = handle.update(|_| {}).await;
@@ -181,11 +185,11 @@ impl TrayController {
     }
 
     pub fn update_state(&self, name: String, paused: bool, has_wall: bool) {
-        *self.current_name.lock().unwrap() = name;
-        *self.is_paused.lock().unwrap() = paused;
-        *self.has_wallpaper.lock().unwrap() = has_wall;
+        *lock(&self.current_name) = name;
+        *lock(&self.is_paused) = paused;
+        *lock(&self.has_wallpaper) = has_wall;
 
-        let handle_opt = self.handle.lock().unwrap().clone();
+        let handle_opt = lock(&self.handle).clone();
         if let Some(handle) = handle_opt {
             tokio::spawn(async move {
                 let _ = handle.update(|_| {}).await;
@@ -209,7 +213,7 @@ impl TrayController {
                     .assume_sni_available(true);
                 match builder.spawn().await {
                     Ok(handle) => {
-                        *handle_store.lock().unwrap() = Some(handle);
+                        *lock(&handle_store) = Some(handle);
                         return;
                     }
                     Err(e) => {

@@ -86,12 +86,16 @@ impl AuraApp {
                             );
                         u_col = u_col.push(row);
                     }
-                    crate::app::UpdateStatus::Available { latest_tag, notes, download_url } => {
+                    crate::app::UpdateStatus::Available { latest_tag, notes, download_url, checksum_url } => {
                         let badge_text = format!("🚀 {} {} (actual: v{})", self.language.about_update_available(), latest_tag, env!("CARGO_PKG_VERSION"));
-                        let update_btn = if let Some(url) = download_url {
+                        let update_btn = if let (Some(url), Some(checksum_url)) = (download_url, checksum_url) {
                             widget::button::suggested(format!("{} {}", self.language.about_update_now_btn(), latest_tag))
                                 .leading_icon(widget::icon::from_name("software-update-available-symbolic"))
-                                .on_press(Message::PerformGuiUpdate { download_url: url.clone(), version: latest_tag.clone() })
+                                .on_press(Message::PerformGuiUpdate {
+                                    download_url: url.clone(),
+                                    checksum_url: checksum_url.clone(),
+                                    version: latest_tag.clone(),
+                                })
                         } else {
                             widget::button::standard(self.language.about_github_btn())
                                 .on_press(Message::OpenGitHub)

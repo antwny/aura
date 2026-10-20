@@ -365,15 +365,15 @@ fn cmd_check_update() {
             .unwrap_or_default();
 
         match crate::online::updater::check_latest_release(&client).await {
-            Ok((latest_tag, notes, _)) => {
+            Ok(release) => {
                 let current_version = format!("v{}", env!("CARGO_PKG_VERSION"));
-                let clean_latest = latest_tag.trim_start_matches('v');
+                let clean_latest = release.tag.trim_start_matches('v');
                 let clean_current = current_version.trim_start_matches('v');
 
                 if crate::online::updater::is_newer_version(clean_latest, clean_current) {
-                    println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, latest_tag);
-                    if !notes.trim().is_empty() {
-                        println!("\nNotas de la versión:\n{}", notes);
+                    println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, release.tag);
+                    if !release.body.trim().is_empty() {
+                        println!("\nNotas de la versión:\n{}", release.body);
                     }
                     println!("\nPara actualizar automáticamente ejecuta:\n  aura update");
                 } else {
@@ -403,7 +403,7 @@ fn cmd_update() {
             .build()
             .unwrap_or_default();
 
-        let (latest_tag, _, download_url) = match crate::online::updater::check_latest_release(&client).await {
+        let release = match crate::online::updater::check_latest_release(&client).await {
             Ok(res) => res,
             Err(e) => {
                 eprintln!("No se pudo consultar actualizaciones: {}", e);
@@ -411,7 +411,7 @@ fn cmd_update() {
             }
         };
 
-        let clean_latest = latest_tag.trim_start_matches('v');
+        let clean_latest = release.tag.trim_start_matches('v');
         let current_version = env!("CARGO_PKG_VERSION");
 
         if !crate::online::updater::is_newer_version(clean_latest, current_version) {
@@ -419,19 +419,19 @@ fn cmd_update() {
             return;
         }
 
-        let url = match download_url {
-            Some(u) => u,
-            None => {
-                println!("No se encontró un archivo precompilado compatible en la versión {}.", latest_tag);
+        let (url, checksum_url) = match (release.download_url, release.checksum_url) {
+            (Some(url), Some(checksum_url)) => (url, checksum_url),
+            _ => {
+                println!("No se encontró un paquete verificado compatible en la versión {}.", release.tag);
                 println!("Visita https://github.com/antwny/aura/releases para descargar manualmente.");
                 return;
             }
         };
 
-        println!("Descargando versión {} (actual: v{})...", latest_tag, current_version);
-        match crate::online::updater::perform_update(&client, &url).await {
+        println!("Descargando versión {} (actual: v{})...", release.tag, current_version);
+        match crate::online::updater::perform_update(&client, &url, &checksum_url).await {
             Ok(dest) => {
-                println!("🎉 ¡Aura actualizada exitosamente a {}!", latest_tag);
+                println!("🎉 ¡Aura actualizada exitosamente a {}!", release.tag);
                 println!("Ubicación: {}", dest);
             }
             Err(e) => {

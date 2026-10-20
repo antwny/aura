@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-10-20
+
+### Added
+- Comprobación SHA-256 y verificación del paquete antes de instalar actualizaciones, con límite de tamaño y extracción segura.
+- Copia de seguridad `config.json.bak`, cuarentena de configuraciones corruptas y migraciones de versión explícitas.
+- Validación de descargas online: tipo de contenido, tamaño máximo, firmas de imagen y nombres de archivo sin colisiones.
+- Pruebas aisladas con directorios XDG temporales.
+
+### Changed
+- El volumen se aplica con debounce de 250 ms para no saturar el socket IPC durante el arrastre del control.
+- La reproducción de audio usa `--mute` y `--volume` en lugar de desactivar la pista de audio.
+- La aplicación de fondos en GNOME se ejecuta fuera del hilo de interfaz y descarta resultados obsoletos.
+- El autostart escapa correctamente rutas con espacios y caracteres especiales.
+- El release fija mpvpaper 1.9, valida metadatos y usa notas generadas automáticamente.
+
+### Fixed
+- `stop_all`, pausa y reanudación solo afectan a los procesos gestionados por Aura.
+- Los sockets IPC no se eliminan por un timeout temporal.
+- El fondo anterior se restaura si falla la validación o el arranque del nuevo fondo.
+- La espera de arranque de mpvpaper confirma el socket IPC y obtiene el PID real del proceso.
+- Los iconos de navegación y controles de ventana se incluyen en el binario y se publican mediante un overlay hicolor temporal, evitando que queden vacíos sin los temas Cosmic o Adwaita.
+- El tray tolera mutex envenenados en lugar de entrar en pánico.
+- Se evita bloquear la interfaz al aplicar vídeos con Hanabi o al reconectar monitores en GNOME.
+
 ## [1.7.1] - 2026-10-17
 
 ### Added

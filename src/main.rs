@@ -3,12 +3,15 @@ mod cli;
 mod config;
 mod engine;
 mod i18n;
+mod icon_fallback;
 mod scanner;
 mod theme;
 mod tray;
 mod online;
 mod system;
 mod ui;
+#[cfg(test)]
+mod test_support;
 
 fn ensure_wayland_display() {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
@@ -49,8 +52,8 @@ fn ensure_environment() {
     }
 }
 
-/// Returns true if the "Cosmic" icon theme is installed in any XDG icon directory.
-fn cosmic_icon_theme_installed() -> bool {
+/// Returns true if an icon theme is installed in any XDG icon directory.
+fn icon_theme_installed(name: &str) -> bool {
     let mut dirs = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         let home = std::path::PathBuf::from(home);
@@ -65,7 +68,7 @@ fn cosmic_icon_theme_installed() -> bool {
         .filter(|d| !d.is_empty())
         .unwrap_or_else(|| "/usr/local/share:/usr/share".to_string());
     dirs.extend(data_dirs.split(':').map(|d| std::path::Path::new(d).join("icons")));
-    dirs.iter().any(|d| d.join(cosmic::icon_theme::COSMIC).join("index.theme").is_file())
+    dirs.iter().any(|d| d.join(name).join("index.theme").is_file())
 }
 
 fn main() -> cosmic::iced::Result {
@@ -75,6 +78,8 @@ fn main() -> cosmic::iced::Result {
         cli::handle_pure_cli(&args);
         return Ok(());
     }
+
+    icon_fallback::install();
 
     let (hidden, action, action_args) = cli::parse_flags(&args);
     if let Some(ref act) = action {
@@ -94,10 +99,10 @@ fn main() -> cosmic::iced::Result {
         )
         .exit_on_close(false);
 
-    // Outside COSMIC the default "Cosmic" icon theme is usually missing, and the
-    // hicolor fallback has no window-*-symbolic icons, so the header bar's
-    // window controls render blank. Adwaita ships with GTK on most systems.
-    if !cosmic_icon_theme_installed() {
+    // Outside COSMIC the default "Cosmic" icon theme is usually missing. Use
+    // Adwaita when available for the rest of the interface; the private
+    // hicolor overlay above always supplies the header and navigation icons.
+    if !icon_theme_installed(cosmic::icon_theme::COSMIC) && icon_theme_installed("Adwaita") {
         settings = settings.default_icon_theme("Adwaita");
     }
 

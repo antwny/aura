@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RgbColor {
@@ -117,8 +117,7 @@ fn atomic_write(path: &Path, content: &str) {
 }
 
 pub fn apply_cosmic_mode(is_dark: bool) {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let cosmic_config = PathBuf::from(home).join(".config").join("cosmic");
+    let cosmic_config = crate::config::config_home().join("cosmic");
     let mode_dir = cosmic_config.join("com.system76.CosmicTheme.Mode").join("v1");
     atomic_write(&mode_dir.join("is_dark"), if is_dark { "true\n" } else { "false\n" });
 }
@@ -148,8 +147,7 @@ pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, theme_mode: crate
             return false;
         };
 
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        let cosmic_config = PathBuf::from(home).join(".config").join("cosmic");
+        let cosmic_config = crate::config::config_home().join("cosmic");
 
         let col = palette.dominant_color;
         let r_u8 = (col.r * 255.0).round().clamp(0.0, 255.0) as u8;

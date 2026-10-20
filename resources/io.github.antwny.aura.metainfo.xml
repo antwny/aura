@@ -60,6 +60,20 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.7.2" date="2026-10-20">
+      <description>
+        <p>Aura 1.7.2 focuses on update safety, process isolation, configuration resilience, and non-blocking GNOME playback:</p>
+        <ul>
+          <li>SHA-256 verified updates with bounded downloads, safe archive extraction, and binary backup.</li>
+          <li>Process and audio fixes: Aura only pauses or stops its own mpvpaper instances, keeps audio tracks available, and waits for the real IPC socket before reporting success.</li>
+          <li>GNOME video wallpapers are applied off the UI thread, and stale Hanabi requests are discarded.</li>
+          <li>Atomic configuration saves with automatic backup recovery and explicit version migrations.</li>
+          <li>Online downloads validate content, enforce size limits, and avoid filename collisions.</li>
+          <li>Volume changes are debounced, autostart paths are quoted, and the tray no longer panics on poisoned locks.</li>
+          <li>Navigation and window-control icons are bundled and exposed through a temporary hicolor overlay, so they remain visible without Cosmic or Adwaita icon themes.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.1" date="2026-10-17">
       <description>
         <p>Aura 1.7.1 adds French localization and refines GNOME video wallpaper startup and Quick Switcher presentation:</p>

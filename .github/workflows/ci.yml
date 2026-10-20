@@ -2,9 +2,9 @@ name: CI & Pre-production Verification
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "1.7.2" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "1.7.2" ]
 
 env:
   CARGO_TERM_COLOR: always
