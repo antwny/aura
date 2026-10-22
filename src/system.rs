@@ -133,3 +133,25 @@ mod tests {
         assert!(!is_heavy_process_cmdline(""));
     }
 }
+
+/// Best-effort session lock detection through logind's LockedHint. Returns
+/// false when the desktop does not publish the hint, so it never pauses on a
+/// false positive.
+pub async fn check_session_locked() -> bool {
+    tokio::task::spawn_blocking(|| {
+        let session = std::env::var("XDG_SESSION_ID").unwrap_or_default();
+        let mut command = std::process::Command::new("loginctl");
+        if session.is_empty() {
+            command.args(["show-session", "self", "-p", "LockedHint", "--value"]);
+        } else {
+            command.args(["show-session", &session, "-p", "LockedHint", "--value"]);
+        }
+        let Ok(output) = command.output() else {
+            return false;
+        };
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout).trim().eq_ignore_ascii_case("yes")
+    })
+    .await
+    .unwrap_or(false)
+}

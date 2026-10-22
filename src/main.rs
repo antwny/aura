@@ -91,11 +91,16 @@ fn main() -> cosmic::iced::Result {
         args: action_args,
     };
 
+    let saved_config = config::Config::load();
     let mut settings = cosmic::app::Settings::default()
+        .size(cosmic::iced::Size::new(
+            saved_config.window_width.clamp(360.0, 3840.0),
+            saved_config.window_height.clamp(420.0, 2160.0),
+        ))
         .size_limits(
             cosmic::iced::Limits::NONE
-                .min_width(840.0)
-                .min_height(580.0),
+                .min_width(360.0)
+                .min_height(420.0),
         )
         .exit_on_close(false);
 

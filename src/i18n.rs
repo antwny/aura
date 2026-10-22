@@ -96,6 +96,14 @@ impl Language {
         }
     }
 
+    pub fn header_show_now_playing(&self) -> &'static str {
+        match self {
+            Language::Es => "Mostrar Now Playing",
+            Language::En => "Show Now Playing",
+            Language::Fr => "Afficher Now Playing",
+        }
+    }
+
     pub fn header_add_video(&self) -> &'static str {
         match self {
             Language::Es => "Añadir Video",
@@ -313,14 +321,6 @@ impl Language {
         }
     }
 
-    pub fn monitors_screen_idle(&self, name: &str) -> String {
-        match self {
-            Language::Es => format!("Pantalla {}\n(Escritorio COSMIC)", name),
-            Language::En => format!("Display {}\n(COSMIC Desktop)", name),
-            Language::Fr => format!("Écran {}\n(Bureau COSMIC)", name),
-        }
-    }
-
     pub fn monitors_stop(&self) -> &'static str {
         match self {
             Language::Es => "Detener",
@@ -351,6 +351,54 @@ impl Language {
             Language::Es => "Fondo Activo",
             Language::En => "Active Wallpaper",
             Language::Fr => "Fond d’écran actif",
+        }
+    }
+
+    pub fn bar_monitors_count(&self, count: usize) -> String {
+        match self {
+            Language::Es => format!("{} monitor{}", count, if count == 1 { "" } else { "es" }),
+            Language::En => format!("{} monitor{}", count, if count == 1 { "" } else { "s" }),
+            Language::Fr => format!("{} écran{}", count, if count == 1 { "" } else { "s" }),
+        }
+    }
+
+    pub fn bar_all_monitors(&self) -> &'static str {
+        match self {
+            Language::Es => "Todos los monitores",
+            Language::En => "All monitors",
+            Language::Fr => "Tous les écrans",
+        }
+    }
+
+    pub fn bar_this_monitor(&self) -> &'static str {
+        match self {
+            Language::Es => "Solo este monitor",
+            Language::En => "This monitor only",
+            Language::Fr => "Cet écran uniquement",
+        }
+    }
+
+    pub fn bar_details(&self) -> &'static str {
+        match self {
+            Language::Es => "Detalles y opciones",
+            Language::En => "Details and options",
+            Language::Fr => "Détails et options",
+        }
+    }
+
+    pub fn bar_hide(&self) -> &'static str {
+        match self {
+            Language::Es => "Ocultar barra",
+            Language::En => "Hide bar",
+            Language::Fr => "Masquer la barre",
+        }
+    }
+
+    pub fn bar_target_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Destino",
+            Language::En => "Target",
+            Language::Fr => "Cible",
         }
     }
 
@@ -1587,6 +1635,30 @@ impl Language {
         }
     }
 
+    pub fn status_session_locked_paused(&self) -> &'static str {
+        match self {
+            Language::Es => "Sesión bloqueada: Fondo pausado",
+            Language::En => "Session locked: Wallpaper paused",
+            Language::Fr => "Session verrouillée : fond d’écran en pause",
+        }
+    }
+
+    pub fn status_overview_paused(&self) -> &'static str {
+        match self {
+            Language::Es => "Vista general de Niri: Fondos pausados",
+            Language::En => "Niri overview: Wallpapers paused",
+            Language::Fr => "Vue d’ensemble de Niri : fonds d’écran en pause",
+        }
+    }
+
+    pub fn status_overview_resumed(&self) -> &'static str {
+        match self {
+            Language::Es => "Vista general cerrada: Fondos reanudados",
+            Language::En => "Overview closed: Wallpapers resumed",
+            Language::Fr => "Vue d’ensemble fermée : fonds d’écran repris",
+        }
+    }
+
     pub fn dialog_pick_video(&self) -> &'static str {
         match self {
             Language::Es => "Seleccionar Video de Fondo",
@@ -1634,6 +1706,94 @@ impl Language {
             Language::Es => "Pantalla destino:",
             Language::En => "Target Display:",
             Language::Fr => "Écran cible :",
+        }
+    }
+
+    pub fn monitors_layout_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Distribución real de monitores",
+            Language::En => "Real monitor layout",
+            Language::Fr => "Disposition réelle des écrans",
+        }
+    }
+
+    pub fn monitors_drag_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "Arrastra un monitor sobre otro para cambiar el orden de la lista. Las posiciones y tamaños vienen del compositor.",
+            Language::En => "Drag one monitor onto another to reorder the list. Positions and sizes come from the compositor.",
+            Language::Fr => "Faites glisser un écran sur un autre pour changer l’ordre de la liste. Les positions et tailles viennent du compositeur.",
+        }
+    }
+
+    pub fn monitors_default_badge(&self) -> &'static str {
+        match self {
+            Language::Es => "Predeterminado: todos",
+            Language::En => "Default: all monitors",
+            Language::Fr => "Par défaut : tous les écrans",
+        }
+    }
+
+    pub fn monitors_override_badge(&self) -> &'static str {
+        match self {
+            Language::Es => "Solo este monitor",
+            Language::En => "This monitor only",
+            Language::Fr => "Cet écran uniquement",
+        }
+    }
+
+    pub fn monitors_apply_here(&self) -> &'static str {
+        match self {
+            Language::Es => "Elegir fondo para este monitor",
+            Language::En => "Choose wallpaper for this monitor",
+            Language::Fr => "Choisir un fond pour cet écran",
+        }
+    }
+
+    pub fn monitors_apply_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Elegir fondo para todos",
+            Language::En => "Choose wallpaper for all",
+            Language::Fr => "Choisir un fond pour tous",
+        }
+    }
+
+    pub fn monitors_stop_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Detener todos",
+            Language::En => "Stop all",
+            Language::Fr => "Tout arrêter",
+        }
+    }
+
+    pub fn monitors_pause_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Pausar todos",
+            Language::En => "Pause all",
+            Language::Fr => "Tout mettre en pause",
+        }
+    }
+
+    pub fn monitors_identify(&self) -> &'static str {
+        match self {
+            Language::Es => "Identificar",
+            Language::En => "Identify",
+            Language::Fr => "Identifier",
+        }
+    }
+
+    pub fn monitors_view_wallpaper(&self) -> &'static str {
+        match self {
+            Language::Es => "Ver fondo",
+            Language::En => "View wallpaper",
+            Language::Fr => "Voir le fond",
+        }
+    }
+
+    pub fn monitors_no_outputs(&self) -> &'static str {
+        match self {
+            Language::Es => "No se detectaron monitores. Conecta una salida o revisa el compositor.",
+            Language::En => "No monitors detected. Connect an output or check the compositor.",
+            Language::Fr => "Aucun écran détecté. Connectez une sortie ou vérifiez le compositeur.",
         }
     }
 
@@ -2055,6 +2215,14 @@ impl Language {
         }
     }
 
+    pub fn settings_scaling_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Ajuste de imagen",
+            Language::En => "Image scaling",
+            Language::Fr => "Mise à l’échelle",
+        }
+    }
+
     pub fn settings_hwdec_title(&self) -> &'static str {
         match self {
             Language::Es => "Aceleración de Hardware (GPU)",
@@ -2230,6 +2398,110 @@ impl Language {
             Language::Es => "Abre el HUD con una combinación de teclas: añade el comando en Atajos personalizados del teclado en los ajustes de GNOME o COSMIC:",
             Language::En => "Open the HUD with a key combo by adding this command under Custom Keyboard Shortcuts in GNOME or COSMIC Settings:",
             Language::Fr => "Ouvrez le HUD avec un raccourci clavier en ajoutant cette commande aux raccourcis clavier personnalisés de GNOME ou COSMIC :",
+        }
+    }
+
+    pub fn settings_section_integration(&self) -> &'static str {
+        match self {
+            Language::Es => "Integración Niri / DMS",
+            Language::En => "Niri / DMS integration",
+            Language::Fr => "Intégration Niri / DMS",
+        }
+    }
+
+    pub fn settings_integration_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Aura detecta Niri y DMS sin depender de ellos. Niri conserva el control de la posición de la ventana.",
+            Language::En => "Aura detects Niri and DMS without depending on them. Niri keeps ownership of window placement.",
+            Language::Fr => "Aura détecte Niri et DMS sans en dépendre. Niri conserve le placement des fenêtres.",
+        }
+    }
+
+    pub fn settings_integration_niri_ok(&self) -> &'static str {
+        match self {
+            Language::Es => "Niri detectado: layout, escala y rotación reales",
+            Language::En => "Niri detected: real layout, scale and rotation",
+            Language::Fr => "Niri détecté : disposition, échelle et rotation réelles",
+        }
+    }
+
+    pub fn settings_integration_niri_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "Niri no detectado (se usa la detección genérica de salidas)",
+            Language::En => "Niri not detected (generic output detection is used)",
+            Language::Fr => "Niri non détecté (détection générique des sorties)",
+        }
+    }
+
+    pub fn settings_integration_dms_ok(&self) -> &'static str {
+        match self {
+            Language::Es => "DMS / Quickshell detectado",
+            Language::En => "DMS / Quickshell detected",
+            Language::Fr => "DMS / Quickshell détecté",
+        }
+    }
+
+    pub fn settings_integration_dms_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "DMS no detectado",
+            Language::En => "DMS not detected",
+            Language::Fr => "DMS non détecté",
+        }
+    }
+
+    pub fn settings_integration_underlay(&self) -> &'static str {
+        match self {
+            Language::Es => "Sincronizar póster en la capa DMS (best-effort)",
+            Language::En => "Sync poster in the DMS layer (best-effort)",
+            Language::Fr => "Synchroniser l’affiche dans la couche DMS (best-effort)",
+        }
+    }
+
+    pub fn settings_integration_underlay_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Opcional. La versión actual de DMS no expone un IPC estable para fijar una ruta; si no está disponible, Aura mantiene su transición propia.",
+            Language::En => "Optional. Current DMS does not expose a stable IPC to set a path; when unavailable, Aura keeps its own transition.",
+            Language::Fr => "Facultatif. La version actuelle de DMS n’expose pas d’IPC stable pour définir un chemin ; sinon Aura utilise sa propre transition.",
+        }
+    }
+
+    pub fn settings_integration_copy_rule(&self) -> &'static str {
+        match self {
+            Language::Es => "Copiar layer-rule",
+            Language::En => "Copy layer-rule",
+            Language::Fr => "Copier la layer-rule",
+        }
+    }
+
+    pub fn settings_integration_copy_window_rule(&self) -> &'static str {
+        match self {
+            Language::Es => "Copiar window-rule",
+            Language::En => "Copy window-rule",
+            Language::Fr => "Copier la window-rule",
+        }
+    }
+
+    pub fn settings_integration_copy_shortcuts(&self) -> &'static str {
+        match self {
+            Language::Es => "Copiar atajos",
+            Language::En => "Copy shortcuts",
+            Language::Fr => "Copier les raccourcis",
+        }
+    }
+
+    pub fn settings_integration_copy_autostart(&self) -> &'static str {
+        match self {
+            Language::Es => "Copiar autostart",
+            Language::En => "Copy autostart",
+            Language::Fr => "Copier l’autostart",
+        }
+    }
+
+    pub fn settings_show_now_playing(&self) -> &'static str {
+        match self {
+            Language::Es => "Mostrar barra Now Playing",
+            Language::En => "Show Now Playing bar",
+            Language::Fr => "Afficher la barre Now Playing",
         }
     }
 

@@ -1,5 +1,6 @@
 pub mod gnome;
 pub mod gpu;
+pub mod integration;
 pub mod mpvpaper;
 pub mod outputs;
 

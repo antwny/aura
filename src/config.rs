@@ -85,6 +85,34 @@ pub struct Config {
     pub switcher_position: String,
     #[serde(default)]
     pub switcher_style: SwitcherStyle,
+    #[serde(default = "default_window_width")]
+    pub window_width: f32,
+    #[serde(default = "default_window_height")]
+    pub window_height: f32,
+    #[serde(default)]
+    pub window_x: Option<f32>,
+    #[serde(default)]
+    pub window_y: Option<f32>,
+    #[serde(default = "default_true")]
+    pub show_now_playing: bool,
+    #[serde(default = "default_true")]
+    pub dms_underlay_sync: bool,
+    /// User-preferred monitor order. The compositor layout still decides the
+    /// canvas positions; this order drives the list and keyboard navigation.
+    #[serde(default)]
+    pub monitor_order: Vec<String>,
+}
+
+fn default_window_width() -> f32 {
+    960.0
+}
+
+fn default_window_height() -> f32 {
+    640.0
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_switcher_position() -> String {
@@ -283,23 +311,43 @@ impl Default for Config {
             switcher_only_favorites: false,
             switcher_position: default_switcher_position(),
             switcher_style: SwitcherStyle::Honeycomb,
+            window_width: default_window_width(),
+            window_height: default_window_height(),
+            window_x: None,
+            window_y: None,
+            show_now_playing: true,
+            dms_underlay_sync: true,
+            monitor_order: Vec::new(),
         }
     }
 }
 
 impl Config {
     /// Records `path` as active on `output`, keeping the map in step with the engine:
-    /// "*" replaces every per-output entry, and a per-output apply ends the wildcard.
-    /// GNOME has a single desktop background, so there everything maps to "*".
+    /// "*" is the default for every monitor; per-output entries are overrides and
+    /// never remove the default. GNOME has one desktop background, so everything
+    /// maps to "*".
     pub fn record_wallpaper(&mut self, output: &str, path: &str) {
         if output == "*" || crate::engine::gnome::is_active() {
             self.wallpapers.clear();
             self.wallpapers.insert("*".into(), path.into());
         } else {
-            self.wallpapers.remove("*");
             self.wallpapers.insert(output.into(), path.into());
         }
         self.current = Some(path.into());
+    }
+
+    /// Returns the wallpaper that should be visible on an output, taking the
+    /// wildcard default into account.
+    pub fn wallpaper_for(&self, output: &str) -> Option<&str> {
+        self.wallpapers
+            .get(output)
+            .or_else(|| self.wallpapers.get("*"))
+            .map(String::as_str)
+    }
+
+    pub fn is_default_wallpaper(&self, output: &str) -> bool {
+        output == "*" || !self.wallpapers.contains_key(output)
     }
 
     pub fn config_dir() -> PathBuf {
@@ -517,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_wallpaper_keeps_wildcard_exclusive() {
+    fn test_record_wallpaper_keeps_wildcard_default() {
         if crate::engine::gnome::is_active() {
             return;
         }
@@ -531,9 +579,11 @@ mod tests {
         assert_eq!(cfg.wallpapers.get("*").unwrap(), "/c.mp4");
 
         cfg.record_wallpaper("DP-1", "/d.mp4");
-        assert!(!cfg.wallpapers.contains_key("*"));
+        assert_eq!(cfg.wallpapers.get("*").unwrap(), "/c.mp4");
         assert_eq!(cfg.wallpapers.get("DP-1").unwrap(), "/d.mp4");
         assert_eq!(cfg.current.as_deref(), Some("/d.mp4"));
+        assert_eq!(cfg.wallpaper_for("DP-1"), Some("/d.mp4"));
+        assert_eq!(cfg.wallpaper_for("HDMI-A-1"), Some("/c.mp4"));
     }
 
     #[test]

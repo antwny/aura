@@ -4,9 +4,21 @@ use cosmic::widget;
 use cosmic::Element;
 
 impl AuraApp {
+    fn settings_flex_row<'a>(
+        &self,
+        children: Vec<Element<'a, Message>>,
+        spacing: u16,
+    ) -> Element<'a, Message> {
+        widget::flex_row(children)
+            .spacing(spacing)
+            .align_items(Alignment::Center)
+            .width(Length::Fill)
+            .into()
+    }
+
     pub(crate) fn view_settings(&self) -> Element<'_, Message> {
         let mut col = widget::column::with_capacity(8)
-            .spacing(18)
+            .spacing(if self.window_width < 620.0 { 12 } else { 18 })
             .width(Length::Fill);
 
         col = col.push(widget::text::title2(self.language.settings_title()));
@@ -27,7 +39,7 @@ impl AuraApp {
         let is_gnome = crate::engine::gnome::is_active();
         let section = widget::column::with_capacity(5)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
                 widget::row::with_capacity(2)
                     .spacing(10)
@@ -41,32 +53,29 @@ impl AuraApp {
                     .push(widget::text::body(self.language.settings_lang_title()))
                     .push(widget::text::caption(self.language.settings_lang_desc()))
                     .push(
-                        widget::row::with_capacity(3)
-                            .spacing(10)
-                            .push(
+                        self.settings_flex_row(vec![
                                 if self.language == crate::i18n::Language::Es {
                                     widget::button::suggested("Español")
                                 } else {
                                     widget::button::standard("Español")
                                 }
                                 .on_press(Message::SetLanguage(crate::i18n::Language::Es))
-                            )
-                            .push(
+                                .into(),
                                 if self.language == crate::i18n::Language::En {
                                     widget::button::suggested("English")
                                 } else {
                                     widget::button::standard("English")
                                 }
                                 .on_press(Message::SetLanguage(crate::i18n::Language::En))
-                            )
-                            .push(
+                                .into(),
                                 if self.language == crate::i18n::Language::Fr {
                                     widget::button::suggested("Français")
                                 } else {
                                     widget::button::standard("Français")
                                 }
                                 .on_press(Message::SetLanguage(crate::i18n::Language::Fr))
-                            )
+                                .into(),
+                            ], 10)
                     )
             )
             .push(
@@ -95,7 +104,7 @@ impl AuraApp {
         let is_gnome = crate::engine::gnome::is_active();
         let mut section = widget::column::with_capacity(9)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
                 widget::row::with_capacity(2)
                     .spacing(10)
@@ -107,11 +116,18 @@ impl AuraApp {
         let env_name = if is_gnome { "GNOME Wayland (Mutter)" } else { "COSMIC Desktop (Wayland)" };
         let engine_name = if is_gnome { "GNOME Native (GSettings + Hanabi)" } else { "mpvpaper (Wayland Layer Shell)" };
 
-        let status_box = widget::row::with_capacity(4)
-            .spacing(16)
-            .align_y(Alignment::Center)
-            .push(
-                widget::row::with_capacity(2)
+        let desktop_status: Element<'_, Message> = if self.window_width < 620.0 {
+            widget::column::with_capacity(2)
+                .spacing(4)
+                .push(widget::text::caption(self.language.settings_engine_desktop_lbl()))
+                .push(
+                    widget::container(widget::text::body(env_name).size(13))
+                        .padding([4, 10])
+                        .class(cosmic::theme::Container::Card),
+                )
+                .into()
+        } else {
+            widget::row::with_capacity(2)
                     .spacing(6)
                     .align_y(Alignment::Center)
                     .push(widget::text::caption(self.language.settings_engine_desktop_lbl()))
@@ -120,9 +136,20 @@ impl AuraApp {
                             .padding([4, 10])
                             .class(cosmic::theme::Container::Card)
                     )
-            )
-            .push(
-                widget::row::with_capacity(2)
+                    .into()
+        };
+        let backend_status: Element<'_, Message> = if self.window_width < 620.0 {
+            widget::column::with_capacity(2)
+                .spacing(4)
+                .push(widget::text::caption(self.language.settings_engine_backend_lbl()))
+                .push(
+                    widget::container(widget::text::body(engine_name).size(13))
+                        .padding([4, 10])
+                        .class(cosmic::theme::Container::Card),
+                )
+                .into()
+        } else {
+            widget::row::with_capacity(2)
                     .spacing(6)
                     .align_y(Alignment::Center)
                     .push(widget::text::caption(self.language.settings_engine_backend_lbl()))
@@ -131,34 +158,35 @@ impl AuraApp {
                             .padding([4, 10])
                             .class(cosmic::theme::Container::Card)
                     )
-            );
+                    .into()
+        };
+        let status_box = self.settings_flex_row(vec![desktop_status, backend_status], 16);
 
         section = section.push(status_box);
 
         if is_gnome {
             let hanabi_ok = crate::engine::gnome::hanabi_installed();
-            let diagnostic_row = if hanabi_ok {
+            let diagnostic_row: Element<'_, Message> = if hanabi_ok {
                 widget::row::with_capacity(2)
                     .spacing(10)
                     .align_y(Alignment::Center)
                     .push(widget::icon::from_name("emblem-ok-symbolic"))
                     .push(widget::text::body(self.language.settings_engine_hanabi_status_ok()))
+                    .into()
             } else {
-                widget::row::with_capacity(3)
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(widget::icon::from_name("dialog-warning-symbolic"))
-                    .push(widget::text::body(self.language.settings_engine_hanabi_status_missing()).width(Length::Fill))
-                    .push(
-                        widget::button::suggested(self.language.settings_engine_hanabi_install_btn())
-                            .leading_icon(widget::icon::from_name("software-update-available-symbolic"))
-                            .on_press(Message::OpenHanabiPage)
-                    )
+                self.settings_flex_row(vec![
+                    widget::icon::from_name("dialog-warning-symbolic").into(),
+                    widget::text::body(self.language.settings_engine_hanabi_status_missing()).width(Length::Fill).into(),
+                    widget::button::suggested(self.language.settings_engine_hanabi_install_btn())
+                        .leading_icon(widget::icon::from_name("software-update-available-symbolic"))
+                        .on_press(Message::OpenHanabiPage)
+                        .into(),
+                ], 12)
             };
 
             section = section.push(
                 widget::container(diagnostic_row)
-                    .padding(12)
+                    .padding(if self.window_width < 620.0 { 8 } else { 12 })
                     .width(Length::Fill)
                     .class(cosmic::theme::Container::Card)
             );
@@ -168,72 +196,63 @@ impl AuraApp {
             .push(widget::text::body(self.language.settings_hwdec_title()))
             .push(widget::text::caption(self.language.settings_hwdec_desc()))
             .push(
-                widget::row::with_capacity(4)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(
+                self.settings_flex_row(vec![
                         if self.config.hwdec == "auto-safe" {
                             widget::button::suggested("Auto (auto-safe)")
                         } else {
                             widget::button::standard("Auto (auto-safe)")
                         }
                         .on_press(Message::SelectHwdec("auto-safe".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.hwdec == "vaapi" {
                             widget::button::suggested("Intel/AMD (VA-API)")
                         } else {
                             widget::button::standard("Intel/AMD (VA-API)")
                         }
                         .on_press(Message::SelectHwdec("vaapi".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.hwdec == "nvdec" {
                             widget::button::suggested("NVIDIA (NVDEC)")
                         } else {
                             widget::button::standard("NVIDIA (NVDEC)")
                         }
                         .on_press(Message::SelectHwdec("nvdec".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.hwdec == "no" {
                             widget::button::suggested("CPU (Software)")
                         } else {
                             widget::button::standard("CPU (Software)")
                         }
                         .on_press(Message::SelectHwdec("no".into()))
-                    )
+                        .into(),
+                    ], 8)
             )
             .push(widget::text::body(self.language.settings_gpu_card_title()))
             .push(widget::text::caption(self.language.settings_gpu_card_desc()))
             .push(
-                widget::row::with_capacity(3)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(
+                self.settings_flex_row(vec![
                         if self.config.gpu_preference == "auto" {
                             widget::button::suggested(self.language.settings_gpu_auto())
                         } else {
                             widget::button::standard(self.language.settings_gpu_auto())
                         }
                         .on_press(Message::SelectGpuPreference("auto".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.gpu_preference == "integrated" {
                             widget::button::suggested(self.language.settings_gpu_integrated())
                         } else {
                             widget::button::standard(self.language.settings_gpu_integrated())
                         }
                         .on_press(Message::SelectGpuPreference("integrated".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.gpu_preference == "discrete" {
                             widget::button::suggested(self.language.settings_gpu_discrete())
                         } else {
                             widget::button::standard(self.language.settings_gpu_discrete())
                         }
                         .on_press(Message::SelectGpuPreference("discrete".into()))
-                    )
+                        .into(),
+                    ], 8)
             );
 
         widget::container(section)
@@ -246,7 +265,7 @@ impl AuraApp {
     fn view_performance_section(&self) -> Element<'_, Message> {
         let section = widget::column::with_capacity(5)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
                 widget::row::with_capacity(2)
                     .spacing(10)
@@ -297,7 +316,7 @@ impl AuraApp {
         let count_favs = self.config.favorites.len();
         let switcher_section = widget::column::with_capacity(7)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
                 widget::row::with_capacity(2)
                     .spacing(10)
@@ -307,11 +326,8 @@ impl AuraApp {
             )
             .push(widget::text::caption(self.language.settings_switcher_desc()))
             .push(
-                widget::row::with_capacity(3)
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(widget::text::body(self.language.settings_switcher_tray_click_label()))
-                    .push(
+                self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_switcher_tray_click_label()).into(),
                         if self.config.tray_click_action != "main_window" {
                             widget::button::suggested(self.language.settings_switcher_tray_opt_switcher())
                         } else {
@@ -319,8 +335,7 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("view-carousel-symbolic"))
                         .on_press(Message::SelectTrayClickAction("switcher".into()))
-                    )
-                    .push(
+                        .into(),
                         if self.config.tray_click_action == "main_window" {
                             widget::button::suggested(self.language.settings_switcher_tray_opt_main())
                         } else {
@@ -328,14 +343,12 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("window-symbolic"))
                         .on_press(Message::SelectTrayClickAction("main_window".into()))
-                    )
+                        .into(),
+                ], 12)
             )
             .push(
-                widget::row::with_capacity(3)
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .push(widget::text::body(self.language.settings_switcher_filter_label()))
-                    .push(
+                self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_switcher_filter_label()).into(),
                         if !self.config.switcher_only_favorites {
                             widget::button::suggested(self.language.settings_switcher_filter_all())
                         } else {
@@ -343,8 +356,7 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("view-grid-symbolic"))
                         .on_press(Message::ToggleSwitcherOnlyFavorites(false))
-                    )
-                    .push(
+                        .into(),
                         if self.config.switcher_only_favorites {
                             widget::button::suggested(format!("{} ({})", self.language.settings_switcher_filter_favs(), count_favs))
                         } else {
@@ -352,14 +364,12 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
                         .on_press(Message::ToggleSwitcherOnlyFavorites(true))
-                    )
+                        .into(),
+                ], 12)
             )
             .push(
-                widget::row::with_capacity(4)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(widget::text::body(self.language.settings_switcher_style_label()))
-                    .push(
+                self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_switcher_style_label()).into(),
                         if self.config.switcher_style == crate::config::SwitcherStyle::Classic {
                             widget::button::suggested(self.language.settings_switcher_style_classic())
                         } else {
@@ -367,8 +377,7 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("view-paged-symbolic"))
                         .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Classic))
-                    )
-                    .push(
+                        .into(),
                         if self.config.switcher_style == crate::config::SwitcherStyle::Cinematic {
                             widget::button::suggested(self.language.settings_switcher_style_cinematic())
                         } else {
@@ -376,8 +385,7 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("video-display-symbolic"))
                         .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Cinematic))
-                    )
-                    .push(
+                        .into(),
                         if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
                             widget::button::suggested(self.language.settings_switcher_style_honeycomb())
                         } else {
@@ -385,15 +393,13 @@ impl AuraApp {
                         }
                         .leading_icon(widget::icon::from_name("view-grid-symbolic"))
                         .on_press(Message::SelectSwitcherStyle(crate::config::SwitcherStyle::Honeycomb))
-                    )
+                        .into(),
+                ], 8)
             )
             .push(
                 if self.config.switcher_style == crate::config::SwitcherStyle::Classic {
-                    let r = widget::row::with_capacity(5)
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .push(widget::text::body(self.language.settings_switcher_position_label()))
-                        .push(
+                    self.settings_flex_row(vec![
+                        widget::text::body(self.language.settings_switcher_position_label()).into(),
                             if self.config.switcher_position == "top" || (self.config.switcher_position != "bottom" && self.config.switcher_position != "left" && self.config.switcher_position != "right") {
                                 widget::button::suggested(self.language.settings_switcher_pos_top())
                             } else {
@@ -401,8 +407,7 @@ impl AuraApp {
                             }
                             .leading_icon(widget::icon::from_name("go-up-symbolic"))
                             .on_press(Message::SelectSwitcherPosition("top".into()))
-                        )
-                        .push(
+                            .into(),
                             if self.config.switcher_position == "bottom" {
                                 widget::button::suggested(self.language.settings_switcher_pos_bottom())
                             } else {
@@ -410,8 +415,7 @@ impl AuraApp {
                             }
                             .leading_icon(widget::icon::from_name("go-down-symbolic"))
                             .on_press(Message::SelectSwitcherPosition("bottom".into()))
-                        )
-                        .push(
+                            .into(),
                             if self.config.switcher_position == "left" {
                                 widget::button::suggested(self.language.settings_switcher_pos_left())
                             } else {
@@ -419,8 +423,7 @@ impl AuraApp {
                             }
                             .leading_icon(widget::icon::from_name("go-previous-symbolic"))
                             .on_press(Message::SelectSwitcherPosition("left".into()))
-                        )
-                        .push(
+                            .into(),
                             if self.config.switcher_position == "right" {
                                 widget::button::suggested(self.language.settings_switcher_pos_right())
                             } else {
@@ -428,8 +431,8 @@ impl AuraApp {
                             }
                             .leading_icon(widget::icon::from_name("go-next-symbolic"))
                             .on_press(Message::SelectSwitcherPosition("right".into()))
-                        );
-                    Element::from(r)
+                            .into(),
+                    ], 8)
                 } else if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
                     Element::from(widget::text::caption(self.language.settings_switcher_style_honeycomb_desc()))
                 } else {
@@ -442,19 +445,16 @@ impl AuraApp {
                     .push(widget::text::body(self.language.settings_switcher_shortcut_title()))
                     .push(widget::text::caption(self.language.settings_switcher_shortcut_desc()))
                     .push(
-                        widget::row::with_capacity(2)
-                            .spacing(12)
-                            .align_y(Alignment::Center)
-                            .push(
+                        self.settings_flex_row(vec![
                                 widget::container(widget::text::body("aura switcher").size(13))
                                     .padding([6, 12])
                                     .class(cosmic::theme::Container::Card)
-                            )
-                            .push(
+                                    .into(),
                                 widget::button::standard(self.language.settings_switcher_copy_cmd())
                                     .leading_icon(widget::icon::from_name("edit-copy-symbolic"))
                                     .on_press(Message::CopySwitcherCommand)
-                            )
+                                    .into(),
+                            ], 12)
                     )
             );
 
@@ -468,7 +468,7 @@ impl AuraApp {
     fn view_rotation_section(&self) -> Element<'_, Message> {
         let mut rotation_section = widget::column::with_capacity(5)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
                 widget::row::with_capacity(2)
                     .spacing(10)
@@ -487,11 +487,8 @@ impl AuraApp {
 
         if self.config.rotation {
             let count_favs = self.config.favorites.len();
-            let source_row = widget::row::with_capacity(3)
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(self.language.settings_rotation_source_label()))
-                .push(
+            let source_row = self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_rotation_source_label()).into(),
                     if !self.config.rotation_only_favorites {
                         widget::button::suggested(self.language.settings_rotation_source_all())
                     } else {
@@ -499,8 +496,7 @@ impl AuraApp {
                     }
                     .leading_icon(widget::icon::from_name("view-grid-symbolic"))
                     .on_press(Message::ToggleRotationOnlyFavorites(false))
-                )
-                .push(
+                    .into(),
                     if self.config.rotation_only_favorites {
                         widget::button::suggested(format!("{} ({})", self.language.settings_rotation_source_favs(), count_favs))
                     } else {
@@ -508,7 +504,8 @@ impl AuraApp {
                     }
                     .leading_icon(widget::icon::from_name("emblem-favorite-symbolic"))
                     .on_press(Message::ToggleRotationOnlyFavorites(true))
-                );
+                    .into(),
+                ], 8);
 
             let hint_caption = if self.config.rotation_only_favorites {
                 if count_favs == 0 {
@@ -520,10 +517,9 @@ impl AuraApp {
                 widget::text::caption(self.language.settings_rotation_desc())
             };
 
-            let mut interval_row = widget::row::with_capacity(7)
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(self.language.settings_interval_label()));
+            let mut interval_buttons = vec![
+                widget::text::body(self.language.settings_interval_label()).into(),
+            ];
 
             for (mins, label) in [(5, "5 min"), (10, "10 min"), (15, "15 min"), (30, "30 min"), (60, "1 h"), (120, "2 h")] {
                 let is_sel = self.config.interval == mins;
@@ -533,15 +529,13 @@ impl AuraApp {
                     widget::button::standard(label)
                 }
                 .on_press(Message::SelectInterval(mins));
-                interval_row = interval_row.push(btn);
+                interval_buttons.push(btn.into());
             }
+            let interval_row = self.settings_flex_row(interval_buttons, 8);
 
             let is_custom = ![5, 10, 15, 30, 60, 120].contains(&self.config.interval);
-            let custom_interval_row = widget::row::with_capacity(4)
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(self.language.settings_interval_custom_label()))
-                .push(
+            let custom_interval_row = self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_interval_custom_label()).into(),
                     widget::text_input(
                         self.language.settings_interval_custom_placeholder(),
                         &self.custom_interval_input,
@@ -549,22 +543,19 @@ impl AuraApp {
                     .on_input(Message::CustomIntervalChanged)
                     .on_submit(|_| Message::ApplyCustomInterval)
                     .width(Length::Fixed(85.0))
-                )
-                .push(widget::text::caption(self.language.settings_interval_mins_unit()))
-                .push(
+                    .into(),
+                    widget::text::caption(self.language.settings_interval_mins_unit()).into(),
                     if is_custom {
                         widget::button::suggested(self.language.settings_interval_apply())
                     } else {
                         widget::button::standard(self.language.settings_interval_apply())
                     }
                     .on_press(Message::ApplyCustomInterval)
-                );
+                    .into(),
+                ], 8);
 
-            let order_row = widget::row::with_capacity(3)
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(self.language.settings_order_label()))
-                .push(
+            let order_row = self.settings_flex_row(vec![
+                    widget::text::body(self.language.settings_order_label()).into(),
                     if self.config.order == "random" {
                         widget::button::suggested(self.language.settings_order_random())
                     } else {
@@ -572,8 +563,7 @@ impl AuraApp {
                     }
                     .leading_icon(widget::icon::from_name("media-playlist-shuffle-symbolic"))
                     .on_press(Message::SelectRotationOrder("random".into()))
-                )
-                .push(
+                    .into(),
                     if self.config.order == "sequential" {
                         widget::button::suggested(self.language.settings_order_seq())
                     } else {
@@ -581,7 +571,8 @@ impl AuraApp {
                     }
                     .leading_icon(widget::icon::from_name("media-playlist-repeat-symbolic"))
                     .on_press(Message::SelectRotationOrder("sequential".into()))
-                );
+                    .into(),
+                ], 8);
 
             rotation_section = rotation_section
                 .push(source_row)
@@ -601,18 +592,16 @@ impl AuraApp {
     fn view_appearance_section(&self) -> Element<'_, Message> {
         let section = widget::column::with_capacity(5)
             .spacing(14)
-            .padding(18)
+            .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
-                widget::row::with_capacity(3)
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .push(widget::icon::from_name("preferences-system-symbolic"))
-                    .push(widget::text::title3(self.language.settings_section_appearance()))
-                    .push(
+                self.settings_flex_row(vec![
+                    widget::icon::from_name("preferences-system-symbolic").into(),
+                    widget::text::title3(self.language.settings_section_appearance()).into(),
                         widget::container(widget::text::caption(self.language.settings_cosmic_badge()).size(11))
                             .padding([2, 8])
                             .class(cosmic::theme::Container::Card)
-                    )
+                            .into(),
+                    ], 10)
             )
             .push(
                 widget::row::with_capacity(2)
@@ -631,10 +620,7 @@ impl AuraApp {
                     .spacing(8)
                     .push(widget::text::body(self.language.settings_theme_mode_title()))
                     .push(
-                        widget::row::with_capacity(4)
-                            .spacing(8)
-                            .align_y(Alignment::Center)
-                            .push(
+                self.settings_flex_row(vec![
                                 if self.config.theme_mode == crate::config::ThemeMode::Auto {
                                     widget::button::suggested(self.language.settings_theme_mode_auto())
                                 } else {
@@ -642,8 +628,7 @@ impl AuraApp {
                                 }
                                 .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
                                 .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Auto))
-                            )
-                            .push(
+                                .into(),
                                 if self.config.theme_mode == crate::config::ThemeMode::Dark {
                                     widget::button::suggested(self.language.settings_theme_mode_dark())
                                 } else {
@@ -651,8 +636,7 @@ impl AuraApp {
                                 }
                                 .leading_icon(widget::icon::from_name("weather-clear-night-symbolic"))
                                 .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Dark))
-                            )
-                            .push(
+                                .into(),
                                 if self.config.theme_mode == crate::config::ThemeMode::Light {
                                     widget::button::suggested(self.language.settings_theme_mode_light())
                                 } else {
@@ -660,8 +644,7 @@ impl AuraApp {
                                 }
                                 .leading_icon(widget::icon::from_name("weather-clear-symbolic"))
                                 .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Light))
-                            )
-                            .push(
+                                .into(),
                                 if self.config.theme_mode == crate::config::ThemeMode::Manual {
                                     widget::button::suggested(self.language.settings_theme_mode_manual())
                                 } else {
@@ -669,7 +652,8 @@ impl AuraApp {
                                 }
                                 .leading_icon(widget::icon::from_name("preferences-system-symbolic"))
                                 .on_press(Message::SelectThemeMode(crate::config::ThemeMode::Manual))
-                            )
+                                .into(),
+                            ], 8)
                     )
                     .push(widget::text::caption(match self.config.theme_mode {
                         crate::config::ThemeMode::Auto => self.language.settings_theme_mode_auto_desc(),
@@ -689,38 +673,45 @@ impl AuraApp {
     fn view_folders_section(&self) -> Element<'_, Message> {
         let mut folders_box = widget::column::with_capacity(self.config.dirs.len() + 2)
             .spacing(12)
-            .padding(18);
+            .padding(if self.window_width < 620.0 { 12 } else { 18 });
 
-        folders_box = folders_box.push(
-            widget::row::with_capacity(2)
+        let folder_heading = widget::row::with_capacity(2)
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(widget::icon::from_name("folder-symbolic"))
+            .push(widget::text::title3(self.language.settings_monitored_folders()));
+
+        if self.window_width < 620.0 {
+            folders_box = folders_box
+                .push(folder_heading)
+                .push(
+                    widget::button::suggested(self.language.settings_btn_add_folder())
+                        .leading_icon(widget::icon::from_name("list-add-symbolic"))
+                        .on_press(Message::PickFolder),
+                );
+        } else {
+            folders_box = folders_box.push(
+                widget::row::with_capacity(2)
                 .spacing(16)
                 .align_y(Alignment::Center)
-                .push(
-                    widget::row::with_capacity(2)
-                        .spacing(10)
-                        .align_y(Alignment::Center)
-                        .push(widget::icon::from_name("folder-symbolic"))
-                        .push(widget::text::title3(self.language.settings_monitored_folders()))
-                        .width(Length::Fill)
-                )
+                .push(folder_heading.width(Length::Fill))
                 .push(
                     widget::button::suggested(self.language.settings_btn_add_folder())
                         .leading_icon(widget::icon::from_name("list-add-symbolic"))
                         .on_press(Message::PickFolder)
                 )
-        );
+            );
+        }
 
         for dir in &self.config.dirs {
             let dir_clone = dir.clone();
-            let dir_row = widget::row::with_capacity(2)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(widget::text::body(dir).width(Length::Fill))
-                .push(
+            let dir_row = self.settings_flex_row(vec![
+                    widget::text::body(dir).width(Length::Fill).into(),
                     widget::button::destructive(self.language.settings_btn_delete())
                         .leading_icon(widget::icon::from_name("user-trash-symbolic"))
                         .on_press(Message::RemoveFolder(dir_clone))
-                );
+                        .into(),
+                ], 12);
             folders_box = folders_box.push(dir_row);
         }
 

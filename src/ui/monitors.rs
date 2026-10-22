@@ -7,8 +7,9 @@ use cosmic::Element;
 
 impl AuraApp {
     pub(crate) fn view_monitors(&self) -> Element<'_, Message> {
+        let compact = self.window_width < 700.0;
         let mut col = widget::column::with_capacity(self.outputs.len() + 3)
-            .spacing(18)
+            .spacing(if compact { 12 } else { 18 })
             .width(Length::Fill);
 
         col = col.push(widget::text::title2(self.language.monitors_title()));
@@ -18,6 +19,9 @@ impl AuraApp {
         let mut monitors_canvas = widget::row::with_capacity(self.outputs.len() + 1)
             .spacing(24)
             .align_y(Alignment::End);
+        let mut monitors_list = widget::column::with_capacity(self.outputs.len())
+            .spacing(12)
+            .width(Length::Fill);
 
         for monitor in &self.outputs {
             let active_wall = self.config.wallpapers.get(&monitor.name)
@@ -28,7 +32,11 @@ impl AuraApp {
                 .map(|s| s.as_str())
                 .unwrap_or("fit");
 
-            let screen_w = 260.0f32;
+            let screen_w = if self.window_width < 420.0 {
+                (self.window_width - 100.0).clamp(180.0, 260.0)
+            } else {
+                260.0
+            };
             let is_target = self.selected_output == monitor.name;
 
             // Screen frame representation with image & video thumbnail support
@@ -65,8 +73,19 @@ impl AuraApp {
                     )
                 }
             } else {
+                let idle_label = match self.language {
+                    crate::i18n::Language::Es => {
+                        format!("Pantalla {}\n(Escritorio COSMIC)", monitor.name)
+                    }
+                    crate::i18n::Language::En => {
+                        format!("Display {}\n(COSMIC Desktop)", monitor.name)
+                    }
+                    crate::i18n::Language::Fr => {
+                        format!("Écran {}\n(Bureau COSMIC)", monitor.name)
+                    }
+                };
                 Element::from(
-                    widget::button::standard(self.language.monitors_screen_idle(&monitor.name))
+                    widget::button::standard(idle_label)
                         .width(screen_w)
                 )
             };
@@ -82,48 +101,63 @@ impl AuraApp {
 
             let monitor_card = widget::column::with_capacity(7)
                 .spacing(10)
-                .padding(14)
+                .padding(if compact { 10 } else { 14 })
+                .width(if compact { Length::Fill } else { Length::Shrink })
                 .align_x(Horizontal::Center)
                 .push(widget::text::title3(format!("{} • {}", monitor.name, monitor.resolution)))
                 .push(screen_display)
                 .push(target_btn)
                 .push(
-                    widget::row::with_capacity(4)
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .push(
-                            if active_scaling == "fit" {
-                                widget::button::suggested(self.language.scaling_fit())
-                            } else {
-                                widget::button::standard(self.language.scaling_fit())
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fit".into() })
-                        )
-                        .push(
-                            if active_scaling == "fill" {
-                                widget::button::suggested(self.language.scaling_fill())
-                            } else {
-                                widget::button::standard(self.language.scaling_fill())
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fill".into() })
-                        )
-                        .push(
-                            if active_scaling == "stretch" {
-                                widget::button::suggested(self.language.scaling_stretch())
-                            } else {
-                                widget::button::standard(self.language.scaling_stretch())
-                            }.on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "stretch".into() })
-                        )
-                        .push(
-                            widget::button::destructive(self.language.monitors_stop())
-                                .leading_icon(widget::icon::from_name("process-stop-symbolic"))
-                                .on_press(Message::StopWallpaper(Some(monitor.name.clone())))
-                        )
+                    widget::flex_row(vec![
+                        if active_scaling == "fit" {
+                            widget::button::suggested(self.language.scaling_fit())
+                        } else {
+                            widget::button::standard(self.language.scaling_fit())
+                        }
+                        .on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fit".into() })
+                        .into(),
+                        if active_scaling == "fill" {
+                            widget::button::suggested(self.language.scaling_fill())
+                        } else {
+                            widget::button::standard(self.language.scaling_fill())
+                        }
+                        .on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "fill".into() })
+                        .into(),
+                        if active_scaling == "stretch" {
+                            widget::button::suggested(self.language.scaling_stretch())
+                        } else {
+                            widget::button::standard(self.language.scaling_stretch())
+                        }
+                        .on_press(Message::SelectScaling { output: monitor.name.clone(), scaling: "stretch".into() })
+                        .into(),
+                        widget::button::destructive(self.language.monitors_stop())
+                            .leading_icon(widget::icon::from_name("process-stop-symbolic"))
+                            .on_press(Message::StopWallpaper(Some(monitor.name.clone())))
+                            .into(),
+                    ])
+                    .spacing(8)
+                    .align_items(Alignment::Center)
+                    .width(Length::Fill)
                 );
 
-            monitors_canvas = monitors_canvas.push(widget::container(monitor_card));
+            let card = widget::container(monitor_card).width(if compact {
+                Length::Fill
+            } else {
+                Length::Shrink
+            });
+            if compact {
+                monitors_list = monitors_list.push(card);
+            } else {
+                monitors_canvas = monitors_canvas.push(card);
+            }
         }
 
-        col = col.push(widget::scrollable(monitors_canvas));
+        if compact {
+            col = col.push(monitors_list);
+        } else {
+            col = col.push(widget::scrollable(monitors_canvas));
+        }
 
-        Element::from(col)
+        Element::from(widget::scrollable(col).height(Length::Fill))
     }
 }

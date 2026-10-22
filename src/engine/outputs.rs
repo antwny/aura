@@ -8,6 +8,31 @@ pub struct MonitorOutput {
     pub width: u32,
     pub height: u32,
     pub is_primary: bool,
+    /// Logical X position from the compositor layout, if known.
+    pub x: i32,
+    /// Logical Y position from the compositor layout, if known.
+    pub y: i32,
+    /// Output scale in percent (100 = 1.0).
+    pub scale_percent: u32,
+    /// Rotation in degrees: 0, 90, 180 or 270.
+    pub rotation: u16,
+}
+
+impl Default for MonitorOutput {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            resolution: "Native".into(),
+            width: 1920,
+            height: 1080,
+            is_primary: false,
+            x: 0,
+            y: 0,
+            scale_percent: 100,
+            rotation: 0,
+        }
+    }
 }
 
 impl MonitorOutput {
@@ -21,11 +46,40 @@ impl MonitorOutput {
     }
 }
 
+/// Returns the monitor that currently has keyboard focus on Niri. Layer
+/// surfaces do not expose their output name to the client, so this is the most
+/// reliable way to know which monitor a HUD invocation belongs to. Returns
+/// `None` on compositors or Niri versions without this IPC command.
+pub fn focused_output_name() -> Option<String> {
+    let output = Command::new("niri")
+        .args(["msg", "--json", "focused-output"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value
+        .get("name")
+        .and_then(|name| name.as_str())
+        .map(str::to_string)
+}
+
 pub fn detect_outputs() -> Vec<MonitorOutput> {
     let mut outputs = Vec::new();
 
     let is_sandboxed = std::path::Path::new("/.flatpak-info").exists()
         || std::env::var_os("FLATPAK_ID").is_some();
+
+    // 0. Niri IPC is the most accurate source on Niri: it reports the real
+    // layout, scale and transform used by the compositor.
+    if !is_sandboxed {
+        if let Some(niri_outputs) = detect_niri_outputs() {
+            if !niri_outputs.is_empty() {
+                return niri_outputs;
+            }
+        }
+    }
 
     // 1. Try cosmic-randr (Official COSMIC Wayland display manager, native only)
     if !is_sandboxed {
@@ -48,6 +102,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                             width: w,
                             height: h,
                             is_primary: outputs.is_empty(),
+                            ..MonitorOutput::default()
                         });
                     }
                     current_name = line.split_whitespace().next().unwrap_or("").to_string();
@@ -69,6 +124,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                     width: w,
                     height: h,
                     is_primary: outputs.is_empty(),
+                    ..MonitorOutput::default()
                 });
             }
             }
@@ -90,6 +146,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                                     width: 1920,
                                     height: 1080,
                                     is_primary: outputs.is_empty(),
+                                    ..MonitorOutput::default()
                                 });
                             }
                         }
@@ -128,6 +185,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                                 width: w,
                                 height: h,
                                 is_primary: drm_outputs.is_empty(),
+                                ..MonitorOutput::default()
                             });
                         }
                     }
@@ -155,6 +213,7 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
                                 width: 1920,
                                 height: 1080,
                                 is_primary: outputs.is_empty(),
+                                ..MonitorOutput::default()
                             });
                         }
                     }
@@ -172,10 +231,126 @@ pub fn detect_outputs() -> Vec<MonitorOutput> {
             width: 1920,
             height: 1080,
             is_primary: true,
+            ..MonitorOutput::default()
         });
     }
 
     outputs
+}
+
+fn detect_niri_outputs() -> Option<Vec<MonitorOutput>> {
+    let output = Command::new("niri")
+        .args(["msg", "--json", "outputs"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let map = value.as_object()?;
+    let mut outputs = Vec::new();
+
+    for (name, info) in map {
+        let Some(logical) = info.get("logical") else {
+            continue;
+        };
+        if logical.is_null() {
+            continue;
+        }
+        if info.get("active").and_then(|v| v.as_bool()) == Some(false) {
+            continue;
+        }
+
+        let width = logical
+            .get("width")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1920) as u32;
+        let height = logical
+            .get("height")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1080) as u32;
+        let x = logical
+            .get("x")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        let y = logical
+            .get("y")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+        let scale_percent = info
+            .get("scale")
+            .and_then(|v| v.as_f64())
+            .map(|scale| (scale * 100.0).round() as u32)
+            .unwrap_or(100)
+            .max(1);
+        let rotation = info
+            .get("transform")
+            .and_then(|v| v.as_str())
+            .map(transform_degrees)
+            .unwrap_or(0);
+
+        let mode = info
+            .get("current_mode")
+            .and_then(|v| v.as_u64())
+            .and_then(|idx| {
+                info.get("modes")
+                    .and_then(|v| v.as_array())
+                    .and_then(|modes| modes.get(idx as usize))
+            });
+        let (physical_w, physical_h) = mode
+            .map(|m| {
+                (
+                    m.get("width").and_then(|v| v.as_u64()).unwrap_or(width as u64),
+                    m.get("height").and_then(|v| v.as_u64()).unwrap_or(height as u64),
+                )
+            })
+            .unwrap_or((width as u64, height as u64));
+        let refresh = mode
+            .and_then(|m| m.get("refresh_rate").and_then(|v| v.as_f64()))
+            .map(|r| format!(" @{:.0}Hz", r))
+            .unwrap_or_default();
+
+        let make = info.get("make").and_then(|v| v.as_str()).unwrap_or("");
+        let model = info.get("model").and_then(|v| v.as_str()).unwrap_or("");
+        let description = match (make.trim(), model.trim()) {
+            ("", "") => name.clone(),
+            (make, "") => make.to_string(),
+            ("", model) => model.to_string(),
+            (make, model) => format!("{} {}", make, model),
+        };
+
+        outputs.push(MonitorOutput {
+            name: name.clone(),
+            description,
+            resolution: format!("{}x{}{}", physical_w, physical_h, refresh),
+            width,
+            height,
+            is_primary: outputs.is_empty(),
+            x,
+            y,
+            scale_percent,
+            rotation,
+        });
+    }
+
+    outputs.sort_by(|a, b| (a.x, a.y, &a.name).cmp(&(b.x, b.y, &b.name)));
+    for (idx, output) in outputs.iter_mut().enumerate() {
+        output.is_primary = idx == 0;
+    }
+    Some(outputs)
+}
+
+fn transform_degrees(transform: &str) -> u16 {
+    let lower = transform.to_lowercase();
+    if lower.contains("90") {
+        90
+    } else if lower.contains("180") {
+        180
+    } else if lower.contains("270") {
+        270
+    } else {
+        0
+    }
 }
 
 fn parse_resolution(res: &str) -> (u32, u32) {
@@ -227,6 +402,7 @@ mod tests {
             width: 1920,
             height: 1080,
             is_primary: true,
+            ..MonitorOutput::default()
         };
         let ratio = m.aspect_ratio();
         assert!((ratio - (16.0 / 9.0)).abs() < 0.01);
@@ -238,6 +414,7 @@ mod tests {
             width: 0,
             height: 0,
             is_primary: false,
+            ..MonitorOutput::default()
         };
         assert_eq!(m_zero.aspect_ratio(), 16.0 / 9.0);
     }
@@ -252,6 +429,7 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 is_primary: true,
+                ..MonitorOutput::default()
             },
         ];
 
@@ -263,6 +441,7 @@ mod tests {
                 width: 2560,
                 height: 1440,
                 is_primary: true,
+                ..MonitorOutput::default()
             },
             MonitorOutput {
                 name: "DP-2".into(),
@@ -271,6 +450,7 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 is_primary: false,
+                ..MonitorOutput::default()
             },
         ];
 

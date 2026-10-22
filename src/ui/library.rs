@@ -72,20 +72,22 @@ impl AuraApp {
             .leading_icon(widget::icon::from_name("folder-open-symbolic"))
             .on_press(Message::OpenWallpapersFolder);
 
-        let filter_bar = widget::row::with_capacity(6)
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .push(all_btn)
-            .push(live_btn)
-            .push(static_btn)
-            .push(downloaded_btn)
-            .push(favorites_btn)
-            .push(open_folder_btn);
+        let filter_bar = widget::flex_row(vec![
+            all_btn.into(),
+            live_btn.into(),
+            static_btn.into(),
+            downloaded_btn.into(),
+            favorites_btn.into(),
+            open_folder_btn.into(),
+        ])
+        .spacing(8)
+        .align_items(Alignment::Center)
+        .width(Length::Fill);
 
         let mut top_section = widget::column::with_capacity(4)
             .spacing(10)
             .push(search_row)
-            .push(widget::scrollable::horizontal(filter_bar));
+            .push(filter_bar);
 
         // Favorites quick-rotation banner when browsing Favorites filter tab
         if self.library_filter == LibraryFilter::Favorites && count_favorites > 0 {
@@ -129,28 +131,42 @@ impl AuraApp {
                     .on_press(Message::NavigateToPage(crate::app::Page::Settings))
             );
 
-            let banner_row = widget::row::with_capacity(3)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .width(Length::Fill)
-                .push(heart_icon)
-                .push(widget::container(banner_info).width(Length::Fill))
-                .push(banner_actions);
+            let banner_row: Element<'_, Message> = if self.window_width < 620.0 {
+                widget::column::with_capacity(3)
+                    .spacing(8)
+                    .width(Length::Fill)
+                    .push(
+                        widget::row::with_capacity(2)
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(heart_icon)
+                            .push(banner_info),
+                    )
+                    .push(banner_actions)
+                    .into()
+            } else {
+                widget::row::with_capacity(3)
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill)
+                    .push(heart_icon)
+                    .push(widget::container(banner_info).width(Length::Fill))
+                    .push(banner_actions)
+                    .into()
+            };
 
             let banner_box = widget::container(banner_row)
                 .padding(12)
-                .width(Length::Fill);
+                .width(Length::Fill)
+                .class(cosmic::theme::Container::Card);
 
             top_section = top_section.push(banner_box);
         }
 
         // Target display selector chips
         if self.outputs.len() > 1 {
-            let mut out_row = widget::row::with_capacity(self.outputs.len() + 2)
-                .spacing(8)
-                .align_y(Alignment::Center);
-
-            out_row = out_row.push(widget::text::body(self.language.library_target_output_label()));
+            let mut out_buttons: Vec<Element<'_, Message>> = Vec::with_capacity(self.outputs.len() + 1);
+            out_buttons.push(widget::text::body(self.language.library_target_output_label()).into());
 
             let all_sel = self.selected_output == "*";
             let all_chip = if all_sel {
@@ -160,7 +176,7 @@ impl AuraApp {
             }
             .leading_icon(widget::icon::from_name("video-display-symbolic"))
             .on_press(Message::SelectOutput("*".into()));
-            out_row = out_row.push(all_chip);
+            out_buttons.push(all_chip.into());
 
             for out in &self.outputs {
                 let is_sel = self.selected_output == out.name;
@@ -171,10 +187,15 @@ impl AuraApp {
                 }
                 .leading_icon(widget::icon::from_name("video-display-symbolic"))
                 .on_press(Message::SelectOutput(out.name.clone()));
-                out_row = out_row.push(chip);
+                out_buttons.push(chip.into());
             }
 
-            top_section = top_section.push(widget::scrollable::horizontal(out_row));
+            top_section = top_section.push(
+                widget::flex_row(out_buttons)
+                    .spacing(8)
+                    .align_items(Alignment::Center)
+                    .width(Length::Fill),
+            );
         }
 
         if self.videos.is_empty() {
@@ -184,18 +205,18 @@ impl AuraApp {
                 .push(widget::text::title2(self.language.library_empty_title()))
                 .push(widget::text::body(self.language.library_empty_desc()))
                 .push(
-                    widget::row::with_capacity(2)
-                        .spacing(12)
-                        .push(
-                            widget::button::suggested(self.language.library_btn_add_video())
-                                .leading_icon(widget::icon::from_name("list-add-symbolic"))
-                                .on_press(Message::PickVideoFile)
-                        )
-                        .push(
-                            widget::button::standard(self.language.library_btn_add_folder())
-                                .leading_icon(widget::icon::from_name("folder-symbolic"))
-                                .on_press(Message::PickFolder)
-                        )
+                    widget::flex_row(vec![
+                        widget::button::suggested(self.language.library_btn_add_video())
+                            .leading_icon(widget::icon::from_name("list-add-symbolic"))
+                            .on_press(Message::PickVideoFile)
+                            .into(),
+                        widget::button::standard(self.language.library_btn_add_folder())
+                            .leading_icon(widget::icon::from_name("folder-symbolic"))
+                            .on_press(Message::PickFolder)
+                            .into(),
+                    ])
+                    .spacing(12)
+                    .width(Length::Fill)
                 );
 
             return Element::from(
@@ -273,12 +294,19 @@ impl AuraApp {
             );
         }
 
-        let mut active_paths = std::collections::HashSet::with_capacity(self.config.wallpapers.len() + 1);
-        for path in self.config.wallpapers.values() {
-            active_paths.insert(path.as_str());
-        }
-        if let Some(ref curr) = self.config.current {
-            active_paths.insert(curr.as_str());
+        // Highlight only the wallpaper explicitly assigned to the current
+        // target: "*" means the global default, a monitor name means its
+        // override. Falling back to the wildcard is shown in Monitors instead
+        // of making a global wallpaper look pinned to every display.
+        let active_path = self
+            .config
+            .wallpapers
+            .get(&self.selected_output)
+            .cloned();
+        let mut active_paths: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(1);
+        if let Some(path) = active_path {
+            active_paths.insert(path);
         }
 
         let selected_output = self.selected_output.clone();
@@ -291,10 +319,15 @@ impl AuraApp {
         let load_more_label = self.language.library_btn_load_more();
 
         let grid = widget::responsive(move |size| {
-            let card_w = 264.0f32;
             let gap = 16.0f32;
             let available_w = size.width.max(280.0);
-            let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
+            let min_card_w = 240.0f32;
+            let cols = ((available_w + gap) / (min_card_w + gap)).floor().max(1.0) as usize;
+            let card_w = ((available_w - gap * (cols.saturating_sub(1)) as f32)
+                / cols as f32)
+                .clamp(220.0, 340.0);
+            let preview_w = (card_w - 24.0).max(180.0);
+            let preview_h = preview_w * 9.0 / 16.0;
 
             let mut cards_column = widget::column::with_capacity(displayed_videos.len() / cols + 2)
                 .spacing(gap)
@@ -314,7 +347,7 @@ impl AuraApp {
 
                     if let Some(thumb) = &video.thumb_path {
                         let mut img_btn = widget::button::image(thumb.clone())
-                            .width(240.0)
+                            .width(preview_w)
                             .selected(is_active);
                         if !is_active {
                             img_btn = img_btn.on_press(Message::ApplyWallpaper {
@@ -325,8 +358,8 @@ impl AuraApp {
                         card_content = card_content.push(img_btn);
                     } else {
                         let placeholder = widget::container(widget::text::body(self.language.library_extracting_frame()))
-                            .width(Length::Fixed(240.0))
-                            .height(Length::Fixed(135.0))
+                            .width(Length::Fixed(preview_w))
+                            .height(Length::Fixed(preview_h))
                             .align_x(Horizontal::Center)
                             .align_y(Vertical::Center);
                         card_content = card_content.push(placeholder);

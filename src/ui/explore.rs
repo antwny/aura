@@ -58,14 +58,16 @@ impl AuraApp {
             let reload_btn = widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
                 .on_press(Message::FetchOnlineWallpapers(current_source));
 
-            let top_bar = widget::row::with_capacity(5)
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .push(live_btn)
-                .push(wallhaven_btn)
-                .push(bing_btn)
-                .push(minimal_btn)
-                .push(reload_btn);
+            let top_bar = widget::flex_row(vec![
+                live_btn.into(),
+                wallhaven_btn.into(),
+                bing_btn.into(),
+                minimal_btn.into(),
+                reload_btn.into(),
+            ])
+            .spacing(8)
+            .align_items(Alignment::Center)
+            .width(Length::Fill);
 
             let subtitle = match current_source {
                 OnlineSource::MotionBGS => lang.explore_motionbgs_subtitle(),
@@ -76,7 +78,7 @@ impl AuraApp {
 
             let mut header_col = widget::column::with_capacity(5)
                 .spacing(8)
-                .push(widget::scrollable::horizontal(top_bar))
+                .push(top_bar)
                 .push(widget::text::caption(subtitle));
 
             if current_source == OnlineSource::MotionBGS {
@@ -168,27 +170,31 @@ impl AuraApp {
                     widget::button::standard(lang.explore_res_1080p())
                 }.on_press(Message::SelectMotionbgsResolution("hd".into()));
 
-                let filters_row = widget::row::with_capacity(10)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(cat_all)
-                    .push(cat_anime)
-                    .push(cat_games)
-                    .push(cat_nature)
-                    .push(cat_space)
-                    .push(cat_cars)
-                    .push(cat_superhero)
-                    .push(cat_fantasy)
-                    .push(cat_tech);
+                let filters_row = widget::flex_row(vec![
+                    cat_all.into(),
+                    cat_anime.into(),
+                    cat_games.into(),
+                    cat_nature.into(),
+                    cat_space.into(),
+                    cat_cars.into(),
+                    cat_superhero.into(),
+                    cat_fantasy.into(),
+                    cat_tech.into(),
+                ])
+                .spacing(8)
+                .align_items(Alignment::Center)
+                .width(Length::Fill);
 
-                let res_row = widget::row::with_capacity(3)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(widget::text::caption(lang.explore_resolution_label()))
-                    .push(res_4k)
-                    .push(res_hd);
+                let res_row = widget::flex_row(vec![
+                    widget::text::caption(lang.explore_resolution_label()).into(),
+                    res_4k.into(),
+                    res_hd.into(),
+                ])
+                .spacing(8)
+                .align_items(Alignment::Center)
+                .width(Length::Fill);
 
-                header_col = header_col.push(search_row).push(widget::scrollable::horizontal(filters_row)).push(res_row);
+                header_col = header_col.push(search_row).push(filters_row).push(res_row);
             }
 
             if current_source == OnlineSource::Wallhaven {
@@ -249,16 +255,18 @@ impl AuraApp {
                     widget::button::standard(lang.explore_sort_random())
                 }.on_press(Message::SelectWallhavenSorting("random".into()));
 
-                let filters_row = widget::row::with_capacity(8)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(cat_all)
-                    .push(cat_anime)
-                    .push(cat_gen)
-                    .push(widget::text::caption("|"))
-                    .push(sort_top)
-                    .push(sort_hot)
-                    .push(sort_rand);
+                let filters_row = widget::flex_row(vec![
+                    cat_all.into(),
+                    cat_anime.into(),
+                    cat_gen.into(),
+                    widget::text::caption("|").into(),
+                    sort_top.into(),
+                    sort_hot.into(),
+                    sort_rand.into(),
+                ])
+                .spacing(8)
+                .align_items(Alignment::Center)
+                .width(Length::Fill);
 
                 // Resolutions / Ratios
                 let wallhaven_res = &self.wallhaven_resolution;
@@ -286,15 +294,17 @@ impl AuraApp {
                     widget::button::standard(lang.explore_res_ultrawide())
                 }.on_press(Message::SelectWallhavenResolution("ultrawide".into()));
 
-                let res_row = widget::row::with_capacity(4)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(res_all)
-                    .push(res_4k)
-                    .push(res_2k)
-                    .push(res_uw);
+                let res_row = widget::flex_row(vec![
+                    res_all.into(),
+                    res_4k.into(),
+                    res_2k.into(),
+                    res_uw.into(),
+                ])
+                .spacing(8)
+                .align_items(Alignment::Center)
+                .width(Length::Fill);
 
-                header_col = header_col.push(search_row).push(widget::scrollable::horizontal(filters_row)).push(widget::scrollable::horizontal(res_row));
+                header_col = header_col.push(search_row).push(filters_row).push(res_row);
             }
 
             if current_source == OnlineSource::Minimalistic {
@@ -406,10 +416,15 @@ impl AuraApp {
         }
 
         let grid = widget::responsive(move |size| {
-            let card_w = 264.0f32;
             let gap = 16.0f32;
             let available_w = size.width.max(280.0);
-            let cols = ((available_w + gap) / (card_w + gap)).floor().max(1.0) as usize;
+            let min_card_w = 240.0f32;
+            let cols = ((available_w + gap) / (min_card_w + gap)).floor().max(1.0) as usize;
+            let card_w = ((available_w - gap * (cols.saturating_sub(1)) as f32)
+                / cols as f32)
+                .clamp(220.0, 340.0);
+            let preview_w = (card_w - 24.0).max(180.0);
+            let preview_h = preview_w * 9.0 / 16.0;
 
             let mut cards_column = widget::column::with_capacity(items.len() / cols + 1)
                 .spacing(gap)
@@ -419,7 +434,8 @@ impl AuraApp {
             for chunk in items.chunks(cols) {
                 let mut card_row = widget::row::with_capacity(chunk.len())
                     .spacing(gap)
-                    .align_y(Alignment::Center);
+                    .align_y(Alignment::Center)
+                    .width(Length::Fill);
                 for item in chunk {
                     let is_downloading = downloading_ids.contains(&item.id);
                     let downloaded_path = item.is_downloaded();
@@ -439,7 +455,7 @@ impl AuraApp {
                     // Image preview button
                     if let Some(thumb) = &thumb_path {
                         let mut img_btn = widget::button::image(thumb.to_string_lossy().to_string())
-                            .width(240.0)
+                            .width(preview_w)
                             .selected(is_active);
 
                         if !is_downloading {
@@ -456,8 +472,8 @@ impl AuraApp {
                         card_content = card_content.push(img_btn);
                     } else {
                         let placeholder = widget::container(widget::text::caption(lang.explore_loading()))
-                            .width(Length::Fixed(240.0))
-                            .height(Length::Fixed(135.0))
+                            .width(Length::Fixed(preview_w))
+                            .height(Length::Fixed(preview_h))
                             .align_x(Horizontal::Center)
                             .align_y(Vertical::Center);
                         card_content = card_content.push(placeholder);
