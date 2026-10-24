@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Con varios monitores, ya no se inicia un reproductor `mpvpaper` global oculto cuando cada pantalla conectada tiene su propio fondo, evitando decodificación y uso de GPU duplicados.
+- Al aplicar un fondo a la última pantalla que faltaba, o al cambiar la topología, el reproductor global redundante se detiene en caliente.
+- Al conectar un monitor nuevo con el reproductor global detenido, se crea un reproductor para esa pantalla en lugar de reactivar el global sobre todas.
+
 ## [1.8.1] - 2026-10-23
 
 ### Fixed

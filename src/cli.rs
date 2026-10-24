@@ -94,6 +94,16 @@ fn resolve_path(p_str: &str) -> PathBuf {
     }
 }
 
+/// Drops the shared wildcard player when every connected output already has
+/// its own player, avoiding a hidden duplicate renderer.
+fn retire_redundant_wildcard(engine: &mut WallpaperEngine) {
+    let outputs: Vec<String> = detect_outputs()
+        .iter()
+        .map(|output| output.name.clone())
+        .collect();
+    engine.retire_redundant_wildcard(&outputs);
+}
+
 #[allow(dead_code)]
 fn cmd_next() {
     let mut config = Config::load();
@@ -130,6 +140,7 @@ fn cmd_next() {
     if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         config.record_wallpaper(&output, &path_str);
         let _ = config.save();
+        retire_redundant_wildcard(&mut engine);
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
@@ -179,6 +190,7 @@ fn cmd_prev() {
     if let Ok(pid) = engine.set_wallpaper(&output, &path_str, &scaling, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference) {
         config.record_wallpaper(&output, &path_str);
         let _ = config.save();
+        retire_redundant_wildcard(&mut engine);
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
@@ -258,6 +270,7 @@ fn cmd_apply(path_arg: &str) {
                 config.custom_videos.push(path_str.clone());
             }
             let _ = config.save();
+            retire_redundant_wildcard(&mut engine);
 
             let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
             if thumb.exists() && (config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual) {

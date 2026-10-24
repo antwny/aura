@@ -549,6 +549,37 @@ impl WallpaperEngine {
         self.sockets.contains_key("*") || self.processes.contains_key("*")
     }
 
+    /// Stops the shared wildcard player once every connected output has its
+    /// own player. The wildcard renders underneath the per-output surfaces, so
+    /// keeping it alive only duplicates decoding and GPU work.
+    pub fn retire_redundant_wildcard(&mut self, outputs: &[String]) -> bool {
+        if crate::engine::gnome::is_active()
+            || outputs.is_empty()
+            || outputs.iter().any(|output| output == "*")
+        {
+            return false;
+        }
+        self.ensure_sockets_discovered();
+        if !self.sockets.contains_key("*") && !self.processes.contains_key("*") {
+            return false;
+        }
+        let all_have_players = outputs.iter().all(|output| {
+            self.sockets
+                .get(output)
+                .is_some_and(|sock| ipc_is_alive(sock))
+                || self
+                    .processes
+                    .get_mut(output)
+                    .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+        });
+        if all_have_players {
+            self.stop_output("*");
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn current_path(&self, output: &str) -> Option<String> {
         self.current_paths.get(output).cloned()
     }
@@ -1693,6 +1724,14 @@ mod tests {
         let dummy = PathBuf::from("/tmp/non_existent_sock_123456.sock");
         assert_eq!(ipc_status(&dummy), IpcStatus::Dead);
         assert!(!ipc_is_alive(&dummy));
+    }
+
+    #[test]
+    fn test_retire_redundant_wildcard_is_a_noop_without_wildcard() {
+        let mut engine = WallpaperEngine::new();
+        assert!(!engine.retire_redundant_wildcard(&[]));
+        assert!(!engine.retire_redundant_wildcard(&["*".into()]));
+        assert!(!engine.retire_redundant_wildcard(&["eDP-1".into()]));
     }
 
     #[test]

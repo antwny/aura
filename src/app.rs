@@ -19,21 +19,20 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-fn single_output_override(
+/// True when every connected output has its own valid wallpaper. In that case
+/// a wildcard player would only render a fully occluded surface underneath the
+/// per-output players, duplicating decoding and GPU work.
+fn all_outputs_have_own_wallpaper(
     outputs: &[MonitorOutput],
     wallpapers: &std::collections::HashMap<String, String>,
-) -> Option<(String, String)> {
-    let [output] = outputs else {
-        return None;
-    };
-    if output.name == "*" {
-        return None;
-    }
-
-    let path = wallpapers.get(&output.name)?;
-    std::path::Path::new(path)
-        .is_file()
-        .then(|| (output.name.clone(), path.clone()))
+) -> bool {
+    !outputs.is_empty()
+        && outputs.iter().all(|output| {
+            output.name != "*"
+                && wallpapers
+                    .get(&output.name)
+                    .is_some_and(|path| std::path::Path::new(path).is_file())
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -604,6 +603,31 @@ impl AuraApp {
         self.notify(msg)
     }
 
+    fn retire_redundant_wildcard(&self) -> Task<cosmic::Action<Message>> {
+        let outputs: Vec<String> = self.outputs.iter().map(|output| output.name.clone()).collect();
+        if crate::engine::gnome::is_active()
+            || outputs.is_empty()
+            || outputs.iter().any(|output| output == "*")
+        {
+            return Task::none();
+        }
+        let engine = Arc::clone(&self.engine);
+        let engine_op_lock = Arc::clone(&self.engine_op_lock);
+        Task::perform(
+            async move {
+                let _operation = engine_op_lock.lock().await;
+                let _ = tokio::task::spawn_blocking(move || {
+                    let mut engine = engine
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    engine.retire_redundant_wildcard(&outputs);
+                })
+                .await;
+            },
+            |_| cosmic::Action::None,
+        )
+    }
+
     pub(crate) fn finish_wallpaper_applied(
         &mut self,
         video_path: &std::path::Path,
@@ -668,7 +692,7 @@ impl AuraApp {
 
         let status_msg = self.language.status_applied(output, &file_name);
         self.status_message = Some(status_msg.clone());
-        if show_toast {
+        let notify_task = if show_toast {
             self.notify_applied(
                 status_msg,
                 self.language.toast_show_in_files(),
@@ -676,7 +700,13 @@ impl AuraApp {
             )
         } else {
             Task::none()
-        }
+        };
+        let retire_task = if output == "*" {
+            Task::none()
+        } else {
+            self.retire_redundant_wildcard()
+        };
+        Task::batch([notify_task, retire_task])
     }
 
     fn auto_pause_reason_active(&self) -> bool {
@@ -842,23 +872,21 @@ impl AuraApp {
         // mpvpaper binds its output set at startup. A new or removed monitor
         // therefore needs a new wildcard surface, not just an IPC loadfile.
         let wildcard_running = active.iter().any(|out| out == "*");
-        let single_override = single_output_override(&self.outputs, &self.config.wallpapers);
-        // With one connected output, its explicit wallpaper fully covers the
-        // wildcard default. Keeping both players alive only wastes resources.
-        let stop_wildcard = wildcard_running && single_override.is_some();
+        // When every connected output already has its own wallpaper, the
+        // wildcard surface is completely hidden and only duplicates work.
+        let all_overrides = all_outputs_have_own_wallpaper(&self.outputs, &self.config.wallpapers);
+        let stop_wildcard = wildcard_running && all_overrides;
         let configured_default = self
             .config
             .wallpapers
             .get("*")
             .cloned()
             .or(wildcard_path);
-        // Restart the wildcard when the monitor set changes. If the wildcard
-        // died but a default is still configured, a newly connected monitor
-        // should also bring it back instead of remaining blank.
-        let monitor_set_changed = !added_monitors.is_empty() || old_outputs.len() != new_count;
-        let should_start_wildcard = !stop_wildcard
-            && (wildcard_running || (!added_monitors.is_empty() && configured_default.is_some()));
-        let restart = if monitor_set_changed && should_start_wildcard {
+        // Restart the wildcard only when it was already the shared surface.
+        // If it is not running, newly connected outputs get their own player
+        // below instead of reviving a hidden wildcard over every display.
+        let should_start_wildcard = !stop_wildcard && wildcard_running;
+        let restart = if should_start_wildcard {
             configured_default
                 .filter(|path| std::path::Path::new(path).exists())
                 .map(|path| {
@@ -875,18 +903,26 @@ impl AuraApp {
         };
         let wildcard_will_run = (wildcard_running && !stop_wildcard) || restart.is_some();
 
-        // Reapply the sole output's override on topology changes so it is
-        // guaranteed to remain after retiring the wildcard player.
+        // When every output has its own wallpaper, make sure each one keeps a
+        // running player, including after the wildcard player is retired.
         let mut new_wallpapers = Vec::new();
-        if let Some((output, path)) = single_override {
-            let scaling = self
-                .config
-                .scaling
-                .get(&output)
-                .cloned()
-                .or_else(|| self.config.scaling.get("*").cloned())
-                .unwrap_or_else(|| "fit".into());
-            new_wallpapers.push((output, path, scaling));
+        if all_overrides {
+            for monitor in &self.outputs {
+                if active.iter().any(|out| out == &monitor.name) {
+                    continue;
+                }
+                let Some(path) = self.config.wallpapers.get(&monitor.name) else {
+                    continue;
+                };
+                let scaling = self
+                    .config
+                    .scaling
+                    .get(&monitor.name)
+                    .cloned()
+                    .or_else(|| self.config.scaling.get("*").cloned())
+                    .unwrap_or_else(|| "fit".into());
+                new_wallpapers.push((monitor.name.clone(), path.clone(), scaling));
+            }
         } else {
             for monitor in &added_monitors {
                 let override_path = self.config.wallpapers.get(&monitor.name).cloned();
@@ -1275,9 +1311,11 @@ impl cosmic::Application for AuraApp {
                     }
                 }
             } else {
-                // A sole connected output with an explicit wallpaper does not
-                // need a second wildcard player rendering underneath it.
-                let single_override = single_output_override(&outputs, &config.wallpapers);
+                // A wildcard player is only needed to cover monitors without
+                // their own wallpaper. When every connected output has one,
+                // skip it entirely: it would render hidden below both.
+                let all_overrides =
+                    all_outputs_have_own_wallpaper(&outputs, &config.wallpapers);
                 let mut startup_wallpapers: Vec<(String, String)> = config
                     .wallpapers
                     .iter()
@@ -1286,7 +1324,7 @@ impl cosmic::Application for AuraApp {
                         out == "*" || outputs.iter().any(|monitor| monitor.name == *out)
                     })
                     .collect();
-                if single_override.is_some() {
+                if all_overrides {
                     startup_wallpapers.retain(|(out, _)| out != "*");
                 }
                 // Start the wildcard default first when it is needed to cover
@@ -1298,6 +1336,11 @@ impl cosmic::Application for AuraApp {
                         let _ = engine.set_wallpaper(&out, &path, &sc, config.mute, config.volume, &config.hwdec, config.auto_pause, &config.gpu_preference);
                     }
                 }
+                // Retire a wildcard player left over from a previous session
+                // once every output is covered by its own surface.
+                let output_names: Vec<String> =
+                    outputs.iter().map(|output| output.name.clone()).collect();
+                engine.retire_redundant_wildcard(&output_names);
             }
         }
 
@@ -5088,12 +5131,23 @@ impl AuraApp {
             .config
             .wallpapers
             .iter()
+            .filter(|(output, _)| {
+                output.as_str() == "*"
+                    || self.outputs.iter().any(|monitor| monitor.name == **output)
+            })
             .map(|(output, path)| (output.clone(), path.clone()))
             .collect();
+        // A wildcard apply would recreate the hidden duplicate renderer when
+        // every connected output already has its own wallpaper.
+        if all_outputs_have_own_wallpaper(&self.outputs, &self.config.wallpapers) {
+            wallpapers.retain(|(output, _)| output != "*");
+        }
         wallpapers.sort_by_key(|(output, _)| if output == "*" { 0 } else { 1 });
         if wallpapers.is_empty() {
             return Task::none();
         }
+        let output_names: Vec<String> =
+            self.outputs.iter().map(|output| output.name.clone()).collect();
         let scaling = self.config.scaling.clone();
         let mute = self.config.mute;
         let volume = self.config.volume;
@@ -5132,6 +5186,7 @@ impl AuraApp {
                             )
                             .map_err(|error| error.to_string())?;
                     }
+                    engine.retire_redundant_wildcard(&output_names);
                     Ok(())
                 })
                 .await;
@@ -5216,12 +5271,12 @@ impl AuraApp {
 
 #[cfg(test)]
 mod tests {
-    use super::single_output_override;
+    use super::all_outputs_have_own_wallpaper;
     use crate::engine::MonitorOutput;
     use std::collections::HashMap;
 
     #[test]
-    fn test_single_output_override_uses_specific_wallpaper() {
+    fn test_all_outputs_have_own_wallpaper_covers_single_output() {
         let dir = tempfile::tempdir().unwrap();
         let wallpaper = dir.path().join("specific.mp4");
         std::fs::write(&wallpaper, b"video").unwrap();
@@ -5234,14 +5289,29 @@ mod tests {
             wallpaper.to_string_lossy().into_owned(),
         )]);
 
-        assert_eq!(
-            single_output_override(&outputs, &wallpapers),
-            Some(("eDP-1".into(), wallpaper.to_string_lossy().into_owned()))
-        );
+        assert!(all_outputs_have_own_wallpaper(&outputs, &wallpapers));
+
+        let wildcard_only = HashMap::from([(
+            "*".into(),
+            wallpaper.to_string_lossy().into_owned(),
+        )]);
+        assert!(!all_outputs_have_own_wallpaper(&outputs, &wildcard_only));
+
+        let missing_file = vec![MonitorOutput {
+            name: "HDMI-A-1".into(),
+            ..MonitorOutput::default()
+        }];
+        assert!(!all_outputs_have_own_wallpaper(&missing_file, &wallpapers));
     }
 
     #[test]
-    fn test_single_output_override_requires_one_connected_display_and_valid_file() {
+    fn test_all_outputs_have_own_wallpaper() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.mp4");
+        let second = dir.path().join("second.mp4");
+        std::fs::write(&first, b"video").unwrap();
+        std::fs::write(&second, b"video").unwrap();
+
         let outputs = vec![
             MonitorOutput {
                 name: "eDP-1".into(),
@@ -5252,12 +5322,37 @@ mod tests {
                 ..MonitorOutput::default()
             },
         ];
-        let wallpapers = HashMap::from([("eDP-1".into(), "/tmp/eDP.mp4".into())]);
 
-        assert_eq!(single_output_override(&outputs, &wallpapers), None);
+        let complete = HashMap::from([
+            ("*".into(), first.to_string_lossy().into_owned()),
+            ("eDP-1".into(), first.to_string_lossy().into_owned()),
+            ("HDMI-A-1".into(), second.to_string_lossy().into_owned()),
+        ]);
+        assert!(all_outputs_have_own_wallpaper(&outputs, &complete));
 
-        let one_output = vec![outputs[0].clone()];
-        assert_eq!(single_output_override(&one_output, &wallpapers), None);
+        let one_missing = HashMap::from([
+            ("*".into(), first.to_string_lossy().into_owned()),
+            ("eDP-1".into(), first.to_string_lossy().into_owned()),
+        ]);
+        assert!(!all_outputs_have_own_wallpaper(&outputs, &one_missing));
+
+        let wildcard_only = HashMap::from([(
+            "*".into(),
+            first.to_string_lossy().into_owned(),
+        )]);
+        assert!(!all_outputs_have_own_wallpaper(&outputs, &wildcard_only));
+
+        let missing_file = HashMap::from([
+            ("eDP-1".into(), first.to_string_lossy().into_owned()),
+            ("HDMI-A-1".into(), "/tmp/aura-missing-wallpaper.mp4".into()),
+        ]);
+        assert!(!all_outputs_have_own_wallpaper(&outputs, &missing_file));
+
+        let fallback = vec![MonitorOutput {
+            name: "*".into(),
+            ..MonitorOutput::default()
+        }];
+        assert!(!all_outputs_have_own_wallpaper(&fallback, &wildcard_only));
     }
 
     #[test]
