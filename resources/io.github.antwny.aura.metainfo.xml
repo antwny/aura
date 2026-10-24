@@ -60,6 +60,17 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.8.2" date="2026-10-24">
+      <description>
+        <p>Aura 1.8.2 avoids redundant wallpaper playback on multi-display setups:</p>
+        <ul>
+          <li>Skips the global mpvpaper player when every connected display already has its own wallpaper.</li>
+          <li>Retires the shared player when the last display override is applied or the monitor topology changes.</li>
+          <li>Gives newly connected displays their own player instead of recreating the global surface over every monitor.</li>
+          <li>Release archive includes the precompiled mpvpaper 1.9 engine and SHA-256 checksum.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.8.1" date="2026-10-23">
       <description>
         <p>Aura 1.8.1 reduces wallpaper engine resource use on single-display setups:</p>

@@ -136,10 +136,10 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
 ### Precompiled Release Package
-Download `aura-v1.8.1-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
+Download `aura-v1.8.2-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
 ```bash
-tar -xzf aura-v1.8.1-x86_64-linux.tar.gz
-cd aura-v1.8.1-x86_64-linux
+tar -xzf aura-v1.8.2-x86_64-linux.tar.gz
+cd aura-v1.8.2-x86_64-linux
 ./install.sh
 ```
 
