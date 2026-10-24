@@ -257,20 +257,6 @@ pub fn ipc_wait_first_frame(sock_path: &Path, expected_path: Option<&Path>, time
     false
 }
 
-pub fn ipc_cycle_pause(sock_path: &Path) -> Result<bool, String> {
-    let cycle_cmd = r#"{"command": ["cycle", "pause"]}"#;
-    let _ = send_ipc_command(sock_path, cycle_cmd)?;
-
-    let get_cmd = r#"{"command": ["get_property", "pause"]}"#;
-    let resp = send_ipc_command(sock_path, get_cmd)?;
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&resp) {
-        if let Some(b) = val.get("data").and_then(|d| d.as_bool()) {
-            return Ok(b);
-        }
-    }
-    Ok(false)
-}
-
 pub fn ipc_get_pause(sock_path: &Path) -> Option<bool> {
     let get_cmd = r#"{"command": ["get_property", "pause"]}"#;
     if let Ok(resp) = send_ipc_command(sock_path, get_cmd) {
@@ -551,6 +537,16 @@ impl WallpaperEngine {
         keys.sort();
         keys.dedup();
         keys
+    }
+
+    pub fn has_output_player(&mut self, output: &str) -> bool {
+        self.ensure_sockets_discovered();
+        self.sockets.contains_key(output) || self.processes.contains_key(output)
+    }
+
+    pub fn has_wildcard_player(&mut self) -> bool {
+        self.ensure_sockets_discovered();
+        self.sockets.contains_key("*") || self.processes.contains_key("*")
     }
 
     pub fn current_path(&self, output: &str) -> Option<String> {
@@ -1187,6 +1183,84 @@ impl WallpaperEngine {
         self.own_pids().iter().any(|&pid| is_pid_stopped(pid))
     }
 
+    /// Reads the effective pause state for an output. A per-output player takes
+    /// precedence over the shared wildcard player.
+    pub fn output_pause_state(&mut self, output: &str) -> Option<bool> {
+        if crate::engine::gnome::is_active() {
+            return Some(self.is_paused);
+        }
+        self.ensure_sockets_discovered();
+        let sock = self.sockets.get(output).or_else(|| self.sockets.get("*"))?;
+        ipc_get_pause(sock)
+    }
+
+    pub fn pause_states_for_outputs(&mut self, outputs: &[String]) -> HashMap<String, Option<bool>> {
+        self.ensure_sockets_discovered();
+        let mut queried = HashMap::<PathBuf, Option<bool>>::new();
+        let mut states = HashMap::new();
+        for output in outputs {
+            let state = if crate::engine::gnome::is_active() {
+                Some(self.is_paused)
+            } else if let Some(sock) = self.sockets.get(output).or_else(|| self.sockets.get("*")) {
+                *queried.entry(sock.clone()).or_insert_with(|| ipc_get_pause(sock))
+            } else {
+                None
+            };
+            states.insert(output.clone(), state);
+        }
+        let wildcard = self.sockets.get("*").and_then(|sock| {
+            *queried.entry(sock.clone()).or_insert_with(|| ipc_get_pause(sock))
+        });
+        states.insert("*".into(), wildcard);
+        states
+    }
+
+    /// Sets the pause state for one output without cycling unrelated players.
+    /// If the output has no dedicated player, its wildcard player is used.
+    pub fn set_output_paused(&mut self, output: &str, paused: bool) -> bool {
+        if crate::engine::gnome::is_active() {
+            if paused {
+                crate::engine::gnome::pause();
+            } else {
+                crate::engine::gnome::play();
+            }
+            self.is_paused = paused;
+            return true;
+        }
+        self.ensure_sockets_discovered();
+        let Some(sock) = self.sockets.get(output).or_else(|| self.sockets.get("*")).cloned() else {
+            return false;
+        };
+        let pid = ipc_get_pid(&sock).filter(|pid| is_mpvpaper_pid(*pid));
+        if !paused {
+            if let Some(pid) = pid.filter(|pid| is_pid_stopped(*pid)) {
+                unsafe { libc::kill(pid as i32, libc::SIGCONT); }
+            }
+        }
+        let success = if ipc_set_property(&sock, "pause", paused).is_ok() {
+            true
+        } else if paused {
+            pid.is_some_and(|pid| unsafe { libc::kill(pid as i32, libc::SIGSTOP) == 0 })
+        } else {
+            false
+        };
+        if output == "*" {
+            self.is_paused = paused;
+        }
+        success
+    }
+
+    /// Sets every currently known player to the same state.
+    pub fn set_all_paused(&mut self, paused: bool) -> bool {
+        if paused {
+            self.pause_all();
+        } else {
+            self.resume_all();
+        }
+        self.is_paused = paused;
+        true
+    }
+
     pub fn toggle_pause(&mut self) -> bool {
         if crate::engine::gnome::is_active() {
             if self.is_paused {
@@ -1200,19 +1274,17 @@ impl WallpaperEngine {
         // Ensure sockets has active sockets if started by an external or previous instance
         self.ensure_sockets_discovered();
 
-        let mut any_toggled = false;
-        let mut now_paused = false;
-
-        for sock in self.sockets.values() {
-            if let Ok(paused) = ipc_cycle_pause(sock) {
-                any_toggled = true;
-                now_paused = paused;
+        let states: Vec<bool> = self.sockets.values().filter_map(|sock| ipc_get_pause(sock)).collect();
+        if !states.is_empty() {
+            // Normalize mixed players in one direction instead of inverting
+            // each process independently (which can preserve a mixed state).
+            let now_paused = !states.iter().any(|paused| *paused);
+            if now_paused {
+                self.pause_all();
+            } else {
+                self.resume_all();
             }
-        }
-
-        if any_toggled {
-            self.is_paused = now_paused;
-            return now_paused;
+            return self.is_paused;
         }
 
         // Fallback: check only Aura-tracked PIDs and toggle via POSIX signals
@@ -1239,13 +1311,17 @@ impl WallpaperEngine {
         }
         self.ensure_sockets_discovered();
         // 1. Send pause via IPC
+        let mut ipc_controlled = std::collections::HashSet::new();
         for sock in self.sockets.values() {
-            let _ = ipc_set_property(sock, "pause", true);
+            if ipc_set_property(sock, "pause", true).is_ok() {
+                if let Some(pid) = ipc_get_pid(sock).filter(|pid| is_mpvpaper_pid(*pid)) {
+                    ipc_controlled.insert(pid);
+                }
+            }
         }
-        // 2. Also send SIGSTOP to freeze CPU/GPU via OS scheduler
         for pid in self.own_pids() {
-            unsafe {
-                libc::kill(pid as i32, libc::SIGSTOP);
+            if !ipc_controlled.contains(&pid) {
+                unsafe { libc::kill(pid as i32, libc::SIGSTOP); }
             }
         }
         self.is_paused = true;
@@ -1258,13 +1334,13 @@ impl WallpaperEngine {
             return;
         }
         self.ensure_sockets_discovered();
-        // 1. Send SIGCONT to unfreeze OS execution
+        // Send unpause through IPC. Keeping the process responsive lets the
+        // UI query each output's actual state while paused.
         for pid in self.own_pids() {
-            unsafe {
-                libc::kill(pid as i32, libc::SIGCONT);
+            if is_pid_stopped(pid) {
+                unsafe { libc::kill(pid as i32, libc::SIGCONT); }
             }
         }
-        // 2. Send unpause via IPC
         for sock in self.sockets.values() {
             let _ = ipc_set_property(sock, "pause", false);
         }

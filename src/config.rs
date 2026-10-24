@@ -94,8 +94,6 @@ pub struct Config {
     #[serde(default)]
     pub window_y: Option<f32>,
     #[serde(default = "default_true")]
-    pub show_now_playing: bool,
-    #[serde(default = "default_true")]
     pub dms_underlay_sync: bool,
     /// User-preferred monitor order. The compositor layout still decides the
     /// canvas positions; this order drives the list and keyboard navigation.
@@ -315,7 +313,6 @@ impl Default for Config {
             window_height: default_window_height(),
             window_x: None,
             window_y: None,
-            show_now_playing: true,
             dms_underlay_sync: true,
             monitor_order: Vec::new(),
         }

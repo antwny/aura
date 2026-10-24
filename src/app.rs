@@ -9,7 +9,7 @@ use crate::online::{
 };
 
 use cosmic::app::Core;
-use cosmic::iced::{Length, Subscription, Task};
+use cosmic::iced::{Alignment, Length, Subscription, Task};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{Anchor, KeyboardInteractivity, Layer};
 use cosmic::surface::action::{app_layer_shell, destroy_layer_shell, LiveSettings};
@@ -26,6 +26,26 @@ pub enum Page {
     Monitors,
     Settings,
     About,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsCategory {
+    #[default]
+    General,
+    Engine,
+    Hud,
+    Rotation,
+    Appearance,
+}
+
+impl SettingsCategory {
+    pub const ALL: [Self; 5] = [
+        Self::General,
+        Self::Engine,
+        Self::Hud,
+        Self::Rotation,
+        Self::Appearance,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -54,7 +74,6 @@ enum NavMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BarPopover {
-    Volume,
     Details,
     Monitors,
 }
@@ -63,6 +82,7 @@ pub enum BarPopover {
 #[allow(dead_code)]
 pub enum Message {
     SelectPage(nav_bar::Id),
+    SelectSettingsCategory(SettingsCategory),
     SelectLibraryFilter(LibraryFilter),
     LoadMoreLibraryWallpapers,
     ToggleFavorite(PathBuf),
@@ -94,6 +114,13 @@ pub enum Message {
         output: Option<String>,
     },
     EnginePauseFinished(bool),
+    EnginePauseTargetFinished {
+        target: String,
+        success: bool,
+        states: std::collections::HashMap<String, Option<bool>>,
+    },
+    PlaybackRefreshTick,
+    PlaybackStatesUpdated(std::collections::HashMap<String, Option<bool>>),
     WindowGeometryChanged {
         window: cosmic::iced::window::Id,
         size: cosmic::iced::Size,
@@ -116,7 +143,6 @@ pub enum Message {
     CopyNiriShortcuts,
     CopyNiriAutostart,
     SetDmsUnderlay(bool),
-    ToggleShowNowPlaying(bool),
     GnomeApplyFinished {
         video_path: PathBuf,
         output: String,
@@ -125,6 +151,7 @@ pub enum Message {
     },
     StopWallpaper(Option<String>),
     TogglePause,
+    TogglePauseTarget(String),
     SelectScaling { output: String, scaling: String },
     ToggleAutostart(bool),
     ToggleAutoTheme(bool),
@@ -226,7 +253,11 @@ pub enum Message {
     SwitcherMouseClicked(cosmic::iced::window::Id),
     SwitcherCursorMoved { window: cosmic::iced::window::Id, position: cosmic::iced::Point },
     SwitcherCursorLeft(cosmic::iced::window::Id),
-    SwitcherResized { window: cosmic::iced::window::Id, size: cosmic::iced::Size },
+    SwitcherResized {
+        window: cosmic::iced::window::Id,
+        size: cosmic::iced::Size,
+        position: Option<cosmic::iced::Point>,
+    },
     SwitcherEdgeScrollTick,
     SwitcherCinematicHover(Option<i32>),
     SwitcherCinematicLeave(i32),
@@ -332,6 +363,10 @@ pub struct AuraApp {
     pub(crate) core: Core,
     pub(crate) nav: nav_bar::Model,
     pub(crate) active_page: Page,
+    pub(crate) selected_settings_category: SettingsCategory,
+    pub(crate) settings_scroll_id: cosmic::widget::Id,
+    pub(crate) library_scroll_id: cosmic::widget::Id,
+    pub(crate) explore_scroll_id: cosmic::widget::Id,
     pub(crate) config: Config,
     pub(crate) language: crate::i18n::Language,
     pub(crate) engine: Arc<Mutex<WallpaperEngine>>,
@@ -347,6 +382,8 @@ pub struct AuraApp {
     pub(crate) gnome_apply_token: u64,
     pub(crate) toasts: cosmic::widget::Toasts<Message>,
     pub(crate) is_paused: bool,
+    pub(crate) output_pause_states: std::collections::HashMap<String, Option<bool>>,
+    pub(crate) manual_paused_outputs: std::collections::HashSet<String>,
     pub(crate) is_paused_by_smart: bool,
     pub(crate) is_paused_by_battery: bool,
     pub(crate) is_paused_by_overview: bool,
@@ -445,8 +482,9 @@ impl AuraApp {
     fn view_nav_rail(&self) -> Element<'_, Message> {
         let mut rail = widget::column::with_capacity(6)
             .spacing(6)
-            .padding(6)
-            .width(Length::Fixed(56.0));
+            .padding(4)
+            .align_x(Alignment::Center)
+            .width(Length::Fixed(48.0));
         for (icon, _label, page) in self.nav_entries() {
             let selected = self.active_page == page;
             let button = widget::button::icon(widget::icon::from_name(icon));
@@ -458,8 +496,7 @@ impl AuraApp {
             rail = rail.push(
                 button
                     .selected(selected)
-                    .on_press(Message::NavigateToPage(page))
-                    .width(Length::Fill),
+                    .on_press(Message::NavigateToPage(page)),
             );
         }
         widget::container(rail)
@@ -568,8 +605,21 @@ impl AuraApp {
     ) -> Task<cosmic::Action<Message>> {
         self.config.record_wallpaper(output, path_str);
         let _ = self.config.save();
-        self.is_paused = false;
-        self.is_manual_pause = false;
+        if output == "*" {
+            self.is_paused = false;
+            self.is_manual_pause = false;
+            self.manual_paused_outputs.clear();
+            for monitor in &self.outputs {
+                self.output_pause_states.insert(monitor.name.clone(), Some(false));
+            }
+        } else {
+            self.manual_paused_outputs.remove(output);
+            self.output_pause_states.insert(output.to_string(), Some(false));
+            self.is_paused = self.outputs.iter().all(|monitor| {
+                self.output_pause_states.get(&monitor.name).copied().flatten() == Some(true)
+            });
+            self.is_manual_pause = self.is_paused;
+        }
 
         let file_name = video_path
             .file_name()
@@ -638,6 +688,31 @@ impl AuraApp {
         });
     }
 
+    fn spawn_engine_resume_except_manual(&self) {
+        if self.manual_paused_outputs.is_empty() || crate::engine::gnome::is_active() {
+            self.spawn_engine_pause(false);
+            return;
+        }
+        let engine = Arc::clone(&self.engine);
+        let engine_op_lock = Arc::clone(&self.engine_op_lock);
+        let manually_paused = self.manual_paused_outputs.clone();
+        let mut outputs: Vec<String> = self.outputs.iter().map(|output| output.name.clone()).collect();
+        if outputs.is_empty() {
+            outputs.extend(self.config.wallpapers.keys().filter(|output| output.as_str() != "*").cloned());
+        }
+        tokio::spawn(async move {
+            let _operation = engine_op_lock.lock().await;
+            let _ = tokio::task::spawn_blocking(move || {
+                let mut engine = engine.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                for output in outputs {
+                    if !manually_paused.contains(&output) {
+                        let _ = engine.set_output_paused(&output, false);
+                    }
+                }
+            }).await;
+        });
+    }
+
     fn pause_for_auto_reason(&mut self, status: &str) {
         if !self.is_paused {
             self.spawn_engine_pause(true);
@@ -652,7 +727,7 @@ impl AuraApp {
             && !self.is_manual_pause
             && !self.auto_pause_reason_active()
         {
-            self.spawn_engine_pause(false);
+            self.spawn_engine_resume_except_manual();
             self.is_paused = false;
             self.status_message = Some(status.to_string());
             self.status_timer = 5;
@@ -688,26 +763,37 @@ impl AuraApp {
                 .position(|name| name == &output.name)
                 .unwrap_or(usize::MAX)
         });
-        if current_outputs == self.outputs {
-            return Task::none();
-        }
-        if crate::engine::gnome::is_active() {
-            self.outputs = current_outputs;
-            return Task::none();
-        }
-
         let old_outputs = self.outputs.clone();
+        let topology_changed = current_outputs != old_outputs;
         let new_count = current_outputs.len();
         self.outputs = current_outputs.clone();
 
-        if self.selected_output != "*"
+        let selection_changed = if self.selected_output != "*"
             && !self.outputs.iter().any(|o| o.name == self.selected_output)
         {
             self.selected_output = self
                 .outputs
-                .first()
-                .map(|o| o.name.clone())
+                .iter()
+                .find(|output| output.is_primary)
+                .or_else(|| self.outputs.first())
+                .map(|output| output.name.clone())
                 .unwrap_or_else(|| "*".into());
+            self.config.output = self.selected_output.clone();
+            true
+        } else {
+            false
+        };
+        if selection_changed {
+            let _ = self.config.save();
+        }
+
+        // Repair stale selections even when Aura starts after a monitor was
+        // disconnected and the current topology itself has not changed yet.
+        if !topology_changed {
+            return Task::none();
+        }
+        if crate::engine::gnome::is_active() {
+            return Task::none();
         }
 
         let added_monitors: Vec<_> = self
@@ -1052,11 +1138,22 @@ impl cosmic::Application for AuraApp {
                 .position(|name| name == &output.name)
                 .unwrap_or(usize::MAX)
         });
-        let selected_output = if !config.output.is_empty() {
+        let selected_output = if config.output == "*" {
+            "*".into()
+        } else if outputs.iter().any(|output| output.name == config.output) {
             config.output.clone()
         } else {
-            outputs.first().map(|o| o.name.clone()).unwrap_or_else(|| "*".into())
+            outputs
+                .iter()
+                .find(|output| output.is_primary)
+                .or_else(|| outputs.first())
+                .map(|output| output.name.clone())
+                .unwrap_or_else(|| "*".into())
         };
+        if selected_output != config.output {
+            config.output = selected_output.clone();
+            let _ = config.save();
+        }
 
         let autostart_active = config.autostart || WallpaperEngine::is_autostart_enabled();
         if autostart_active && !WallpaperEngine::is_autostart_enabled() {
@@ -1196,11 +1293,20 @@ impl cosmic::Application for AuraApp {
 
         let window_width = config.window_width.clamp(360.0, 3840.0);
         let window_height = config.window_height.clamp(420.0, 2160.0);
+        // Medium windows already use Aura's icon rail. Start with that compact
+        // navigation and let the COSMIC header toggle expand its full sidebar.
+        if (620.0..900.0).contains(&window_width) {
+            core.nav_bar_set_toggled(false);
+        }
         let integration = crate::engine::integration::detect();
         let mut app = Self {
             core,
             nav,
             active_page: Page::Library,
+            selected_settings_category: SettingsCategory::default(),
+            settings_scroll_id: cosmic::widget::Id::new("settings-category-content"),
+            library_scroll_id: cosmic::widget::Id::new("library-wallpaper-grid"),
+            explore_scroll_id: cosmic::widget::Id::new("explore-wallpaper-grid"),
             config,
             language,
             engine: Arc::new(Mutex::new(engine)),
@@ -1226,6 +1332,8 @@ impl cosmic::Application for AuraApp {
             gnome_apply_token: 0,
             toasts: cosmic::widget::Toasts::new(Message::CloseToast),
             is_paused: false,
+            output_pause_states: std::collections::HashMap::new(),
+            manual_paused_outputs: std::collections::HashSet::new(),
             is_paused_by_smart: false,
             is_paused_by_battery: false,
             tray_controller,
@@ -1317,11 +1425,15 @@ impl cosmic::Application for AuraApp {
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
-        Some(&self.nav)
+        if self.nav_mode() == NavMode::Tabs {
+            None
+        } else {
+            Some(&self.nav)
+        }
     }
 
     fn nav_bar(&self) -> Option<Element<'_, cosmic::Action<Self::Message>>> {
-        if self.nav_mode() != NavMode::Wide {
+        if self.nav_mode() == NavMode::Tabs || !self.core.nav_bar_active() {
             return None;
         }
 
@@ -1452,14 +1564,6 @@ impl cosmic::Application for AuraApp {
             ));
         }
 
-        if !self.config.show_now_playing {
-            items.push(Element::from(
-                widget::button::icon(widget::icon::from_name("go-up-symbolic"))
-                    .tooltip(self.language.header_show_now_playing())
-                    .on_press(Message::ToggleShowNowPlaying(true)),
-            ));
-        }
-
         items
     }
 
@@ -1512,6 +1616,13 @@ impl cosmic::Application for AuraApp {
             subs.push(
                 cosmic::iced::time::every(Duration::from_millis(250))
                     .map(|_| Message::VolumeDebounceTick),
+            );
+        }
+
+        if !self.config.wallpapers.is_empty() {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_secs(1))
+                    .map(|_| Message::PlaybackRefreshTick),
             );
         }
 
@@ -1643,6 +1754,7 @@ impl cosmic::Application for AuraApp {
                     return Task::done(cosmic::Action::App(Message::SwitcherResized {
                         window,
                         size,
+                        position,
                     }));
                 }
                 let Some(main_id) = self.core.main_window_id() else {
@@ -1676,6 +1788,13 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::WindowMoved { window, position } => {
+                if self.switcher_window_id == Some(window) {
+                    return Task::done(cosmic::Action::App(Message::SwitcherResized {
+                        window,
+                        size: cosmic::iced::Size::new(self.switcher_window_width, self.switcher_window_height),
+                        position: Some(position),
+                    }));
+                }
                 let Some(main_id) = self.core.main_window_id() else {
                     return Task::none();
                 };
@@ -1723,14 +1842,6 @@ impl cosmic::Application for AuraApp {
                 let _ = self.config.save();
             }
 
-            Message::ToggleShowNowPlaying(visible) => {
-                self.config.show_now_playing = visible;
-                if !visible {
-                    self.bar_popover = None;
-                }
-                let _ = self.config.save();
-            }
-
             Message::CopyNiriRule => {
                 return Task::batch([
                     cosmic::iced::clipboard::write(
@@ -1772,15 +1883,16 @@ impl cosmic::Application for AuraApp {
                 self.config.output = out.clone();
                 self.bar_popover = None;
                 let _ = self.config.save();
-                return self.set_status(self.language.status_output_selected(&out));
+                return Task::batch([
+                    self.set_status(self.language.status_output_selected(&out)),
+                    Task::done(cosmic::Action::App(Message::PlaybackRefreshTick)),
+                ]);
             }
 
             Message::ChooseWallpaperForOutput(output) => {
                 self.selected_output = output.clone();
                 self.config.output = output.clone();
                 self.bar_popover = None;
-                self.active_page = Page::Library;
-                self.nav.activate_position(0);
                 let _ = self.config.save();
                 let status = match self.language {
                     crate::i18n::Language::Es => format!(
@@ -1808,7 +1920,10 @@ impl cosmic::Application for AuraApp {
                         }
                     ),
                 };
-                return self.set_status(status);
+                return Task::batch([
+                    self.navigate_to_page(Page::Library),
+                    self.set_status(status),
+                ]);
             }
 
             Message::IdentifyOutput(output) => {
@@ -1928,6 +2043,13 @@ impl cosmic::Application for AuraApp {
 
             Message::NavigateToPage(page) => {
                 return self.navigate_to_page(page);
+            }
+
+            Message::SelectSettingsCategory(category) => {
+                if self.selected_settings_category != category {
+                    self.selected_settings_category = category;
+                    return self.scroll_to_top(self.settings_scroll_id.clone());
+                }
             }
 
             Message::SelectInterval(interval) => {
@@ -2143,8 +2265,13 @@ impl cosmic::Application for AuraApp {
                 self.switcher_scroll_accum = 0.0;
                 self.switcher_last_scroll = None;
                 self.switcher_last_event_time = None;
+                self.switcher_active_output = crate::engine::outputs::focused_output_name()
+                    .filter(|name| self.outputs.iter().any(|output| output.name == *name))
+                    .or_else(|| (self.selected_output != "*").then(|| self.selected_output.clone()))
+                    .or_else(|| self.outputs.iter().find(|output| output.is_primary).map(|output| output.name.clone()))
+                    .or_else(|| self.outputs.first().map(|output| output.name.clone()));
                 let (def_w, def_h) = self.outputs.iter()
-                    .find(|o| o.name == self.selected_output)
+                    .find(|o| Some(&o.name) == self.switcher_active_output.as_ref())
                     .map(|o| (o.width as f32, o.height as f32))
                     .unwrap_or_else(|| {
                         self.outputs.first()
@@ -2156,7 +2283,6 @@ impl cosmic::Application for AuraApp {
                 self.switcher_cursor_position = None;
                 self.switcher_edge_scroll_dir = 0;
                 self.switcher_last_edge_scroll = None;
-                self.switcher_active_output = None;
                 self.switcher_cinematic_hover = None;
                 self.switcher_cinematic_animating = false;
                 self.switcher_cinematic_scales = [0.0; 7];
@@ -2835,20 +2961,29 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::SwitcherResized { window, size } => {
+            Message::SwitcherResized { window, size, position } => {
                 if self.switcher_window_id == Some(window) {
                     self.switcher_window_width = size.width;
                     self.switcher_window_height = size.height;
-
-                    // Dynamically identify which monitor this surface was mapped to
-                    if let Some(matched) = self.outputs.iter().find(|o| {
-                        (o.width as f32 - size.width).abs() < 4.0 && (o.height as f32 - size.height).abs() < 4.0
-                    }) {
-                        self.switcher_active_output = Some(matched.name.clone());
-                    } else if let Some(matched) = self.outputs.iter().min_by_key(|o| {
-                        ((o.width as f32 - size.width).abs() + (o.height as f32 - size.height).abs()) as u32
-                    }) {
-                        self.switcher_active_output = Some(matched.name.clone());
+                    if let Some(position) = position {
+                        let center_x = position.x + size.width / 2.0;
+                        let center_y = position.y + size.height / 2.0;
+                        let matched = self.outputs.iter().find(|output| {
+                            center_x >= output.x as f32
+                                && center_x < output.x as f32 + output.width as f32
+                                && center_y >= output.y as f32
+                                && center_y < output.y as f32 + output.height as f32
+                        }).or_else(|| self.outputs.iter().min_by(|a, b| {
+                            let distance = |output: &MonitorOutput| {
+                                let x = output.x as f32 + output.width as f32 / 2.0;
+                                let y = output.y as f32 + output.height as f32 / 2.0;
+                                (x - center_x).powi(2) + (y - center_y).powi(2)
+                            };
+                            distance(a).total_cmp(&distance(b))
+                        }));
+                        if let Some(matched) = matched {
+                            self.switcher_active_output = Some(matched.name.clone());
+                        }
                     }
                 }
             }
@@ -3341,6 +3476,14 @@ impl cosmic::Application for AuraApp {
             Message::EnginePauseFinished(now_paused) => {
                 self.is_paused = now_paused;
                 self.is_manual_pause = now_paused;
+                self.manual_paused_outputs.clear();
+                if now_paused {
+                    self.manual_paused_outputs.extend(self.outputs.iter().map(|output| output.name.clone()));
+                }
+                for output in &self.outputs {
+                    self.output_pause_states.insert(output.name.clone(), Some(now_paused));
+                }
+                self.output_pause_states.insert("*".into(), Some(now_paused));
                 let current_title = self.config.current.as_ref()
                     .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
                     .unwrap_or_default();
@@ -3355,6 +3498,33 @@ impl cosmic::Application for AuraApp {
                     self.language.status_resumed()
                 };
                 return self.set_status(msg);
+            }
+
+            Message::PlaybackRefreshTick => {
+                let engine = Arc::clone(&self.engine);
+                let engine_op_lock = Arc::clone(&self.engine_op_lock);
+                let mut outputs: Vec<String> = self.outputs.iter().map(|o| o.name.clone()).collect();
+                if outputs.is_empty() {
+                    outputs.push("*".into());
+                }
+                return Task::perform(
+                    async move {
+                        let _operation = engine_op_lock.lock().await;
+                        tokio::task::spawn_blocking(move || {
+                            let mut engine = engine
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            engine.pause_states_for_outputs(&outputs)
+                        })
+                        .await
+                        .unwrap_or_default()
+                    },
+                    |states| cosmic::Action::App(Message::PlaybackStatesUpdated(states)),
+                );
+            }
+
+            Message::PlaybackStatesUpdated(states) => {
+                self.output_pause_states = states;
             }
 
             Message::TogglePause => {
@@ -3383,6 +3553,151 @@ impl cosmic::Application for AuraApp {
                 );
             }
 
+            Message::TogglePauseTarget(target) => {
+                let engine = Arc::clone(&self.engine);
+                let engine_op_lock = Arc::clone(&self.engine_op_lock);
+                let mut output_names: Vec<String> = self.outputs.iter().map(|o| o.name.clone()).collect();
+                if target != "*" && !output_names.iter().any(|output| output == &target) {
+                    output_names.push(target.clone());
+                }
+                let wallpapers = self.config.wallpapers.clone();
+                let scaling = self.config.scaling.clone();
+                let mute = self.config.mute;
+                let volume = self.config.volume;
+                let hwdec = self.config.hwdec.clone();
+                let auto_pause = self.config.auto_pause;
+                let gpu_preference = self.config.gpu_preference.clone();
+                let target_for_work = target.clone();
+                self.status_message = Some(match self.language {
+                    crate::i18n::Language::Es => "Cambiando reproducción…".into(),
+                    crate::i18n::Language::En => "Changing playback…".into(),
+                    crate::i18n::Language::Fr => "Changement de lecture…".into(),
+                });
+                self.status_timer = 0;
+                return Task::perform(
+                    async move {
+                        let _operation = engine_op_lock.lock().await;
+                        tokio::task::spawn_blocking(move || {
+                            let mut engine = engine
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            let current_states = engine.pause_states_for_outputs(&output_names);
+                            let pause = if target_for_work == "*" {
+                                let any_paused = if output_names.is_empty() {
+                                    current_states.get("*").copied().flatten() == Some(true)
+                                } else {
+                                    output_names.iter().any(|output| {
+                                        current_states.get(output).copied().flatten() == Some(true)
+                                    })
+                                };
+                                !any_paused
+                            } else {
+                                engine.output_pause_state(&target_for_work) != Some(true)
+                            };
+                            let mut success = true;
+                            if target_for_work != "*" && engine.has_wildcard_player() {
+                                // A wildcard mpvpaper process is shared by all
+                                // displays. Promote its effective wallpaper to
+                                // per-output players before pausing one display.
+                                for output in &output_names {
+                                    if engine.has_output_player(output) { continue; }
+                                    let was_paused = engine.output_pause_state(output).unwrap_or(false);
+                                    let path = wallpapers.get(output).or_else(|| wallpapers.get("*"));
+                                    let Some(path) = path else { continue; };
+                                    let fit = scaling.get(output).or_else(|| scaling.get("*"))
+                                        .map(String::as_str).unwrap_or("fit");
+                                    if engine.set_wallpaper(output, path, fit, mute, volume, &hwdec, auto_pause, &gpu_preference).is_err() {
+                                        success = false;
+                                        break;
+                                    }
+                                    if was_paused {
+                                        let _ = engine.set_output_paused(output, true);
+                                    }
+                                }
+                                if success && output_names.iter().all(|output| engine.has_output_player(output)) {
+                                    engine.stop_output("*");
+                                } else if success {
+                                    success = false;
+                                }
+                            }
+                            if success {
+                                success = if target_for_work == "*" {
+                                    engine.set_all_paused(pause)
+                                } else {
+                                    engine.set_output_paused(&target_for_work, pause)
+                                };
+                            }
+                            let states = engine.pause_states_for_outputs(&output_names);
+                            (success, states)
+                        })
+                        .await
+                        .unwrap_or_else(|_| (false, std::collections::HashMap::new()))
+                    },
+                    move |(success, states)| cosmic::Action::App(Message::EnginePauseTargetFinished {
+                        target,
+                        success,
+                        states,
+                    }),
+                );
+            }
+
+            Message::EnginePauseTargetFinished { target, success, states } => {
+                self.output_pause_states = states;
+                if success {
+                    let paused = if target == "*" {
+                        !self.output_pause_states.values().any(|state| *state == Some(false))
+                    } else {
+                        self.output_pause_states.get(&target).copied().flatten() == Some(true)
+                    };
+                    if target == "*" || crate::engine::gnome::is_active() {
+                        self.manual_paused_outputs.clear();
+                        if paused {
+                            self.manual_paused_outputs.extend(self.outputs.iter().map(|output| output.name.clone()));
+                        }
+                        self.is_manual_pause = paused;
+                    } else if paused {
+                        self.manual_paused_outputs.insert(target.clone());
+                    } else {
+                        self.manual_paused_outputs.remove(&target);
+                    }
+                    if target != "*" {
+                        self.is_paused = !self.outputs.is_empty() && self.outputs.iter().all(|output| {
+                            self.output_pause_states.get(&output.name).copied().flatten() == Some(true)
+                        });
+                        if !crate::engine::gnome::is_active() {
+                            self.is_manual_pause = !self.manual_paused_outputs.is_empty()
+                                && self.outputs.iter().all(|output| self.manual_paused_outputs.contains(&output.name));
+                        }
+                    }
+                }
+                if target == "*" && success {
+                    self.is_paused = !self.output_pause_states.values().any(|state| *state == Some(false));
+                    self.is_manual_pause = self.is_paused;
+                    let current_title = self.config.current.as_ref()
+                        .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
+                        .unwrap_or_default();
+                    self.tray_controller.update_state(current_title, self.is_paused, !self.config.wallpapers.is_empty());
+                }
+                let status = if !success {
+                    match self.language {
+                        crate::i18n::Language::Es => "No se pudo cambiar la reproducción en esa pantalla.",
+                        crate::i18n::Language::En => "Could not change playback on that display.",
+                        crate::i18n::Language::Fr => "Impossible de modifier la lecture sur cet écran.",
+                    }
+                } else if target == "*" && self.output_pause_states.values().any(|state| *state == Some(false)) {
+                    match self.language {
+                        crate::i18n::Language::Es => "Todos los fondos reanudados.",
+                        crate::i18n::Language::En => "All wallpapers resumed.",
+                        crate::i18n::Language::Fr => "Tous les fonds ont repris.",
+                    }
+                } else if target == "*" || self.output_pause_states.get(&target).copied().flatten() == Some(true) {
+                    self.language.status_paused()
+                } else {
+                    self.language.status_resumed()
+                };
+                return self.set_status(status);
+            }
+
             Message::StopWallpaper(output) => {
                 self.bar_popover = None;
                 self.gnome_apply_token = self.gnome_apply_token.wrapping_add(1);
@@ -3406,6 +3721,13 @@ impl cosmic::Application for AuraApp {
                 self.is_paused_by_battery = false;
                 self.is_paused_by_overview = false;
                 self.is_paused_by_locked = false;
+                if stop_all {
+                    self.manual_paused_outputs.clear();
+                    self.output_pause_states.clear();
+                } else if let Some(out) = output.as_ref() {
+                    self.manual_paused_outputs.remove(out);
+                    self.output_pause_states.remove(out);
+                }
                 let _ = self.config.save();
 
                 let current_title = self.config.current.as_ref()
@@ -3960,6 +4282,7 @@ impl cosmic::Application for AuraApp {
             Message::SelectLibraryFilter(filter) => {
                 self.library_filter = filter;
                 self.library_limit = 48;
+                return self.scroll_to_top(self.library_scroll_id.clone());
             }
 
             Message::LoadMoreLibraryWallpapers => {
@@ -4012,8 +4335,12 @@ impl cosmic::Application for AuraApp {
                     OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),
                 };
                 if need_fetch && !self.explore_loading {
-                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(source)));
+                    return Task::batch([
+                        self.scroll_to_top(self.explore_scroll_id.clone()),
+                        Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(source))),
+                    ]);
                 }
+                return self.scroll_to_top(self.explore_scroll_id.clone());
             }
 
             Message::FetchOnlineWallpapers(source) => {
@@ -4587,13 +4914,18 @@ impl cosmic::Application for AuraApp {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let content: Element<_> = match self.active_page {
-            Page::Library => self.view_library(),
-            Page::Explore => self.view_explore(),
-            Page::Monitors => self.view_monitors(),
-            Page::Settings => self.view_settings(),
-            Page::About => self.view_about(),
-        };
+        // Keep each destination in a stable stack slot. Replacing its inactive
+        // Space with the real page view creates a fresh widget subtree, so page
+        // state (including scroll offsets) cannot leak between destinations.
+        let page_content = cosmic::iced::widget::stack([
+            self.view_page_layer(Page::Library),
+            self.view_page_layer(Page::Explore),
+            self.view_page_layer(Page::Monitors),
+            self.view_page_layer(Page::Settings),
+            self.view_page_layer(Page::About),
+        ])
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         let mode = self.nav_mode();
         let mut main_col = widget::column::with_capacity(4)
@@ -4605,29 +4937,20 @@ impl cosmic::Application for AuraApp {
             main_col = main_col.push(self.view_nav_tabs());
         }
 
-        let body: Element<_> = if mode == NavMode::Rail {
+        let body: Element<_> = if mode != NavMode::Tabs && !self.core.nav_bar_active() {
             widget::row::with_capacity(2)
                 .spacing(10)
                 .height(Length::Fill)
                 .push(self.view_nav_rail())
-                .push(
-                    widget::container(content)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                )
+                .push(page_content)
                 .into()
         } else {
-            widget::container(content)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
+            page_content.into()
         };
 
         main_col = main_col.push(body);
 
-        if self.config.show_now_playing && self.window_height >= 360.0 {
-            main_col = main_col.push(self.view_now_playing_bar());
-        }
+        main_col = main_col.push(self.view_now_playing_bar());
 
         let content_width = (self.window_width - 28.0).max(300.0);
         let centered = widget::container(main_col)
@@ -4645,6 +4968,25 @@ impl cosmic::Application for AuraApp {
 }
 
 impl AuraApp {
+    fn view_page_layer(&self, page: Page) -> Element<'_, Message> {
+        let content: Element<'_, Message> = if self.active_page == page {
+            match page {
+                Page::Library => self.view_library(),
+                Page::Explore => self.view_explore(),
+                Page::Monitors => self.view_monitors(),
+                Page::Settings => self.view_settings(),
+                Page::About => self.view_about(),
+            }
+        } else {
+            widget::Space::new().into()
+        };
+
+        widget::container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
     fn page_position(page: Page) -> u16 {
         match page {
             Page::Library => 0,
@@ -4658,7 +5000,20 @@ impl AuraApp {
     fn navigate_to_page(&mut self, page: Page) -> Task<cosmic::Action<Message>> {
         self.nav.activate_position(Self::page_position(page));
         self.active_page = page;
+        if page == Page::Settings {
+            self.selected_settings_category = SettingsCategory::General;
+        }
         self.load_page_data(page)
+    }
+
+    fn scroll_to_top(&self, id: cosmic::widget::Id) -> Task<cosmic::Action<Message>> {
+        cosmic::iced::widget::scrollable::scroll_to(
+            id,
+            cosmic::iced::widget::scrollable::AbsoluteOffset {
+                x: Some(0.0),
+                y: Some(0.0),
+            },
+        )
     }
 
     fn load_page_data(&mut self, page: Page) -> Task<cosmic::Action<Message>> {

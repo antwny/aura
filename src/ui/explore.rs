@@ -623,7 +623,9 @@ impl AuraApp {
             scroll_content = scroll_content.push(load_more_row);
         }
 
-        let scroll = widget::scrollable(scroll_content).height(Length::Fill);
+        let scroll = widget::scrollable(scroll_content)
+            .id(self.explore_scroll_id.clone())
+            .height(Length::Fill);
 
         Element::from(
             widget::column::with_capacity(2)

@@ -204,6 +204,7 @@ impl AuraApp {
             ])
             .spacing(14)
             .align_items(Alignment::Center)
+            .justify_content(widget::JustifyContent::Center)
             .width(Length::Fill);
 
         col = col.push(logo_widget)

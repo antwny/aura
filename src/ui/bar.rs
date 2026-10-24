@@ -4,7 +4,41 @@ use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BarPlaybackState {
+    Playing,
+    Paused,
+    Mixed,
+}
+
 impl AuraApp {
+    fn bar_playback_state(&self) -> BarPlaybackState {
+        let state_for = |output: &str| {
+            self.output_pause_states.get(output).copied().flatten()
+                .or_else(|| self.output_pause_states.get("*").copied().flatten())
+        };
+        if self.selected_output != "*" {
+            return match state_for(&self.selected_output).unwrap_or(false) {
+                true => BarPlaybackState::Paused,
+                false => BarPlaybackState::Playing,
+            };
+        }
+        let states: Vec<bool> = if self.outputs.is_empty() {
+            state_for("*").into_iter().collect()
+        } else {
+            self.outputs.iter().filter_map(|output| state_for(&output.name)).collect()
+        };
+        if states.iter().any(|paused| *paused) && states.iter().any(|paused| !*paused) {
+            BarPlaybackState::Mixed
+        } else if !states.is_empty() {
+            if states.iter().all(|paused| *paused) { BarPlaybackState::Paused } else { BarPlaybackState::Playing }
+        } else if self.is_paused {
+            BarPlaybackState::Paused
+        } else {
+            BarPlaybackState::Playing
+        }
+    }
+
     fn truncate_bar_title(text: &str, max_chars: usize) -> String {
         if text.chars().count() <= max_chars {
             return text.to_string();
@@ -17,16 +51,36 @@ impl AuraApp {
     fn bar_play_pause_icon(
         &self,
         has_wallpapers: bool,
-    ) -> widget::button::IconButton<'_, Message> {
-        if self.is_paused {
+    ) -> Element<'_, Message> {
+        let state = self.bar_playback_state();
+        let target = self.selected_output.clone();
+        if state == BarPlaybackState::Paused {
             widget::button::icon(widget::icon::from_name("media-playback-start-symbolic"))
                 .class(cosmic::theme::Button::Suggested)
                 .tooltip(self.language.bar_resume())
-                .on_press_maybe(has_wallpapers.then_some(Message::TogglePause))
+                .on_press_maybe(has_wallpapers.then_some(Message::TogglePauseTarget(target)))
+                .into()
+        } else if state == BarPlaybackState::Mixed {
+            let tooltip = match self.language {
+                crate::i18n::Language::Es => "Estado mixto · reanudar todos",
+                crate::i18n::Language::En => "Mixed state · resume all",
+                crate::i18n::Language::Fr => "État mixte · tout reprendre",
+            };
+            let button = widget::button::icon(widget::icon::from_name("media-playback-start-symbolic"))
+                .class(cosmic::theme::Button::Suggested)
+                .tooltip(tooltip)
+                .on_press_maybe(has_wallpapers.then_some(Message::TogglePauseTarget(target)));
+            widget::row::with_capacity(2)
+                .spacing(1)
+                .align_y(Alignment::Center)
+                .push(button)
+                .push(widget::text::caption("↕"))
+                .into()
         } else {
             widget::button::icon(widget::icon::from_name("media-playback-pause-symbolic"))
                 .tooltip(self.language.bar_pause())
-                .on_press_maybe(has_wallpapers.then_some(Message::TogglePause))
+                .on_press_maybe(has_wallpapers.then_some(Message::TogglePauseTarget(target)))
+                .into()
         }
     }
 
@@ -58,48 +112,6 @@ impl AuraApp {
         .padding(12)
         .class(cosmic::theme::Container::Card)
         .into()
-    }
-
-    fn bar_volume_popover(&self) -> Element<'_, Message> {
-        let lang = self.language;
-        let volume = self.config.volume;
-        let muted = self.config.mute;
-        let mute_button = if muted {
-            widget::button::suggested(lang.bar_muted())
-                .leading_icon(widget::icon::from_name("audio-volume-muted-symbolic"))
-                .on_press(Message::ToggleMute(false))
-        } else {
-            widget::button::standard(lang.bar_audio_active())
-                .leading_icon(widget::icon::from_name("audio-volume-high-symbolic"))
-                .on_press(Message::ToggleMute(true))
-        };
-
-        let content = widget::column::with_capacity(5)
-            .spacing(8)
-            .push(mute_button.width(Length::Fill))
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(
-                        widget::slider(0..=100, volume, Message::ChangeVolume)
-                            .width(Length::Fill),
-                    )
-                    .push(widget::text::caption(format!("{}%", volume))),
-            )
-            .push(widget::text::caption(match lang {
-                crate::i18n::Language::Es => "El volumen se aplica al instante.",
-                crate::i18n::Language::En => "Volume applies immediately.",
-                crate::i18n::Language::Fr => "Le volume s’applique immédiatement.",
-            }))
-            .push(
-                widget::button::standard(lang.bar_hide())
-                    .leading_icon(widget::icon::from_name("go-down-symbolic"))
-                    .on_press(Message::ToggleShowNowPlaying(false))
-                    .width(Length::Fill),
-            );
-
-        self.bar_panel(lang.bar_volume(), content.into())
     }
 
     fn bar_monitors_popover(&self) -> Element<'_, Message> {
@@ -200,7 +212,7 @@ impl AuraApp {
             .tooltip(lang.bar_stop())
             .on_press_maybe(has_wallpapers.then_some(Message::StopWallpaper(None)));
 
-        let content = widget::column::with_capacity(8)
+        let content = widget::column::with_capacity(6)
             .spacing(8)
             .push(widget::text::caption(format!("{}: {}", lang.bar_target_label(), target)))
             .push(widget::text::caption(rotation))
@@ -232,14 +244,7 @@ impl AuraApp {
                     .push(self.bar_play_pause_icon(has_wallpapers))
                     .push(next)
                     .push(stop),
-            )
-            .push(
-                widget::button::standard(lang.bar_hide())
-                    .leading_icon(widget::icon::from_name("go-down-symbolic"))
-                    .on_press(Message::ToggleShowNowPlaying(false))
-                    .width(Length::Fill),
             );
-
         self.bar_panel(lang.bar_details(), content.into())
     }
 
@@ -248,7 +253,12 @@ impl AuraApp {
         let compact = self.window_width < 720.0 || self.window_height < 600.0;
         let mini = self.window_height < 460.0;
 
-        let (wall_title, out_label) = if let Some(curr) = &self.config.current {
+        let active_path = if self.selected_output == "*" {
+            self.config.current.as_deref()
+        } else {
+            self.config.wallpaper_for(&self.selected_output).or(self.config.current.as_deref())
+        };
+        let (wall_title, out_label) = if let Some(curr) = active_path {
             let p = std::path::Path::new(curr);
             let name = p
                 .file_stem()
@@ -290,14 +300,14 @@ impl AuraApp {
 
         let play_pause_btn = self.bar_play_pause_icon(has_wallpapers);
 
-        let volume_btn = if is_muted {
+        let mute_btn = if is_muted {
             widget::button::icon(widget::icon::from_name("audio-volume-muted-symbolic"))
                 .tooltip(lang.bar_muted())
         } else {
             widget::button::icon(widget::icon::from_name("audio-volume-high-symbolic"))
                 .tooltip(format!("{}: {}%", lang.bar_audio_active(), volume))
         }
-        .on_press(Message::ToggleBarPopover(BarPopover::Volume));
+        .on_press(Message::ToggleMute(!is_muted));
 
         let monitor_count = self.outputs.len().max(1);
         let target_label = if self.selected_output == "*" {
@@ -383,33 +393,24 @@ impl AuraApp {
                 .align_x(Horizontal::Right)
                 .push(widget::text::caption(lang.bar_gpu_accel(&self.config.hwdec)))
                 .push(widget::text::caption(lang.bar_wayland_tag()));
-            let controls = widget::row::with_capacity(10)
+            let controls = widget::row::with_capacity(8)
                 .spacing(8)
                 .align_y(Alignment::Center)
                 .push(prev_btn)
                 .push(play_pause_btn)
-                .push(self.bar_popover(
-                    volume_btn.into(),
-                    BarPopover::Volume,
-                    self.bar_volume_popover(),
-                ))
+                .push(next_btn)
                 .push(self.bar_popover(
                     monitor_btn_full.into(),
                     BarPopover::Monitors,
                     self.bar_monitors_popover(),
                 ))
-                .push(next_btn)
+                .push(mute_btn)
                 .push(
                     widget::slider(0..=100, volume, Message::ChangeVolume)
                         .width(Length::Fixed(72.0)),
                 )
                 .push(widget::text::caption(format!("{}%", volume)))
-                .push(stop_btn)
-                .push(self.bar_popover(
-                    menu_button().into(),
-                    BarPopover::Details,
-                    self.bar_details_popover(has_wallpapers),
-                ));
+                .push(stop_btn);
             widget::row::with_capacity(3)
                 .spacing(16)
                 .align_y(Alignment::Center)

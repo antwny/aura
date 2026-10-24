@@ -444,7 +444,11 @@ impl AuraApp {
         let main_layout = widget::column::with_capacity(2)
             .spacing(14)
             .push(top_section)
-            .push(widget::scrollable(grid).height(Length::Fill));
+            .push(
+                widget::scrollable(grid)
+                    .id(self.library_scroll_id.clone())
+                    .height(Length::Fill),
+            );
 
         Element::from(main_layout)
     }

@@ -1,7 +1,23 @@
-use crate::app::{AuraApp, Message};
+use crate::app::{AuraApp, Message, SettingsCategory};
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
+
+fn category_button_white_style() -> widget::button::Style {
+    let mut style = widget::button::Style::default();
+    style.text_color = Some(cosmic::iced::Color::WHITE);
+    style.icon_color = Some(cosmic::iced::Color::WHITE);
+    style
+}
+
+fn inactive_category_button_class() -> cosmic::theme::Button {
+    cosmic::theme::Button::Custom {
+        active: Box::new(|_, _| category_button_white_style()),
+        disabled: Box::new(|_| category_button_white_style()),
+        hovered: Box::new(|_, _| category_button_white_style()),
+        pressed: Box::new(|_, _| category_button_white_style()),
+    }
+}
 
 impl AuraApp {
     fn settings_flex_row<'a>(
@@ -17,21 +33,86 @@ impl AuraApp {
     }
 
     pub(crate) fn view_settings(&self) -> Element<'_, Message> {
-        let mut col = widget::column::with_capacity(8)
-            .spacing(if self.window_width < 620.0 { 12 } else { 18 })
-            .width(Length::Fill);
+        let spacing = if self.window_width < 620.0 { 12 } else { 18 };
+        let col = widget::column::with_capacity(3)
+            .spacing(spacing)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .push(widget::text::title2(self.language.settings_title()))
+            .push(self.view_settings_category_chips())
+            .push(self.view_selected_settings_category());
 
-        col = col.push(widget::text::title2(self.language.settings_title()));
+        col.into()
+    }
 
-        col = col.push(self.view_general_section());
-        col = col.push(self.view_engine_section());
-        col = col.push(self.view_performance_section());
-        col = col.push(self.view_switcher_section());
-        col = col.push(self.view_rotation_section());
-        col = col.push(self.view_appearance_section());
-        col = col.push(self.view_folders_section());
+    fn settings_category_label(&self, category: SettingsCategory) -> &'static str {
+        match category {
+            SettingsCategory::General => self.language.settings_section_general(),
+            SettingsCategory::Engine => self.language.settings_section_engine(),
+            SettingsCategory::Hud => self.language.settings_switcher_title(),
+            SettingsCategory::Rotation => self.language.settings_rotation_title(),
+            SettingsCategory::Appearance => self.language.settings_section_appearance(),
+        }
+    }
 
-        Element::from(widget::scrollable(col).height(Length::Fill))
+    fn settings_category_icon(category: SettingsCategory) -> &'static str {
+        match category {
+            SettingsCategory::General => "preferences-system-symbolic",
+            SettingsCategory::Engine => "applications-graphics-symbolic",
+            SettingsCategory::Hud => "view-grid-symbolic",
+            SettingsCategory::Rotation => "media-playlist-repeat-symbolic",
+            SettingsCategory::Appearance => "weather-clear-symbolic",
+        }
+    }
+
+    fn view_settings_category_chips(&self) -> Element<'_, Message> {
+        let mut categories = Vec::with_capacity(SettingsCategory::ALL.len());
+        for category in SettingsCategory::ALL {
+            let label = self.settings_category_label(category);
+            let icon = widget::icon::from_name(Self::settings_category_icon(category));
+            let button = if category == self.selected_settings_category {
+                widget::button::suggested(label)
+            } else {
+                widget::button::text(label).class(inactive_category_button_class())
+            }
+            .leading_icon(icon)
+            .on_press(Message::SelectSettingsCategory(category));
+            categories.push(button.into());
+        }
+
+        widget::container(
+            widget::flex_row(categories)
+                .spacing(8)
+                .align_items(Alignment::Center),
+        )
+            .class(cosmic::theme::Container::Card)
+            .padding(8)
+            .width(Length::Fill)
+            .into()
+    }
+
+    fn view_selected_settings_category(&self) -> Element<'_, Message> {
+        let content: Element<'_, Message> = match self.selected_settings_category {
+            SettingsCategory::General => widget::column::with_capacity(2)
+                .spacing(18)
+                .push(self.view_general_section())
+                .push(self.view_folders_section())
+                .into(),
+            SettingsCategory::Engine => widget::column::with_capacity(2)
+                .spacing(18)
+                .push(self.view_engine_section())
+                .push(self.view_performance_section())
+                .into(),
+            SettingsCategory::Hud => self.view_switcher_section().into(),
+            SettingsCategory::Rotation => self.view_rotation_section().into(),
+            SettingsCategory::Appearance => self.view_appearance_section().into(),
+        };
+
+        widget::scrollable(content)
+            .id(self.settings_scroll_id.clone())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 
     /// Section 1: Language, Autostart, and System Tray behavior.
@@ -321,7 +402,7 @@ impl AuraApp {
                 widget::row::with_capacity(2)
                     .spacing(10)
                     .align_y(Alignment::Center)
-                    .push(widget::icon::from_name("view-carousel-symbolic"))
+                    .push(widget::icon::from_name("view-grid-symbolic"))
                     .push(widget::text::title3(self.language.settings_switcher_title()))
             )
             .push(widget::text::caption(self.language.settings_switcher_desc()))
@@ -333,7 +414,7 @@ impl AuraApp {
                         } else {
                             widget::button::standard(self.language.settings_switcher_tray_opt_switcher())
                         }
-                        .leading_icon(widget::icon::from_name("view-carousel-symbolic"))
+                        .leading_icon(widget::icon::from_name("view-grid-symbolic"))
                         .on_press(Message::SelectTrayClickAction("switcher".into()))
                         .into(),
                         if self.config.tray_click_action == "main_window" {

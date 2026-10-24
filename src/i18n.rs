@@ -96,14 +96,6 @@ impl Language {
         }
     }
 
-    pub fn header_show_now_playing(&self) -> &'static str {
-        match self {
-            Language::Es => "Mostrar Now Playing",
-            Language::En => "Show Now Playing",
-            Language::Fr => "Afficher Now Playing",
-        }
-    }
-
     pub fn header_add_video(&self) -> &'static str {
         match self {
             Language::Es => "Añadir Video",
@@ -383,14 +375,6 @@ impl Language {
             Language::Es => "Detalles y opciones",
             Language::En => "Details and options",
             Language::Fr => "Détails et options",
-        }
-    }
-
-    pub fn bar_hide(&self) -> &'static str {
-        match self {
-            Language::Es => "Ocultar barra",
-            Language::En => "Hide bar",
-            Language::Fr => "Masquer la barre",
         }
     }
 
@@ -2494,14 +2478,6 @@ impl Language {
             Language::Es => "Copiar autostart",
             Language::En => "Copy autostart",
             Language::Fr => "Copier l’autostart",
-        }
-    }
-
-    pub fn settings_show_now_playing(&self) -> &'static str {
-        match self {
-            Language::Es => "Mostrar barra Now Playing",
-            Language::En => "Show Now Playing bar",
-            Language::Fr => "Afficher la barre Now Playing",
         }
     }
 
