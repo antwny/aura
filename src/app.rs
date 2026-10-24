@@ -19,6 +19,23 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+fn single_output_override(
+    outputs: &[MonitorOutput],
+    wallpapers: &std::collections::HashMap<String, String>,
+) -> Option<(String, String)> {
+    let [output] = outputs else {
+        return None;
+    };
+    if output.name == "*" {
+        return None;
+    }
+
+    let path = wallpapers.get(&output.name)?;
+    std::path::Path::new(path)
+        .is_file()
+        .then(|| (output.name.clone(), path.clone()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Library,
@@ -812,8 +829,7 @@ impl AuraApp {
             (active, wildcard_path)
         };
 
-        // Disconnected per-output overrides must be retired. Never stop the
-        // wildcard here: it is the default underlay for every remaining monitor.
+        // Disconnected per-output overrides must be retired.
         let stale_outputs: Vec<String> = active
             .iter()
             .filter(|out| {
@@ -826,6 +842,10 @@ impl AuraApp {
         // mpvpaper binds its output set at startup. A new or removed monitor
         // therefore needs a new wildcard surface, not just an IPC loadfile.
         let wildcard_running = active.iter().any(|out| out == "*");
+        let single_override = single_output_override(&self.outputs, &self.config.wallpapers);
+        // With one connected output, its explicit wallpaper fully covers the
+        // wildcard default. Keeping both players alive only wastes resources.
+        let stop_wildcard = wildcard_running && single_override.is_some();
         let configured_default = self
             .config
             .wallpapers
@@ -836,8 +856,8 @@ impl AuraApp {
         // died but a default is still configured, a newly connected monitor
         // should also bring it back instead of remaining blank.
         let monitor_set_changed = !added_monitors.is_empty() || old_outputs.len() != new_count;
-        let should_start_wildcard = wildcard_running
-            || (!added_monitors.is_empty() && configured_default.is_some());
+        let should_start_wildcard = !stop_wildcard
+            && (wildcard_running || (!added_monitors.is_empty() && configured_default.is_some()));
         let restart = if monitor_set_changed && should_start_wildcard {
             configured_default
                 .filter(|path| std::path::Path::new(path).exists())
@@ -853,33 +873,48 @@ impl AuraApp {
         } else {
             None
         };
-        let wildcard_will_run = wildcard_running || restart.is_some();
+        let wildcard_will_run = (wildcard_running && !stop_wildcard) || restart.is_some();
 
-        // Only the newly connected outputs are touched. If a wildcard is now
-        // running it already provides the default; apply explicit overrides.
+        // Reapply the sole output's override on topology changes so it is
+        // guaranteed to remain after retiring the wildcard player.
         let mut new_wallpapers = Vec::new();
-        for monitor in &added_monitors {
-            let override_path = self.config.wallpapers.get(&monitor.name).cloned();
-            let path_opt = if wildcard_will_run {
-                override_path
-            } else {
-                override_path
-                    .or_else(|| self.config.wallpapers.get("*").cloned())
-                    .or_else(|| self.config.current.clone())
-            };
-            if let Some(path) = path_opt.filter(|path| std::path::Path::new(path).exists()) {
-                let scaling = self
-                    .config
-                    .scaling
-                    .get(&monitor.name)
-                    .cloned()
-                    .or_else(|| self.config.scaling.get("*").cloned())
-                    .unwrap_or_else(|| "fit".into());
-                new_wallpapers.push((monitor.name.clone(), path, scaling));
+        if let Some((output, path)) = single_override {
+            let scaling = self
+                .config
+                .scaling
+                .get(&output)
+                .cloned()
+                .or_else(|| self.config.scaling.get("*").cloned())
+                .unwrap_or_else(|| "fit".into());
+            new_wallpapers.push((output, path, scaling));
+        } else {
+            for monitor in &added_monitors {
+                let override_path = self.config.wallpapers.get(&monitor.name).cloned();
+                let path_opt = if wildcard_will_run {
+                    override_path
+                } else {
+                    override_path
+                        .or_else(|| self.config.wallpapers.get("*").cloned())
+                        .or_else(|| self.config.current.clone())
+                };
+                if let Some(path) = path_opt.filter(|path| std::path::Path::new(path).exists()) {
+                    let scaling = self
+                        .config
+                        .scaling
+                        .get(&monitor.name)
+                        .cloned()
+                        .or_else(|| self.config.scaling.get("*").cloned())
+                        .unwrap_or_else(|| "fit".into());
+                    new_wallpapers.push((monitor.name.clone(), path, scaling));
+                }
             }
         }
 
-        if stale_outputs.is_empty() && restart.is_none() && new_wallpapers.is_empty() {
+        if stale_outputs.is_empty()
+            && restart.is_none()
+            && new_wallpapers.is_empty()
+            && !stop_wildcard
+        {
             self.status_message = Some(self.language.status_topology_updated(new_count));
             self.status_timer = 5;
             return Task::none();
@@ -927,6 +962,9 @@ impl AuraApp {
                             &gpu_preference,
                         )
                         .map_err(|error| error.to_string())?;
+                    }
+                    if stop_wildcard {
+                        engine.stop_output("*");
                     }
                     Ok(())
                 })
@@ -1237,13 +1275,22 @@ impl cosmic::Application for AuraApp {
                     }
                 }
             } else {
-                // Start the wildcard default first so every monitor has an
-                // underlay before per-output overrides are attached.
+                // A sole connected output with an explicit wallpaper does not
+                // need a second wildcard player rendering underneath it.
+                let single_override = single_output_override(&outputs, &config.wallpapers);
                 let mut startup_wallpapers: Vec<(String, String)> = config
                     .wallpapers
                     .iter()
                     .map(|(out, path)| (out.clone(), path.clone()))
+                    .filter(|(out, _)| {
+                        out == "*" || outputs.iter().any(|monitor| monitor.name == *out)
+                    })
                     .collect();
+                if single_override.is_some() {
+                    startup_wallpapers.retain(|(out, _)| out != "*");
+                }
+                // Start the wildcard default first when it is needed to cover
+                // monitors without their own configured wallpaper.
                 startup_wallpapers.sort_by_key(|(out, _)| if out == "*" { 0 } else { 1 });
                 for (out, path) in startup_wallpapers {
                     let sc = config.scaling.get(&out).cloned().unwrap_or_else(|| "fit".into());
@@ -5169,6 +5216,50 @@ impl AuraApp {
 
 #[cfg(test)]
 mod tests {
+    use super::single_output_override;
+    use crate::engine::MonitorOutput;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_single_output_override_uses_specific_wallpaper() {
+        let dir = tempfile::tempdir().unwrap();
+        let wallpaper = dir.path().join("specific.mp4");
+        std::fs::write(&wallpaper, b"video").unwrap();
+        let outputs = vec![MonitorOutput {
+            name: "eDP-1".into(),
+            ..MonitorOutput::default()
+        }];
+        let wallpapers = HashMap::from([(
+            "eDP-1".into(),
+            wallpaper.to_string_lossy().into_owned(),
+        )]);
+
+        assert_eq!(
+            single_output_override(&outputs, &wallpapers),
+            Some(("eDP-1".into(), wallpaper.to_string_lossy().into_owned()))
+        );
+    }
+
+    #[test]
+    fn test_single_output_override_requires_one_connected_display_and_valid_file() {
+        let outputs = vec![
+            MonitorOutput {
+                name: "eDP-1".into(),
+                ..MonitorOutput::default()
+            },
+            MonitorOutput {
+                name: "HDMI-A-1".into(),
+                ..MonitorOutput::default()
+            },
+        ];
+        let wallpapers = HashMap::from([("eDP-1".into(), "/tmp/eDP.mp4".into())]);
+
+        assert_eq!(single_output_override(&outputs, &wallpapers), None);
+
+        let one_output = vec![outputs[0].clone()];
+        assert_eq!(single_output_override(&one_output, &wallpapers), None);
+    }
+
     #[test]
     fn test_custom_interval_input_sanitization_and_validation() {
         let input = "abc 45 min!";
