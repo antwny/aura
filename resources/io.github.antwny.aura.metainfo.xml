@@ -60,6 +60,18 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.8.0" date="2026-10-23">
+      <description>
+        <p>Aura 1.8.0 improves multi-monitor playback, display recovery, and responsive navigation:</p>
+        <ul>
+          <li>Independent per-monitor playback controls with clear mixed-state feedback.</li>
+          <li>Automatic selection of the remaining primary display after unplugging the selected monitor.</li>
+          <li>Playback bar stays available, with grouped transport controls and direct audio controls in wide windows.</li>
+          <li>Settings categories and independent page scroll positions for easier navigation.</li>
+          <li>Wallpaper engine topology handling keeps shared and per-display backgrounds synchronized during hotplug.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.7.2" date="2026-10-20">
       <description>
         <p>Aura 1.7.2 focuses on update safety, process isolation, configuration resilience, and non-blocking GNOME playback:</p>

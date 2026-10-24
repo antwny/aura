@@ -77,9 +77,8 @@ jobs:
           cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.metainfo.xml "target/package/${PKG_NAME}/"
           cp LICENSE "target/package/${PKG_NAME}/"
-          if [ -f "packaging/mpvpaper" ]; then
-            cp packaging/mpvpaper "target/package/${PKG_NAME}/"
-          fi
+          test -x packaging/mpvpaper
+          cp packaging/mpvpaper "target/package/${PKG_NAME}/"
           cp packaging/install.sh "target/package/${PKG_NAME}/install.sh"
           cp packaging/uninstall.sh "target/package/${PKG_NAME}/uninstall.sh"
           chmod +x "target/package/${PKG_NAME}/install.sh"

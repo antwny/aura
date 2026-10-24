@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-23
+
+### Added
+- Controles de reproducción y pausa independientes por monitor, con indicación de estado mixto.
+- Navegación por categorías en Ajustes y conservación del desplazamiento por página.
+
+### Changed
+- La barra de reproducción permanece visible y adapta sus controles al tamaño de la ventana; en ventanas amplias, anterior, pausa y siguiente quedan agrupados y el volumen se controla directamente.
+- El selector de pantalla vuelve al monitor principal disponible cuando se desconecta la pantalla seleccionada.
+
+### Fixed
+- La selección guardada se valida al iniciar y después de cambios de topología, evitando quedarse apuntando a una pantalla desconectada.
+- La reproducción y los fondos se sincronizan al conectar o desconectar monitores sin detener la capa predeterminada compartida.
+
 ## [1.7.2] - 2026-10-20
 
 ### Added
