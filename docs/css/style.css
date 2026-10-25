@@ -815,60 +815,6 @@ body {
   display: block;
 }
 
-/* Auto-Theming Interactive Panel */
-.theming-preview-wrap {
-  padding: clamp(16px, 3vw, 28px);
-}
-
-.theming-controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.theme-pill-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.theme-pill-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--ink-1);
-  font-family: var(--font-body);
-  font-size: 0.88rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--t-fast) var(--ease);
-}
-.theme-pill-btn:hover {
-  border-color: var(--line-strong);
-  color: var(--ink-0);
-}
-.theme-pill-btn.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.25);
-  color: var(--ink-0);
-}
-
-.swatch-pip {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.swatch-pip.amber { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-.swatch-pip.violet { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
-
 /* Mechanical 3D Keycaps (<kbd>) */
 .cosmic-keycap {
   display: inline-flex;
@@ -1036,6 +982,20 @@ body {
 .cmp__table td.highlight {
   color: var(--ink-0);
   background: rgba(168, 85, 247, 0.06);
+}
+
+.cmp__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cmp__brand-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.35));
 }
 
 .cmp__table tbody tr:last-child td {

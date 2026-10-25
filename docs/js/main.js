@@ -76,54 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- 3. Dynamic Auto-Theming Comparison Toggle (Showcase) ---
-  const themeSwitchBtns = document.querySelectorAll('.theme-pill-btn');
-  const motionImgAmber = document.getElementById('motion-img-amber');
-  const motionImgViolet = document.getElementById('motion-img-violet');
-  const motionThemeCaption = document.getElementById('motion-theme-caption');
-
-  themeSwitchBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const mode = btn.getAttribute('data-theme-mode');
-
-      themeSwitchBtns.forEach(b => {
-        b.classList.remove('active');
-        b.setAttribute('aria-pressed', 'false');
-      });
-      btn.classList.add('active');
-      btn.setAttribute('aria-pressed', 'true');
-
-      if (mode === 'violet') {
-        if (motionImgAmber) motionImgAmber.style.display = 'none';
-        if (motionImgViolet) {
-          motionImgViolet.style.display = 'block';
-          motionImgViolet.style.opacity = '0';
-          motionImgViolet.style.transition = 'opacity 0.25s ease';
-          requestAnimationFrame(() => {
-            motionImgViolet.style.opacity = '1';
-          });
-        }
-        if (motionThemeCaption) {
-          motionThemeCaption.textContent = 'State: Dark cyberpunk wallpaper active → COSMIC Desktop accent dynamically shifted to violet (RGB: 168, 85, 247).';
-        }
-      } else {
-        if (motionImgAmber) {
-          motionImgAmber.style.display = 'block';
-          motionImgAmber.style.opacity = '0';
-          motionImgAmber.style.transition = 'opacity 0.25s ease';
-          requestAnimationFrame(() => {
-            motionImgAmber.style.opacity = '1';
-          });
-        }
-        if (motionImgViolet) motionImgViolet.style.display = 'none';
-        if (motionThemeCaption) {
-          motionThemeCaption.textContent = 'State: Solar field wallpaper active → COSMIC Desktop accent dynamically shifted to warm gold (RGB: 245, 158, 11).';
-        }
-      }
-    });
-  });
-
-  // --- 4. Distro Dependency Tabs (Download Card) ---
+  // --- 3. Distro Dependency Tabs (Download Card) ---
   const distroTabs = document.querySelectorAll('.distro-tab');
   const cmdDepsElem = document.getElementById('cmd-deps-main');
   const distroCommands = {
@@ -144,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- 5. Copy-to-Clipboard Functionality ---
+  // --- 4. Copy-to-Clipboard Functionality ---
   const copyButtons = document.querySelectorAll('[data-copy-target]');
   copyButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -161,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- 5.1 CLI Console Interactive Features ---
+  // --- 5. CLI Console Interactive Features ---
   const cliFilterBtns = document.querySelectorAll('.cli-filter-btn');
   const cliRows = document.querySelectorAll('.cli-row');
   const copyCliAllBtn = document.getElementById('copy-cli-all');
@@ -202,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'aura apply ~/Pictures/Wallpapers/space.mp4',
         'aura stop',
         'aura status',
+        'aura mode auto',
         'aura check-update',
         'aura update',
         'aura --daemon',
@@ -210,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ].join('\n');
 
       navigator.clipboard.writeText(cliCommands).then(() => {
-        showToast('COPIED 13 CLI COMMANDS');
+        showToast('COPIED 14 CLI COMMANDS');
       }).catch(() => {
         showToast('Failed to copy commands');
       });
