@@ -117,7 +117,6 @@ impl AuraApp {
 
     /// Section 1: Language, Autostart, and System Tray behavior.
     fn view_general_section(&self) -> Element<'_, Message> {
-        let is_gnome = crate::engine::gnome::is_active();
         let section = widget::column::with_capacity(5)
             .spacing(14)
             .padding(if self.window_width < 620.0 { 12 } else { 18 })
@@ -164,7 +163,7 @@ impl AuraApp {
                     .spacing(16)
                     .align_y(Alignment::Center)
                     .push(widget::toggler(self.autostart_active).on_toggle(Message::ToggleAutostart))
-                    .push(widget::text::body(self.language.settings_autostart_desktop(is_gnome)))
+                    .push(widget::text::body(self.language.settings_autostart_desktop()))
             )
             .push(
                 widget::row::with_capacity(2)
@@ -182,8 +181,9 @@ impl AuraApp {
 
     /// Section 2: Desktop environment detection, active backend, Hanabi diagnostics on GNOME, and GPU preferences.
     fn view_engine_section(&self) -> Element<'_, Message> {
-        let is_gnome = crate::engine::gnome::is_active();
-        let mut section = widget::column::with_capacity(9)
+        let backend = self.backend();
+        let is_gnome = backend == crate::engine::Backend::Gnome;
+        let mut section = widget::column::with_capacity(12)
             .spacing(14)
             .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
@@ -194,8 +194,8 @@ impl AuraApp {
                     .push(widget::text::title3(self.language.settings_section_engine()))
             );
 
-        let env_name = if is_gnome { "GNOME Wayland (Mutter)" } else { "COSMIC Desktop (Wayland)" };
-        let engine_name = if is_gnome { "GNOME Native (GSettings + Hanabi)" } else { "mpvpaper (Wayland Layer Shell)" };
+        let env_name = self.desktop_environment().pretty_name();
+        let engine_name = backend.label().to_string();
 
         let desktop_status: Element<'_, Message> = if self.window_width < 620.0 {
             widget::column::with_capacity(2)
@@ -244,6 +244,79 @@ impl AuraApp {
         let status_box = self.settings_flex_row(vec![desktop_status, backend_status], 16);
 
         section = section.push(status_box);
+        if let Some(diagnostic) = crate::engine::backend::backend_diagnostic(self.config.backend) {
+            section = section.push(widget::text::caption(diagnostic));
+        }
+
+        let mut backend_buttons = vec![
+            widget::text::body(self.language.settings_backend_choice_lbl()).into(),
+        ];
+        for preference in [
+            crate::config::BackendPreference::Auto,
+            crate::config::BackendPreference::Mpvpaper,
+            crate::config::BackendPreference::Gnome,
+            crate::config::BackendPreference::Kde,
+            crate::config::BackendPreference::Static,
+        ] {
+            let label = match preference {
+                crate::config::BackendPreference::Auto => self.language.settings_backend_auto(),
+                crate::config::BackendPreference::Mpvpaper => "mpvpaper",
+                crate::config::BackendPreference::Gnome => "GNOME",
+                crate::config::BackendPreference::Kde => "KDE",
+                crate::config::BackendPreference::Static => self.language.settings_backend_static(),
+            };
+            let button = if self.config.backend == preference {
+                widget::button::suggested(label)
+            } else {
+                widget::button::standard(label)
+            };
+            backend_buttons.push(
+                button
+                    .on_press(Message::SelectBackendPreference(preference))
+                    .into(),
+            );
+        }
+        section = section.push(self.settings_flex_row(backend_buttons, 8));
+
+        if backend == crate::engine::Backend::Kde {
+            let dbus_ok = crate::engine::kde::dbus_available();
+            let plugin_ok = crate::engine::kde::plugin_installed();
+            let diagnostic_row: Element<'_, Message> = if !dbus_ok {
+                widget::row::with_capacity(2)
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(widget::icon::from_name("dialog-warning-symbolic"))
+                    .push(
+                        widget::text::body(self.language.settings_kde_dbus_missing())
+                            .width(Length::Fill),
+                    )
+                    .into()
+            } else if plugin_ok {
+                widget::row::with_capacity(2)
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(widget::icon::from_name("emblem-ok-symbolic"))
+                    .push(widget::text::body(self.language.settings_kde_plugin_ok()))
+                    .into()
+            } else {
+                self.settings_flex_row(vec![
+                    widget::icon::from_name("dialog-warning-symbolic").into(),
+                    widget::text::body(self.language.settings_kde_plugin_missing())
+                        .width(Length::Fill)
+                        .into(),
+                    widget::button::suggested(self.language.settings_kde_plugin_install_btn())
+                        .leading_icon(widget::icon::from_name("software-update-available-symbolic"))
+                        .on_press(Message::OpenKdePluginPage)
+                        .into(),
+                ], 12)
+            };
+            section = section.push(
+                widget::container(diagnostic_row)
+                    .padding(if self.window_width < 620.0 { 8 } else { 12 })
+                    .width(Length::Fill)
+                    .class(cosmic::theme::Container::Card),
+            );
+        }
 
         if is_gnome {
             let hanabi_ok = crate::engine::gnome::hanabi_installed();
@@ -588,14 +661,47 @@ impl AuraApp {
                     .into(),
                 ], 8);
 
-            let hint_caption = if self.config.rotation_only_favorites {
+            let live_count = self.videos.iter().filter(|video| video.is_video).count();
+            let static_count = self.videos.len().saturating_sub(live_count);
+            let media_row = self.settings_flex_row(vec![
+                widget::text::body(self.language.settings_rotation_media_lbl()).into(),
+                if self.config.rotation_media_filter == crate::config::RotationMediaFilter::All {
+                    widget::button::suggested(format!("{} ({})", self.language.settings_rotation_media_all(), self.videos.len()))
+                } else {
+                    widget::button::standard(format!("{} ({})", self.language.settings_rotation_media_all(), self.videos.len()))
+                }
+                .leading_icon(widget::icon::from_name("view-grid-symbolic"))
+                .on_press(Message::SelectRotationMediaFilter(crate::config::RotationMediaFilter::All))
+                .into(),
+                if self.config.rotation_media_filter == crate::config::RotationMediaFilter::Live {
+                    widget::button::suggested(format!("{} ({})", self.language.settings_rotation_media_live(), live_count))
+                } else {
+                    widget::button::standard(format!("{} ({})", self.language.settings_rotation_media_live(), live_count))
+                }
+                .leading_icon(widget::icon::from_name("video-x-generic-symbolic"))
+                .on_press(Message::SelectRotationMediaFilter(crate::config::RotationMediaFilter::Live))
+                .into(),
+                if self.config.rotation_media_filter == crate::config::RotationMediaFilter::Static {
+                    widget::button::suggested(format!("{} ({})", self.language.settings_rotation_media_static(), static_count))
+                } else {
+                    widget::button::standard(format!("{} ({})", self.language.settings_rotation_media_static(), static_count))
+                }
+                .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
+                .on_press(Message::SelectRotationMediaFilter(crate::config::RotationMediaFilter::Static))
+                .into(),
+            ], 8);
+
+            let pool_count = self.rotation_pool().len();
+            let hint_caption = if pool_count == 0 {
+                widget::text::caption(self.language.settings_rotation_pool_empty())
+            } else if self.config.rotation_only_favorites {
                 if count_favs == 0 {
                     widget::text::caption(self.language.settings_rotation_favs_empty_hint())
                 } else {
                     widget::text::caption(self.language.settings_rotation_favs_active_hint(count_favs))
                 }
             } else {
-                widget::text::caption(self.language.settings_rotation_desc())
+                widget::text::caption(self.language.settings_rotation_pool_count(pool_count))
             };
 
             let mut interval_buttons = vec![
@@ -657,6 +763,7 @@ impl AuraApp {
 
             rotation_section = rotation_section
                 .push(source_row)
+                .push(media_row)
                 .push(hint_caption)
                 .push(interval_row)
                 .push(custom_interval_row)
@@ -678,7 +785,7 @@ impl AuraApp {
                 self.settings_flex_row(vec![
                     widget::icon::from_name("preferences-system-symbolic").into(),
                     widget::text::title3(self.language.settings_section_appearance()).into(),
-                        widget::container(widget::text::caption(self.language.settings_cosmic_badge()).size(11))
+                        widget::container(widget::text::caption(self.desktop_environment().label()).size(11))
                             .padding([2, 8])
                             .class(cosmic::theme::Container::Card)
                             .into(),

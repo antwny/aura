@@ -1,9 +1,13 @@
+pub mod backend;
 pub mod gnome;
 pub mod gpu;
 pub mod integration;
+pub mod kde;
 pub mod mpvpaper;
 pub mod outputs;
 
+#[allow(unused_imports)]
+pub use backend::{Backend, DesktopEnvironment};
 #[allow(unused_imports)]
 pub use gpu::{detect_available_gpus, GpuInfo};
 pub use mpvpaper::WallpaperEngine;

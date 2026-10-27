@@ -36,6 +36,53 @@ fn default_auto_dark() -> bool {
     true
 }
 
+/// Wallpaper backend preference. `Auto` keeps the historical platform
+/// detection, while the explicit variants let users override a misdetected
+/// session without touching environment variables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendPreference {
+    #[default]
+    Auto,
+    Mpvpaper,
+    Gnome,
+    Kde,
+    Static,
+}
+
+impl BackendPreference {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Mpvpaper => "mpvpaper",
+            Self::Gnome => "gnome",
+            Self::Kde => "kde",
+            Self::Static => "static",
+        }
+    }
+}
+
+/// Optional second axis for playlist rotation. Kept separate from the
+/// favorites switch so existing configurations keep their exact behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RotationMediaFilter {
+    #[default]
+    All,
+    Live,
+    Static,
+}
+
+impl RotationMediaFilter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Live => "live",
+            Self::Static => "static",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -77,6 +124,10 @@ pub struct Config {
     pub library_sort: String,
     #[serde(default)]
     pub rotation_only_favorites: bool,
+    #[serde(default)]
+    pub rotation_media_filter: RotationMediaFilter,
+    #[serde(default)]
+    pub backend: BackendPreference,
     #[serde(default = "default_tray_click_action")]
     pub tray_click_action: String,
     #[serde(default)]
@@ -305,6 +356,8 @@ impl Default for Config {
             favorites: Vec::new(),
             library_sort: default_library_sort(),
             rotation_only_favorites: false,
+            rotation_media_filter: RotationMediaFilter::All,
+            backend: BackendPreference::Auto,
             tray_click_action: default_tray_click_action(),
             switcher_only_favorites: false,
             switcher_position: default_switcher_position(),
@@ -559,6 +612,8 @@ mod tests {
         assert!(!cfg.dirs.iter().any(|d| d.to_lowercase().ends_with("downloads") || d.to_lowercase().ends_with("descargas")));
         assert!(!cfg.autostart);
         assert!(!cfg.rotation_only_favorites);
+        assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
+        assert_eq!(cfg.backend, BackendPreference::Auto);
     }
 
     #[test]
@@ -591,6 +646,8 @@ mod tests {
         cfg.current = Some("/path/to/vid.mp4".into());
         cfg.language = "en".into();
         cfg.rotation_only_favorites = true;
+        cfg.rotation_media_filter = RotationMediaFilter::Live;
+        cfg.backend = BackendPreference::Kde;
 
         let json = serde_json::to_string_pretty(&cfg).expect("serialize config");
         let deserialized: Config = serde_json::from_str(&json).expect("deserialize config");
@@ -600,6 +657,8 @@ mod tests {
         assert_eq!(deserialized.scaling.get("DP-1").unwrap(), "fill");
         assert_eq!(deserialized.language, "en");
         assert!(deserialized.rotation_only_favorites);
+        assert_eq!(deserialized.rotation_media_filter, RotationMediaFilter::Live);
+        assert_eq!(deserialized.backend, BackendPreference::Kde);
     }
 
     #[test]
@@ -631,6 +690,8 @@ mod tests {
         assert!(cfg.auto_pause);
         assert_eq!(cfg.theme_mode, ThemeMode::Auto);
         assert_eq!(cfg.gpu_preference, "auto");
+        assert_eq!(cfg.backend, BackendPreference::Auto);
+        assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
     }
 
     #[test]
@@ -807,6 +868,8 @@ mod tests {
         assert_eq!(cfg.volume, 80);
         assert_eq!(cfg.theme_mode, ThemeMode::Dark);
         assert!(cfg.rotation_only_favorites);
+        assert_eq!(cfg.backend, BackendPreference::Auto);
+        assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
 
         assert!(migrate_config(&mut cfg));
 

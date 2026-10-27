@@ -6,7 +6,11 @@ use cosmic::widget;
 use cosmic::Element;
 
 fn switcher_scrim_color(alpha_cosmic: f32, alpha_gnome: f32) -> cosmic::iced::Color {
-    let alpha = if crate::engine::gnome::is_active() {
+    let desktop_shell = matches!(
+        crate::engine::DesktopEnvironment::detect(),
+        crate::engine::DesktopEnvironment::Gnome | crate::engine::DesktopEnvironment::Kde
+    );
+    let alpha = if desktop_shell {
         alpha_gnome
     } else {
         alpha_cosmic
@@ -126,7 +130,14 @@ impl AuraApp {
             let p = self.switcher_classic_scales[slot_idx];
             let (w, h) = classic_card_dimensions(base_w, base_h, offset, p);
 
-            let card_content: Element<'_, Message> = if let Some(thumb) = &video.thumb_path {
+            let card_content: Element<'_, Message> = if let Some(handle) =
+                crate::scanner::thumbs::classic_thumb_handle(&video.path, self.hud_scale())
+            {
+                widget::image(handle)
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
+                    .into()
+            } else if let Some(thumb) = &video.thumb_path {
                 widget::image(thumb.clone())
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h))
@@ -497,12 +508,12 @@ impl AuraApp {
             let p = self.switcher_cinematic_scales[slot_idx];
             let (w, h) = cinematic_card_hover_dimensions(base_w, base_h, offset, p);
 
-            let card_content: Element<'_, Message> = if let Some(handle) = crate::scanner::thumbs::cinematic_thumb_handle(&video.path, is_center, Some(accent_rgb)) {
+            let card_content: Element<'_, Message> = if let Some(handle) = crate::scanner::thumbs::cinematic_thumb_handle(&video.path, is_center, Some(accent_rgb), self.hud_scale()) {
                 widget::image(handle)
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h))
                     .into()
-            } else if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb)) {
+            } else if let Some(cinematic_thumb) = crate::scanner::thumbs::cinematic_thumb_for_media(&video.path, is_center, Some(accent_rgb), self.hud_scale()) {
                 widget::image(cinematic_thumb)
                     .width(Length::Fixed(w))
                     .height(Length::Fixed(h))
@@ -691,14 +702,14 @@ impl AuraApp {
 
                     let video = pool[item_idx];
                     let card_element: Element<'_, Message> = if let Some(handle) =
-                        crate::scanner::thumbs::honeycomb_thumb_handle(&video.path, is_active, Some(accent_rgb))
+                        crate::scanner::thumbs::honeycomb_thumb_handle(&video.path, is_active, Some(accent_rgb), self.hud_scale())
                     {
                         widget::image(handle)
                             .width(Length::Fixed(card_w))
                             .height(Length::Fixed(card_h))
                             .into()
                     } else if let Some(hex_thumb) =
-                        crate::scanner::thumbs::honeycomb_thumb_for_media(&video.path, is_active, Some(accent_rgb))
+                        crate::scanner::thumbs::honeycomb_thumb_for_media(&video.path, is_active, Some(accent_rgb), self.hud_scale())
                     {
                         widget::image(hex_thumb)
                             .width(Length::Fixed(card_w))

@@ -1540,7 +1540,7 @@ impl WallpaperEngine {
             Type=Application\n\
             Name=Aura\n\
             GenericName=Live Wallpaper Manager\n\
-            Comment=Animated live wallpaper manager for COSMIC Desktop\n\
+            Comment=Animated live wallpaper manager for Linux desktops\n\
             TryExec={}\n\
             Exec={}\n\
             Icon=io.github.antwny.aura\n\

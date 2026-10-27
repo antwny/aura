@@ -299,9 +299,9 @@ impl Language {
 
     pub fn monitors_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Representación a escala de tus pantallas detectadas en COSMIC. Configura fondos y escalado independiente:",
-            Language::En => "True-to-scale layout of detected COSMIC displays. Configure wallpapers and scaling independently:",
-            Language::Fr => "Disposition à l’échelle des écrans détectés dans COSMIC. Configurez indépendamment les fonds d’écran et leur mise à l’échelle :",
+            Language::Es => "Representación a escala de tus pantallas detectadas. Configura fondos y escalado independiente:",
+            Language::En => "True-to-scale layout of detected displays. Configure wallpapers and scaling independently:",
+            Language::Fr => "Disposition à l’échelle des écrans détectés. Configurez indépendamment les fonds d’écran et leur mise à l’échelle :",
         }
     }
 
@@ -535,6 +535,62 @@ impl Language {
         }
     }
 
+    pub fn settings_backend_choice_lbl(&self) -> &'static str {
+        match self {
+            Language::Es => "Preferencia de motor:",
+            Language::En => "Backend preference:",
+            Language::Fr => "Moteur préféré :",
+        }
+    }
+
+    pub fn settings_backend_auto(&self) -> &'static str {
+        match self {
+            Language::Es => "Automático",
+            Language::En => "Auto",
+            Language::Fr => "Automatique",
+        }
+    }
+
+    pub fn settings_backend_static(&self) -> &'static str {
+        match self {
+            Language::Es => "Estático",
+            Language::En => "Static",
+            Language::Fr => "Statique",
+        }
+    }
+
+    pub fn settings_kde_plugin_ok(&self) -> &'static str {
+        match self {
+            Language::Es => "Smart Video Wallpaper Reborn detectado: los vídeos se reproducen dentro de Plasma.",
+            Language::En => "Smart Video Wallpaper Reborn detected: videos play inside Plasma.",
+            Language::Fr => "Smart Video Wallpaper Reborn détecté : les vidéos sont lues dans Plasma.",
+        }
+    }
+
+    pub fn settings_kde_dbus_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "KDE Plasma detectado, pero faltan las herramientas D-Bus de Qt (qdbus6 o qdbus). Instala qt6-tools o qdbus para cambiar fondos.",
+            Language::En => "KDE Plasma detected, but Qt D-Bus tools (qdbus6 or qdbus) are missing. Install qt6-tools or qdbus to change wallpapers.",
+            Language::Fr => "KDE Plasma détecté, mais les outils D-Bus Qt (qdbus6 ou qdbus) sont absents. Installez qt6-tools ou qdbus pour changer de fond.",
+        }
+    }
+
+    pub fn settings_kde_plugin_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "Falta Smart Video Wallpaper Reborn. Los vídeos se mostrarán como imagen fija hasta instalarlo.",
+            Language::En => "Smart Video Wallpaper Reborn is missing. Videos will show a still poster until it is installed.",
+            Language::Fr => "Smart Video Wallpaper Reborn est absent. Les vidéos s’affichent en image fixe jusqu’à son installation.",
+        }
+    }
+
+    pub fn settings_kde_plugin_install_btn(&self) -> &'static str {
+        match self {
+            Language::Es => "Instalar plugin",
+            Language::En => "Install plugin",
+            Language::Fr => "Installer l’extension",
+        }
+    }
+
     pub fn settings_engine_hanabi_status_ok(&self) -> &'static str {
         match self {
             Language::Es => "Extensión Hanabi detectada y operativa para fondos animados.",
@@ -563,33 +619,19 @@ impl Language {
         }
     }
 
-    pub fn settings_cosmic_badge(&self) -> &'static str {
+    pub fn settings_autostart_desktop(&self) -> &'static str {
         match self {
-            Language::Es => "COSMIC Desktop",
-            Language::En => "COSMIC Desktop",
-            Language::Fr => "COSMIC Desktop",
-        }
-    }
-
-    pub fn settings_autostart_desktop(&self, is_gnome: bool) -> &'static str {
-        if is_gnome {
-            match self {
-                Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión en GNOME",
-                Language::En => "Launch animated wallpaper automatically upon login to GNOME",
-                Language::Fr => {
-                    "Lancer automatiquement le fond d’écran animé à l’ouverture de session GNOME"
-                }
-            }
-        } else {
-            self.settings_autostart()
+            Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión",
+            Language::En => "Launch animated wallpaper automatically upon login",
+            Language::Fr => "Lancer automatiquement le fond d’écran animé à l’ouverture de session",
         }
     }
 
     pub fn settings_autostart(&self) -> &'static str {
         match self {
-            Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión en COSMIC Desktop",
-            Language::En => "Launch animated wallpaper automatically upon login to COSMIC Desktop",
-            Language::Fr => "Lancer automatiquement le fond d’écran animé à l’ouverture de session COSMIC Desktop",
+            Language::Es => "Iniciar fondo animado automáticamente al iniciar sesión",
+            Language::En => "Launch animated wallpaper automatically upon login",
+            Language::Fr => "Lancer automatiquement le fond d’écran animé à l’ouverture de session",
         }
     }
 
@@ -797,29 +839,18 @@ impl Language {
     }
 
     // --- About View ---
-    pub fn about_tagline(&self) -> &'static str {
-        if crate::engine::gnome::is_active() {
-            match self {
-                Language::Es => "Gestor de Fondos Animados para GNOME y Wayland",
-                Language::En => "Live Wallpaper Manager for GNOME & Wayland",
-                Language::Fr => "Gestionnaire de fonds d’écran animés pour GNOME et Wayland",
-            }
-        } else {
-            match self {
-                Language::Es => "Gestor Nativo de Fondos Animados para COSMIC Desktop",
-                Language::En => "Native Live Wallpaper Manager for COSMIC Desktop",
-                Language::Fr => "Gestionnaire natif de fonds d’écran animés pour COSMIC Desktop",
-            }
+    pub fn about_tagline(&self) -> String {
+        let desktop = crate::engine::DesktopEnvironment::detect().label();
+        match self {
+            Language::Es => format!("Gestor de Fondos Animados para {}", desktop),
+            Language::En => format!("Live Wallpaper Manager for {}", desktop),
+            Language::Fr => format!("Gestionnaire de fonds d’écran animés pour {}", desktop),
         }
     }
 
     pub fn about_version_info(&self) -> String {
         let os = crate::engine::mpvpaper::detect_os_pretty_name();
-        let desktop = if crate::engine::gnome::is_active() {
-            "GNOME Shell"
-        } else {
-            "COSMIC Desktop"
-        };
+        let desktop = crate::engine::DesktopEnvironment::detect().pretty_name();
         match self {
             Language::Es => format!(
                 "Versión {} • {} • {}",
@@ -1881,6 +1912,66 @@ impl Language {
         }
     }
 
+    pub fn status_backend_selected(&self, backend: &str) -> String {
+        match self {
+            Language::Es => format!("Motor de fondo: {}", backend),
+            Language::En => format!("Wallpaper backend: {}", backend),
+            Language::Fr => format!("Moteur de fond d’écran : {}", backend),
+        }
+    }
+
+    pub fn status_rotation_media_filter(&self, filter: &str) -> &'static str {
+        match filter {
+            "live" => match self {
+                Language::Es => "Rotación limitada a fondos animados",
+                Language::En => "Rotation limited to live wallpapers",
+                Language::Fr => "Rotation limitée aux fonds animés",
+            },
+            "static" => match self {
+                Language::Es => "Rotación limitada a fondos estáticos",
+                Language::En => "Rotation limited to static wallpapers",
+                Language::Fr => "Rotation limitée aux fonds statiques",
+            },
+            _ => match self {
+                Language::Es => "Rotación incluye fondos animados y estáticos",
+                Language::En => "Rotation includes live and static wallpapers",
+                Language::Fr => "La rotation inclut les fonds animés et statiques",
+            },
+        }
+    }
+
+    pub fn status_pause_desktop_managed(&self) -> &'static str {
+        match self {
+            Language::Es => "La pausa la controla el escritorio con este motor",
+            Language::En => "Playback pause is controlled by the desktop with this backend",
+            Language::Fr => "La pause est contrôlée par le bureau avec ce moteur",
+        }
+    }
+
+    pub fn kde_plugin_fallback_status(&self) -> &'static str {
+        match self {
+            Language::Es => "Plugin de vídeo de KDE no instalado: mostrando imagen fija",
+            Language::En => "KDE video plugin missing: showing a still image",
+            Language::Fr => "Extension vidéo KDE absente : image fixe affichée",
+        }
+    }
+
+    pub fn kde_plugin_fallback_toast(&self) -> &'static str {
+        match self {
+            Language::Es => "Instala Smart Video Wallpaper Reborn para reproducir vídeos en Plasma.",
+            Language::En => "Install Smart Video Wallpaper Reborn to play videos on Plasma.",
+            Language::Fr => "Installez Smart Video Wallpaper Reborn pour lire des vidéos sous Plasma.",
+        }
+    }
+
+    pub fn kde_plugin_install_action(&self) -> &'static str {
+        match self {
+            Language::Es => "Abrir plugin",
+            Language::En => "Open plugin page",
+            Language::Fr => "Ouvrir l’extension",
+        }
+    }
+
     pub fn status_interval_selected(&self, interval: u64) -> String {
         match self {
             Language::Es => format!("Intervalo de rotación: {} min", interval),
@@ -2074,9 +2165,9 @@ impl Language {
 
     pub fn settings_rotation_favs_empty_hint(&self) -> &'static str {
         match self {
-            Language::Es => "⚠️ No tienes favoritos guardados. Se rotará toda la biblioteca hasta que marques fondos con el corazón.",
-            Language::En => "⚠️ No favorites saved yet. All wallpapers will cycle until you mark favorites with the heart.",
-            Language::Fr => "⚠️ Aucun favori enregistré pour le moment. Tous les fonds d’écran défileront jusqu’à ce que vous en marquiez comme favoris avec le cœur.",
+            Language::Es => "⚠️ No tienes favoritos guardados. Se rotará toda la biblioteca que coincida con los filtros hasta que marques fondos con el corazón.",
+            Language::En => "⚠️ No favorites saved yet. All wallpapers matching the filters will cycle until you mark favorites with the heart.",
+            Language::Fr => "⚠️ Aucun favori enregistré pour le moment. Tous les fonds correspondant aux filtres défileront jusqu’à ce que vous en marquiez comme favoris avec le cœur.",
         }
     }
 
@@ -2088,6 +2179,54 @@ impl Language {
                 "✓ Rotation uniquement entre vos {} fonds d’écran favoris.",
                 count
             ),
+        }
+    }
+
+    pub fn settings_rotation_media_lbl(&self) -> &'static str {
+        match self {
+            Language::Es => "Tipo de fondo:",
+            Language::En => "Wallpaper type:",
+            Language::Fr => "Type de fond :",
+        }
+    }
+
+    pub fn settings_rotation_media_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Todos",
+            Language::En => "All",
+            Language::Fr => "Tous",
+        }
+    }
+
+    pub fn settings_rotation_media_live(&self) -> &'static str {
+        match self {
+            Language::Es => "Animados",
+            Language::En => "Live",
+            Language::Fr => "Animés",
+        }
+    }
+
+    pub fn settings_rotation_media_static(&self) -> &'static str {
+        match self {
+            Language::Es => "Estáticos",
+            Language::En => "Static",
+            Language::Fr => "Statiques",
+        }
+    }
+
+    pub fn settings_rotation_pool_count(&self, count: usize) -> String {
+        match self {
+            Language::Es => format!("Se rotará entre {} fondos que coinciden con los filtros.", count),
+            Language::En => format!("Rotation will cycle through {} matching wallpapers.", count),
+            Language::Fr => format!("La rotation utilisera {} fonds correspondant aux filtres.", count),
+        }
+    }
+
+    pub fn settings_rotation_pool_empty(&self) -> &'static str {
+        match self {
+            Language::Es => "⚠️ Ningún fondo coincide con esta combinación. La rotación permanecerá en pausa hasta que añadas fondos o cambies el filtro.",
+            Language::En => "⚠️ No wallpapers match this combination. Rotation stays idle until you add wallpapers or change the filter.",
+            Language::Fr => "⚠️ Aucun fond ne correspond à cette combinaison. La rotation reste inactive jusqu’à l’ajout de fonds ou un changement de filtre.",
         }
     }
 
@@ -2781,10 +2920,14 @@ mod tests {
         assert!(Language::En
             .status_applied("DP-1", "ocean.mp4")
             .contains("ocean.mp4"));
-        assert!(Language::Es.about_version_info().contains("COSMIC Desktop"));
-        assert!(Language::En.about_version_info().contains("COSMIC Desktop"));
-        assert!(Language::Es.settings_autostart().contains("COSMIC Desktop"));
-        assert!(Language::En.settings_autostart().contains("COSMIC Desktop"));
+        assert!(Language::Es
+            .about_version_info()
+            .contains(crate::engine::DesktopEnvironment::detect().label()));
+        assert!(Language::En
+            .about_version_info()
+            .contains(crate::engine::DesktopEnvironment::detect().label()));
+        assert!(Language::Es.settings_autostart().contains("iniciar sesión"));
+        assert!(Language::En.settings_autostart().contains("login"));
     }
 
     #[test]

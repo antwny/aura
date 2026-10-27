@@ -1,10 +1,58 @@
 pub mod thumbs;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::config::RotationMediaFilter;
+
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "mkv", "avi", "mov"];
 pub const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// Shared playlist selection used by the app and by the CLI commands. Favorites
+/// keep their historical fallback: selecting favorites before marking any does
+/// not leave rotation stranded. A media-type filter, however, is strict: if the
+/// user asks for only static or only live wallpapers, unmatched pools stay empty.
+pub fn rotation_pool_refs<'a>(
+    items: &'a [VideoItem],
+    favorites: &HashSet<String>,
+    only_favorites: bool,
+    media_filter: RotationMediaFilter,
+) -> Vec<&'a VideoItem> {
+    let base: Vec<&VideoItem> = if only_favorites {
+        let favs: Vec<&VideoItem> = items
+            .iter()
+            .filter(|item| favorites.contains(item.path.to_string_lossy().as_ref()))
+            .collect();
+        if favs.is_empty() {
+            items.iter().collect()
+        } else {
+            favs
+        }
+    } else {
+        items.iter().collect()
+    };
+
+    base.into_iter()
+        .filter(|item| match media_filter {
+            RotationMediaFilter::All => true,
+            RotationMediaFilter::Live => item.is_video,
+            RotationMediaFilter::Static => !item.is_video,
+        })
+        .collect()
+}
+
+pub fn rotation_pool_paths(
+    items: &[VideoItem],
+    favorites: &HashSet<String>,
+    only_favorites: bool,
+    media_filter: RotationMediaFilter,
+) -> Vec<PathBuf> {
+    rotation_pool_refs(items, favorites, only_favorites, media_filter)
+        .into_iter()
+        .map(|item| item.path.clone())
+        .collect()
+}
 
 pub fn is_supported_wallpaper_ext(ext: &str) -> bool {
     let lower = ext.to_lowercase();
@@ -352,6 +400,48 @@ mod tests {
         let resolved = resolve_or_link_thumb(&dummy_wallpaper);
         assert!(resolved.is_none());
         assert!(!thumb_path.exists());
+    }
+
+    #[test]
+    fn test_rotation_pool_media_filter_and_favorites() {
+        let video = VideoItem::new(
+            PathBuf::from("/video.mp4"),
+            "video".into(),
+            1,
+            "1 B".into(),
+            1,
+            None,
+        );
+        let image = VideoItem::new(
+            PathBuf::from("/image.png"),
+            "image".into(),
+            1,
+            "1 B".into(),
+            1,
+            None,
+        );
+        let items = vec![video, image];
+        let mut favorites = HashSet::new();
+        favorites.insert("/video.mp4".to_string());
+
+        let all = rotation_pool_refs(&items, &favorites, false, RotationMediaFilter::All);
+        assert_eq!(all.len(), 2);
+
+        let live = rotation_pool_refs(&items, &favorites, false, RotationMediaFilter::Live);
+        assert_eq!(live.len(), 1);
+        assert!(live[0].is_video);
+
+        let statics = rotation_pool_refs(&items, &favorites, false, RotationMediaFilter::Static);
+        assert_eq!(statics.len(), 1);
+        assert!(!statics[0].is_video);
+
+        let favs = rotation_pool_refs(&items, &favorites, true, RotationMediaFilter::All);
+        assert_eq!(favs.len(), 1);
+        assert!(favs[0].is_video);
+
+        favorites.clear();
+        let fallback = rotation_pool_refs(&items, &favorites, true, RotationMediaFilter::All);
+        assert_eq!(fallback.len(), 2, "empty favorites keep the historical all-media fallback");
     }
 }
 

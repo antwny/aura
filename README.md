@@ -5,14 +5,15 @@
 # Aura
 
 ### The definitive live wallpaper engine for COSMIC Desktop.
-*(With experimental support for GNOME & Wayland)*
+*(With native GNOME and KDE Plasma support, plus generic Wayland layer-shell compositors)*
 
-**Transform your COSMIC and Wayland workspace (including Niri) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
+**Transform your COSMIC, GNOME, KDE Plasma and Wayland workspace (including Niri, Hyprland and Sway) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
 
 [![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
 [![COSMIC Desktop](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/pop-os/libcosmic)
 [![Wayland Layer-Shell](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
 [![GNOME Experimental](https://img.shields.io/badge/GNOME-Experimental-4A86CF.svg?style=for-the-badge&logo=gnome&logoColor=white)](https://www.gnome.org/)
+[![KDE Plasma](https://img.shields.io/badge/KDE-Plasma-1D99F3.svg?style=for-the-badge&logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
 [![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
 [![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
@@ -25,7 +26,7 @@
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-*Bundled video engine included. Compatible with Pop!_OS, CachyOS, Arch Linux, Fedora, and any distribution running COSMIC Desktop or Wayland layer-shell compositors (such as Niri, Hyprland, Sway), with experimental support for GNOME.*
+*Bundled video engine included. Compatible with Pop!_OS, CachyOS, Arch Linux, Fedora, and any distribution running COSMIC Desktop, KDE Plasma, GNOME, or Wayland layer-shell compositors (such as Niri, Hyprland, Sway).*
 
 > **Prerequisites for video playback & thumbnails:**
 > - **Arch / CachyOS**: `sudo pacman -S --needed mpv ffmpeg`
@@ -53,6 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 - **Online Catalogs**: Browse and download thousands of curated live and static wallpapers (MotionBGS 4K/1080p, Wallhaven UHD, Bing Daily, DenverCoder1).
 - **Dynamic Desktop Auto-Theming**: Automatically extracts color palettes from your wallpaper to theme COSMIC window borders, accents, and controls.
 - **Multi-Monitor Studio**: Set independent wallpapers, scaling modes (Fit, Fill, Stretch), and arrangements per screen with live hotplug support.
+- **Filtered Playlist Rotation**: Combine source (all/favorites) with type (live/static) and keep the exact pool visible before enabling rotation.
 - **Quick Switcher HUD**: Floating heads-up display overlay summonable from anywhere with a global shortcut.
 
 ---
@@ -111,6 +113,20 @@ Aura includes experimental support for GNOME on Wayland:
 - **Live Video Wallpapers**: Powered by the [Hanabi GNOME Shell extension](https://github.com/jeffshee/gnome-ext-hanabi) (`gnome-ext-hanabi`). Aura communicates with Hanabi over D-Bus for synchronized playback, volume, and scaling controls.
 - **Interactive HUD**: Runs via borderless toplevel windows (note: background may appear opaque/dark due to Mutter's lack of the Wayland layer-shell protocol).
 - **Icon Fallback**: Navigation and window-control icons are bundled into a temporary hicolor overlay, with automatic Adwaita fallback when the Cosmic icon theme is not installed.
+
+---
+
+### 🖥️ KDE Plasma Support (Wayland & X11)
+
+KWin keeps Plasma's desktop containment above wlr-layer-shell surfaces, so mpvpaper cannot draw a visible video on Plasma. Aura talks to Plasma's own wallpaper API over D-Bus instead:
+
+- **Native Detection**: `XDG_CURRENT_DESKTOP=KDE` selects the Plasma backend automatically. The Settings screen shows the real desktop environment and a manual backend selector (`Auto`, `mpvpaper`, `GNOME`, `KDE`, `Static`).
+- **Live Video Wallpapers**: Requires [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn). Aura configures `VideoUrls`, fill mode, mute state and volume per screen; it never installs extensions or asks for root.
+- **Graceful Fallback**: If the plugin is missing, videos are shown as a high-resolution still poster with a one-click link to the plugin page.
+- **Static Wallpapers**: Applied through Plasma's stock image plugin and always available, including per-output configurations.
+- **No mpvpaper Conflicts**: Aura never launches an mpvpaper layer on Plasma, which fixes the "audio plays but the wallpaper is hidden" issue.
+
+> The `Static` backend forces still images on every desktop. On arbitrary compositors without a native image API, it uses a poster through mpvpaper as the portable fallback.
 
 ---
 

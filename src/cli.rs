@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::engine::{detect_outputs, WallpaperEngine};
 use crate::scanner::scan_directories;
 use crate::theme::apply_cosmic_theme;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 pub fn is_pure_cli(args: &[String]) -> bool {
@@ -113,16 +114,21 @@ fn cmd_next() {
         return;
     }
 
-    let pool: Vec<_> = if config.rotation_only_favorites {
-        let favs: Vec<_> = videos.iter().filter(|v| config.is_favorite(&v.path.to_string_lossy())).collect();
-        if favs.is_empty() {
-            videos.iter().collect()
-        } else {
-            favs
-        }
-    } else {
-        videos.iter().collect()
-    };
+    let favorites: HashSet<String> = videos
+        .iter()
+        .map(|item| item.path.to_string_lossy().to_string())
+        .filter(|path| config.is_favorite(path))
+        .collect();
+    let pool = crate::scanner::rotation_pool_refs(
+        &videos,
+        &favorites,
+        config.rotation_only_favorites,
+        config.rotation_media_filter,
+    );
+    if pool.is_empty() {
+        println!("Ningún fondo coincide con los filtros de rotación actuales.");
+        return;
+    }
 
     let next_idx = if config.order == "random" {
         (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as usize) % pool.len()
@@ -163,16 +169,21 @@ fn cmd_prev() {
         return;
     }
 
-    let pool: Vec<_> = if config.rotation_only_favorites {
-        let favs: Vec<_> = videos.iter().filter(|v| config.is_favorite(&v.path.to_string_lossy())).collect();
-        if favs.is_empty() {
-            videos.iter().collect()
-        } else {
-            favs
-        }
-    } else {
-        videos.iter().collect()
-    };
+    let favorites: HashSet<String> = videos
+        .iter()
+        .map(|item| item.path.to_string_lossy().to_string())
+        .filter(|path| config.is_favorite(path))
+        .collect();
+    let pool = crate::scanner::rotation_pool_refs(
+        &videos,
+        &favorites,
+        config.rotation_only_favorites,
+        config.rotation_media_filter,
+    );
+    if pool.is_empty() {
+        println!("Ningún fondo coincide con los filtros de rotación actuales.");
+        return;
+    }
 
     let prev_idx = if config.seq_index == 0 || config.seq_index >= pool.len() {
         pool.len() - 1
@@ -290,6 +301,31 @@ fn cmd_status() {
     println!("🌌 Aura Live Wallpaper — Estado del Sistema");
     println!("──────────────────────────────────────────");
 
+    let backend = crate::engine::Backend::detect(config.backend);
+    println!(
+        "Escritorio:            {}",
+        crate::engine::DesktopEnvironment::detect().pretty_name()
+    );
+    println!("Backend:               {}", backend.label());
+    if backend == crate::engine::Backend::Kde {
+        println!(
+            "D-Bus Plasma:         {}",
+            if crate::engine::kde::dbus_available() {
+                "Disponible"
+            } else {
+                "⚠️  qdbus6/qdbus no encontrado"
+            }
+        );
+        println!(
+            "Plugin KDE:            {}",
+            if crate::engine::kde::plugin_installed() {
+                "Smart Video Wallpaper Reborn detectado"
+            } else {
+                "⚠️  Smart Video Wallpaper Reborn no instalado (fallback estático)"
+            }
+        );
+    }
+
     // Runtime engine health check
     let health = crate::engine::mpvpaper::check_engine_health();
     match &health {
@@ -340,13 +376,19 @@ fn cmd_status() {
     } else {
         "Toda la biblioteca".to_string()
     };
-    println!("Rotación de fondos:    {} ({}, {}, cada {} min)",
+    let media_str = match config.rotation_media_filter {
+        crate::config::RotationMediaFilter::All => "Animados + estáticos",
+        crate::config::RotationMediaFilter::Live => "Solo animados",
+        crate::config::RotationMediaFilter::Static => "Solo estáticos",
+    };
+    println!("Rotación de fondos:    {} ({}, {}, {}, cada {} min)",
         if config.rotation { "Activada" } else { "Desactivada" },
         pool_str,
+        media_str,
         if config.order == "random" { "Aleatorio" } else { "Secuencial" },
         config.interval
     );
-    println!("Auto-Tema COSMIC:      {}", if config.auto_theme { "Activado" } else { "Desactivado" });
+    println!("Auto-Tema:             {}", if config.auto_theme { "Activado" } else { "Desactivado" });
     let mode_str = match config.theme_mode {
         crate::config::ThemeMode::Auto => "Automático (dinámico según luminancia)",
         crate::config::ThemeMode::Dark => "Oscuro (Fijo y persistente)",
@@ -505,9 +547,9 @@ fn cmd_theme_mode(args: &[String]) {
 }
 
 fn print_help() {
-    println!("🌌 Aura — Gestor Nativo de Fondos Animados para COSMIC Desktop");
+    println!("🌌 Aura — Gestor Nativo de Fondos Animados para escritorios Wayland");
     println!("\nUso:");
-    println!("  aura                  Abre la interfaz gráfica de COSMIC");
+    println!("  aura                  Abre la interfaz gráfica de Aura");
     println!("  aura switcher         Abre el selector rápido de fondos en el centro (HUD)");
     println!("  aura next             Cambia al siguiente fondo de pantalla");
     println!("  aura prev             Regresa al fondo anterior");
@@ -520,7 +562,7 @@ fn print_help() {
     println!("  aura update           Descarga e instala la última actualización");
     println!("  aura --version, -v    Muestra la versión de Aura");
     println!("  aura help             Muestra esta ayuda");
-    println!("\nConsejo para COSMIC: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en Ajustes.");
+    println!("\nConsejo: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en los ajustes de tu escritorio.");
 }
 
 #[cfg(test)]

@@ -75,13 +75,25 @@ impl AuraApp {
             } else {
                 let idle_label = match self.language {
                     crate::i18n::Language::Es => {
-                        format!("Pantalla {}\n(Escritorio COSMIC)", monitor.name)
+                        format!(
+                            "Pantalla {}\n({})",
+                            monitor.name,
+                            self.desktop_environment().label()
+                        )
                     }
                     crate::i18n::Language::En => {
-                        format!("Display {}\n(COSMIC Desktop)", monitor.name)
+                        format!(
+                            "Display {}\n({})",
+                            monitor.name,
+                            self.desktop_environment().label()
+                        )
                     }
                     crate::i18n::Language::Fr => {
-                        format!("Écran {}\n(Bureau COSMIC)", monitor.name)
+                        format!(
+                            "Écran {}\n({})",
+                            monitor.name,
+                            self.desktop_environment().label()
+                        )
                     }
                 };
                 Element::from(
