@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-27
+
+### Added
+- **Backend nativo para KDE Plasma**: detección automática de Plasma y aplicación de fondos mediante D-Bus, con vídeo por pantalla a través de Smart Video Wallpaper Reborn y fondos estáticos mediante el plugin de imagen nativo.
+- **Selector manual de backend** con las opciones `Auto`, `mpvpaper`, `GNOME`, `KDE` y `Static`, además del override `AURA_BACKEND`. Aura nunca inicia `mpvpaper` sobre Plasma, evitando que KWin oculte el vídeo.
+- **Fallback visual en Plasma**: si Smart Video Wallpaper Reborn no está instalado, el vídeo se muestra como póster de alta resolución con un acceso directo a la página del plugin.
+- **Filtros de rotación por tipo**: la rotación combina origen (`Todos`/`Favoritos`) con tipo (`Todos`/`Animados`/`Estáticos`), muestra el tamaño exacto del grupo y conserva la selección entre sesiones.
+- **HUD de alta densidad**: caché de pósteres de 1280 px, recursos específicos por escala generados con Lanczos3, escrituras atómicas y una caché de texturas ponderada de 192 MiB con precarga diferida.
+
+### Changed
+- El diagnóstico y la interfaz muestran el escritorio real, el backend activo, el estado de `qdbus` y la disponibilidad del plugin de Plasma.
+- `aura status` y la ayuda de CLI reflejan el entorno detectado y los filtros de rotación activos.
+
+### Fixed
+- Se eliminó la duplicación del nombre del motor activo en el diagnóstico de Ajustes y Acerca de.
+
 ## [1.8.2] - 2026-10-24
 
 ### Fixed

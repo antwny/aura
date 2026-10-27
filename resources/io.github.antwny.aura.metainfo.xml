@@ -60,6 +60,19 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.9.0" date="2026-10-27">
+      <description>
+        <p>Aura 1.9.0 adds a native KDE Plasma backend, sharper HUD assets, and rotation filters:</p>
+        <ul>
+          <li>KDE Plasma backend using D-Bus and Smart Video Wallpaper Reborn for per-output video, with static image fallback and no mpvpaper layer on Plasma.</li>
+          <li>Manual backend selector (Auto, mpvpaper, GNOME, KDE, Static) with an AURA_BACKEND override and real desktop detection.</li>
+          <li>Playlist rotation filters by source (all/favorites) and media type (all/live/static), with persisted settings and matching pool counts.</li>
+          <li>High-DPI HUD thumbnails with a 1280px poster cache, scale-specific Lanczos3 assets, atomic writes, and a weighted 192 MiB texture cache.</li>
+          <li>Diagnostics report qdbus and KDE plugin status without duplicating the active backend name.</li>
+          <li>Release archive includes the precompiled mpvpaper 1.9 engine and SHA-256 checksum.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.8.2" date="2026-10-24">
       <description>
         <p>Aura 1.8.2 avoids redundant wallpaper playback on multi-display setups:</p>
