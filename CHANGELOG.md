@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-10-29
+
+### Fixed
+- Las categorías inactivas de Ajustes usan el color de texto del tema y mantienen un contraste legible en modo claro y oscuro.
+- KDE Plasma 6 comprueba directamente el objeto `PlasmaShell`, evita la introspección recursiva de D-Bus y aplica fondos mediante `qdbus`, `gdbus` o `busctl`.
+
 ## [1.9.1] - 2026-10-28
 
 ### Added

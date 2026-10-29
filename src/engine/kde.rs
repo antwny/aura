@@ -90,39 +90,132 @@ fn plasma_command() -> Option<&'static str> {
         })
 }
 
-/// True when a Qt D-Bus CLI is available. Plasma itself is scriptable only via
-/// qdbus/qdbus6; without one of them wallpapers cannot be changed even when
-/// the video plugin is installed.
+/// True when a Qt D-Bus CLI, gdbus, or busctl is available.
 pub fn dbus_available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
-    *AVAILABLE.get_or_init(|| plasma_command().is_some())
+    *AVAILABLE.get_or_init(|| {
+        plasma_command().is_some()
+            || Command::new("gdbus")
+                .arg("--version")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            || Command::new("busctl")
+                .arg("--version")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+    })
 }
 
 /// Runs a Plasma scripting snippet. Plasma's evaluateScript is synchronous and
 /// returns before the desktop has finished repainting, which is enough for us:
 /// the containment owns the actual video lifecycle after that point.
 pub fn evaluate_script(script: &str) -> Result<(), String> {
-    let command = plasma_command().ok_or_else(|| {
-        "KDE Plasma detected, but neither qdbus6 nor qdbus is available. Install Qt D-Bus tools."
-            .to_string()
-    })?;
-    let output = Command::new(command)
+    // 1. Try qdbus / qdbus6 with full interface method name
+    if let Some(command) = plasma_command() {
+        let output = Command::new(command)
+            .args([
+                PLASMA_SERVICE,
+                PLASMA_PATH,
+                &format!("{}.evaluateScript", PLASMA_INTERFACE),
+                script,
+            ])
+            .stdin(Stdio::null())
+            .output();
+
+        if let Ok(ref out) = output {
+            if out.status.success() {
+                return Ok(());
+            }
+        }
+
+        // 2. Try qdbus without interface prefix (some Qt6/Plasma6 builds match bare method name)
+        let output2 = Command::new(command)
+            .args([PLASMA_SERVICE, PLASMA_PATH, "evaluateScript", script])
+            .stdin(Stdio::null())
+            .output();
+
+        if let Ok(ref out) = output2 {
+            if out.status.success() {
+                return Ok(());
+            }
+        }
+    }
+
+    // 3. Fallback: try gdbus (direct D-Bus method call without Qt introspection)
+    let gdbus_output = Command::new("gdbus")
         .args([
+            "call",
+            "--session",
+            "--dest",
             PLASMA_SERVICE,
+            "--object-path",
             PLASMA_PATH,
+            "--method",
             &format!("{}.evaluateScript", PLASMA_INTERFACE),
             script,
         ])
         .stdin(Stdio::null())
-        .output()
-        .map_err(|error| format!("Could not run {}: {}", command, error))?;
-    if output.status.success() {
-        Ok(())
-    } else {
+        .output();
+
+    if let Ok(ref out) = gdbus_output {
+        if out.status.success() {
+            return Ok(());
+        }
+    }
+
+    // 4. Fallback: try busctl (systemd D-Bus CLI, universally installed on Arch/CachyOS/systemd)
+    let busctl_output = Command::new("busctl")
+        .args([
+            "--user",
+            "call",
+            PLASMA_SERVICE,
+            PLASMA_PATH,
+            PLASMA_INTERFACE,
+            "evaluateScript",
+            "s",
+            script,
+        ])
+        .stdin(Stdio::null())
+        .output();
+
+    if let Ok(ref out) = busctl_output {
+        if out.status.success() {
+            return Ok(());
+        }
+    }
+
+    // If all failed, gather error output from qdbus or available tool
+    if let Some(command) = plasma_command() {
+        let output = Command::new(command)
+            .args([
+                PLASMA_SERVICE,
+                PLASMA_PATH,
+                &format!("{}.evaluateScript", PLASMA_INTERFACE),
+                script,
+            ])
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("Could not run {}: {}", command, error))?;
+
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Err(if stderr.is_empty() { stdout } else { stderr })
+        let err = if stderr.is_empty() { stdout } else { stderr };
+        return Err(if err.is_empty() {
+            "Plasma scripting failed (unknown error)".into()
+        } else {
+            err
+        });
     }
+
+    Err("Neither qdbus6, qdbus, gdbus, nor busctl is available to communicate with KDE Plasma.".into())
 }
 
 /// Smart Video Wallpaper Reborn expects `VideoUrls` to be a JSON array of
@@ -143,36 +236,76 @@ fn video_urls(path: &Path) -> String {
     .to_string()
 }
 
+/// Check if /PlasmaShell object is responsive without crawling the whole hierarchy.
+fn is_plasmashell_responsive() -> bool {
+    if let Some(command) = plasma_command() {
+        if Command::new(command)
+            .args([PLASMA_SERVICE, PLASMA_PATH])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    // Fallback: check via busctl
+    if Command::new("busctl")
+        .args(["--user", "introspect", PLASMA_SERVICE, PLASMA_PATH])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    // Fallback: check via gdbus
+    if Command::new("gdbus")
+        .args(["introspect", "--session", "--dest", PLASMA_SERVICE, "--object-path", PLASMA_PATH])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    false
+}
+
 /// Autostart can launch Aura before plasmashell has finished creating its
-/// desktop containments. `evaluateScript` succeeds on an empty `desktops()`
-/// array, which silently drops the wallpaper, so wait (once) for the service.
+/// desktop containments. Wait briefly (once) for /PlasmaShell to be responsive.
 fn wait_for_plasmashell() {
     static READY: AtomicBool = AtomicBool::new(false);
     if READY.load(Ordering::Relaxed) {
         return;
     }
-    let Some(command) = plasma_command() else {
+
+    // Fast path: if plasmashell is already responsive, avoid any sleep or looping
+    if is_plasmashell_responsive() {
+        READY.store(true, Ordering::Relaxed);
         return;
-    };
-    let deadline = Instant::now() + Duration::from_secs(8);
+    }
+
+    // Slow path (only during early session autostart before plasmashell starts):
+    let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
-        let ready = Command::new(command)
-            .arg(PLASMA_SERVICE)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false);
-        if ready {
+        std::thread::sleep(Duration::from_millis(250));
+        if is_plasmashell_responsive() {
             // Desktops are created shortly after the service appears.
-            std::thread::sleep(Duration::from_millis(400));
+            std::thread::sleep(Duration::from_millis(300));
             READY.store(true, Ordering::Relaxed);
             return;
         }
-        std::thread::sleep(Duration::from_millis(300));
     }
-    // Leave READY unset so a later apply can retry once Plasma is up.
+
+    // Mark ready so subsequent manual user clicks do not block repeatedly
+    READY.store(true, Ordering::Relaxed);
 }
 
 fn screen_index_for_output(output: &str) -> Option<usize> {
@@ -305,5 +438,21 @@ mod tests {
         assert_eq!(video_fill_mode("fill"), 2);
         assert_eq!(video_fill_mode("fit"), 1);
         assert_eq!(video_fill_mode("stretch"), 0);
+    }
+
+    #[test]
+    fn desktop_loop_generates_valid_javascript_structure() {
+        let script = desktop_loop("*", "d.wallpaperPlugin = \"test\";");
+        assert!(script.contains("var all = desktops();"));
+        assert!(script.contains("for (var i = 0; i < all.length; i++)"));
+        assert!(script.contains("d.wallpaperPlugin = \"test\";"));
+    }
+
+    #[test]
+    fn wait_for_plasmashell_terminates_promptly() {
+        // Must never hang or loop infinitely even when plasmashell is not present
+        let start = std::time::Instant::now();
+        wait_for_plasmashell();
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
     }
 }

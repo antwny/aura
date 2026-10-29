@@ -4,19 +4,54 @@ use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
 
-fn category_button_white_style() -> widget::button::Style {
-    let mut style = widget::button::Style::default();
-    style.text_color = Some(cosmic::iced::Color::WHITE);
-    style.icon_color = Some(cosmic::iced::Color::WHITE);
-    style
-}
-
 fn inactive_category_button_class() -> cosmic::theme::Button {
     cosmic::theme::Button::Custom {
-        active: Box::new(|_, _| category_button_white_style()),
-        disabled: Box::new(|_| category_button_white_style()),
-        hovered: Box::new(|_, _| category_button_white_style()),
-        pressed: Box::new(|_, _| category_button_white_style()),
+        active: Box::new(|_, theme| {
+            let mut style = widget::button::Style::new();
+            let c = theme.cosmic().on_bg_color();
+            let color = cosmic::iced::Color::from_rgb(c.red, c.green, c.blue);
+            style.text_color = Some(color);
+            style.icon_color = Some(color);
+            style
+        }),
+        disabled: Box::new(|theme| {
+            let mut style = widget::button::Style::new();
+            let c = theme.cosmic().on_bg_color();
+            let color = cosmic::iced::Color::from_rgba(c.red, c.green, c.blue, 0.4);
+            style.text_color = Some(color);
+            style.icon_color = Some(color);
+            style
+        }),
+        hovered: Box::new(|_, theme| {
+            let mut style = widget::button::Style::new();
+            let c = theme.cosmic().on_bg_color();
+            let color = cosmic::iced::Color::from_rgb(c.red, c.green, c.blue);
+            style.text_color = Some(color);
+            style.icon_color = Some(color);
+            let h = theme.cosmic().icon_button.hover;
+            style.background = Some(cosmic::iced::Background::Color(
+                cosmic::iced::Color::from_rgba(h.red, h.green, h.blue, h.alpha),
+            ));
+            style.border_radius = cosmic::iced::border::Radius::from(
+                theme.cosmic().corner_radii.radius_xl,
+            );
+            style
+        }),
+        pressed: Box::new(|_, theme| {
+            let mut style = widget::button::Style::new();
+            let c = theme.cosmic().on_bg_color();
+            let color = cosmic::iced::Color::from_rgb(c.red, c.green, c.blue);
+            style.text_color = Some(color);
+            style.icon_color = Some(color);
+            let p = theme.cosmic().icon_button.pressed;
+            style.background = Some(cosmic::iced::Background::Color(
+                cosmic::iced::Color::from_rgba(p.red, p.green, p.blue, p.alpha),
+            ));
+            style.border_radius = cosmic::iced::border::Radius::from(
+                theme.cosmic().corner_radii.radius_xl,
+            );
+            style
+        }),
     }
 }
 
@@ -1114,5 +1149,28 @@ impl AuraApp {
             .width(Length::Fill)
             .class(cosmic::theme::Container::Card)
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmic::widget::button::Catalog;
+
+    #[test]
+    fn inactive_category_buttons_use_theme_text_color() {
+        let light = cosmic::Theme::light();
+        let dark = cosmic::Theme::dark();
+        let class = inactive_category_button_class();
+
+        let style_light = <cosmic::Theme as Catalog>::active(&light, false, false, &class);
+        let color_light = style_light.text_color.expect("inactive button text color light");
+        // In light theme, text must be dark (not white, not accent)
+        assert!(color_light.r < 0.5 && color_light.g < 0.5 && color_light.b < 0.5);
+
+        let style_dark = <cosmic::Theme as Catalog>::active(&dark, false, false, &class);
+        let color_dark = style_dark.text_color.expect("inactive button text color dark");
+        // In dark theme, text must be light/white (not accent)
+        assert!(color_dark.r > 0.8 && color_dark.g > 0.8 && color_dark.b > 0.8);
     }
 }

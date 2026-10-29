@@ -60,6 +60,16 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.9.2" date="2026-10-29">
+      <description>
+        <p>Aura 1.9.2 improves theme contrast in Settings and KDE Plasma 6 responsiveness:</p>
+        <ul>
+          <li>Inactive Settings categories follow the active theme's neutral text color in light and dark modes.</li>
+          <li>KDE Plasma checks the specific PlasmaShell D-Bus object and supports qdbus, gdbus and busctl to apply wallpapers reliably.</li>
+          <li>Release archive includes the precompiled mpvpaper 1.9 engine and SHA-256 checksum.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.1" date="2026-10-28">
       <description>
         <p>Aura 1.9.1 fixes COSMIC auto-pause for tiled windows and improves startup recovery:</p>
