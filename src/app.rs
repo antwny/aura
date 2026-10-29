@@ -4,7 +4,6 @@ use crate::config::{
 use crate::engine::backend::{Backend, DesktopEnvironment};
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
 use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
-use crate::theme::apply_cosmic_theme;
 use crate::online::{
     download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
     fetch_motionbgs_wallpapers, fetch_wallhaven_wallpapers, fetch_minimalistic_wallpapers,
@@ -12,13 +11,14 @@ use crate::online::{
 };
 
 use cosmic::app::Core;
+use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length, Subscription, Task};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{IcedMargin, SctkLayerSurfaceSettings};
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{Anchor, KeyboardInteractivity, Layer};
 use cosmic::surface::action::{app_layer_shell, destroy_layer_shell, LiveSettings};
 use cosmic::widget::{self, nav_bar};
 use cosmic::Element;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -36,6 +36,12 @@ fn all_outputs_have_own_wallpaper(
                     .get(&output.name)
                     .is_some_and(|path| std::path::Path::new(path).is_file())
         })
+}
+
+/// True when output detection only produced its `*` fallback (or nothing).
+/// This is common during login before the compositor is ready.
+fn outputs_are_unknown(outputs: &[MonitorOutput]) -> bool {
+    outputs.is_empty() || (outputs.len() == 1 && outputs[0].name == "*")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +197,7 @@ pub enum Message {
     ToggleMute(bool),
     ToggleSmartPause(bool),
     ToggleAutoPause(bool),
+    SelectAutoPauseMode(crate::config::AutoPauseMode),
     ToggleKeepRunningOnClose(bool),
     RemoveFolder(String),
     RefreshLibrary,
@@ -200,8 +207,8 @@ pub enum Message {
     RotationTick,
     HotplugTick,
     SmartPauseTick,
+    OcclusionTick,
     BatteryTick,
-    TickSecond,
     GameModeChanged(bool),
     BatteryStateChanged(Option<bool>),
     OutputsUpdated(Vec<MonitorOutput>),
@@ -213,12 +220,12 @@ pub enum Message {
         result: Result<(), String>,
     },
     EngineMaintenanceFinished(Result<(), String>),
+    PlayerReconcileFinished(Result<(), String>),
     PickVideoFile,
     PickFolder,
     FileSelected(Option<PathBuf>),
     FolderSelected(Option<PathBuf>),
     FilesDropped(Vec<PathBuf>),
-    DismissStatus,
     OpenGitHub,
     OpenYouTube,
     OpenPayPal,
@@ -257,7 +264,9 @@ pub enum Message {
     RemoveWallpaperFromLibrary(PathBuf),
     DeleteDownloadedWallpaper(PathBuf),
     DeleteWallpaper(PathBuf),
-    CloseToast(cosmic::widget::ToastId),
+    ExpireNotice(u64),
+    DismissNotice,
+    NoticeAction(Box<Message>),
     OpenWallpapersFolder,
     ShowInFileManager(PathBuf),
     CheckForUpdates { user_initiated: bool },
@@ -390,6 +399,15 @@ impl cosmic::app::CosmicFlags for AuraFlags {
     }
 }
 
+/// One in-app notice. Only one is ever rendered so quick actions cannot stack
+/// messages on top of each other.
+struct Notice {
+    text: String,
+    action: Option<(String, Message)>,
+    /// Errors and actionable prompts are not replaced by routine feedback.
+    critical: bool,
+}
+
 pub struct AuraApp {
     pub(crate) core: Core,
     pub(crate) nav: nav_bar::Model,
@@ -407,16 +425,20 @@ pub struct AuraApp {
     pub(crate) videos: Vec<VideoItem>,
     pub(crate) search_query: String,
     pub(crate) autostart_active: bool,
-    pub(crate) status_message: Option<String>,
-    pub(crate) status_timer: u8,
     pub(crate) pending_volume: Option<u8>,
     pub(crate) gnome_apply_token: u64,
     pub(crate) kde_apply_token: u64,
-    pub(crate) toasts: cosmic::widget::Toasts<Message>,
+    notice: Option<Notice>,
+    notice_token: u64,
     pub(crate) is_paused: bool,
     pub(crate) output_pause_states: std::collections::HashMap<String, Option<bool>>,
     pub(crate) manual_paused_outputs: std::collections::HashSet<String>,
     pub(crate) is_paused_by_smart: bool,
+    pub(crate) is_paused_by_occlusion: std::collections::HashSet<String>,
+    /// Outputs where the user manually resumed playback while auto-pause had
+    /// them paused. The override lasts until the window layout changes.
+    pub(crate) auto_pause_overrides: std::collections::HashSet<String>,
+    pub(crate) last_occlusion_revision: u64,
     pub(crate) is_paused_by_battery: bool,
     pub(crate) is_paused_by_overview: bool,
     pub(crate) is_paused_by_locked: bool,
@@ -497,6 +519,74 @@ impl AuraApp {
 
     pub(crate) fn desktop_environment(&self) -> DesktopEnvironment {
         DesktopEnvironment::detect()
+    }
+
+    /// Best image source for accent extraction: the generated thumbnail when
+    /// available, otherwise the wallpaper itself for static images.
+    fn wallpaper_theme_source(&self, wallpaper: &Path) -> PathBuf {
+        self.videos
+            .iter()
+            .find(|item| item.path.as_path() == wallpaper)
+            .and_then(|item| item.thumb_path.as_ref())
+            .filter(|thumb| thumb.is_file())
+            .cloned()
+            .unwrap_or_else(|| wallpaper.to_path_buf())
+    }
+
+    fn current_wallpaper_theme_source(&self) -> Option<PathBuf> {
+        self.config
+            .current
+            .as_ref()
+            .map(|current| self.wallpaper_theme_source(Path::new(current)))
+    }
+
+    /// Styles Aura itself with the wallpaper accent. This is independent of
+    /// the desktop environment and never changes system settings.
+    fn app_accent_task(&self, source: &Path) -> Task<cosmic::Action<Message>> {
+        if !self.config.auto_theme {
+            return Task::none();
+        }
+        let Some(accent) = crate::theme::extract_accent(source) else {
+            return Task::none();
+        };
+        cosmic::command::set_theme(crate::theme::app_theme_with_accent(accent))
+    }
+
+    fn reset_app_theme_task(&self) -> Task<cosmic::Action<Message>> {
+        cosmic::command::set_theme(cosmic::theme::system_preference())
+    }
+
+    fn current_app_accent_task(&self) -> Task<cosmic::Action<Message>> {
+        let Some(source) = self.current_wallpaper_theme_source() else {
+            return Task::none();
+        };
+        self.app_accent_task(&source)
+    }
+
+    /// Applies wallpaper-driven appearance. The COSMIC system accent is only
+    /// written on COSMIC; Aura's own theme is updated everywhere.
+    fn apply_wallpaper_theme(&self, wallpaper: &Path) -> Task<cosmic::Action<Message>> {
+        let source = self.wallpaper_theme_source(wallpaper);
+        if self.config.auto_theme || self.config.theme_mode != crate::config::ThemeMode::Manual {
+            crate::theme::apply_cosmic_theme(
+                &source,
+                self.config.auto_theme,
+                self.config.theme_mode,
+                self.desktop_environment() == DesktopEnvironment::Cosmic,
+            );
+        }
+        if self.config.auto_theme {
+            self.app_accent_task(&source)
+        } else {
+            self.reset_app_theme_task()
+        }
+    }
+
+    fn apply_current_wallpaper_theme(&self) -> Task<cosmic::Action<Message>> {
+        let Some(source) = self.current_wallpaper_theme_source() else {
+            return self.reset_app_theme_task();
+        };
+        self.apply_wallpaper_theme(&source)
     }
 
     /// True when wallpaper playback is owned by mpvpaper rather than by the
@@ -613,11 +703,20 @@ impl AuraApp {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Shows a single routine notice. Any previous routine notice is replaced
+    /// so a burst of settings changes or wallpaper switches never stacks
+    /// messages. Errors and actionable prompts are left untouched.
     pub(crate) fn notify(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
-        let task = self.toasts.push(
-            cosmic::widget::Toast::new(text).duration(cosmic::widget::toaster::Duration::Short)
-        );
-        task.map(cosmic::Action::App)
+        if self.notice.as_ref().is_some_and(|notice| notice.critical) {
+            return Task::none();
+        }
+        self.show_notice(text.into(), None, false)
+    }
+
+    /// Shows an error or warning. It replaces routine feedback and stays on
+    /// screen longer so a rapid follow-up action cannot hide it.
+    pub(crate) fn notify_error(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
+        self.show_notice(text.into(), None, true)
     }
 
     pub(crate) fn notify_with_action(
@@ -626,32 +725,42 @@ impl AuraApp {
         action_label: impl Into<String>,
         action_msg: Message,
     ) -> Task<cosmic::Action<Message>> {
-        let toast = cosmic::widget::Toast::new(text)
-            .duration(cosmic::widget::toaster::Duration::Long)
-            .action(action_label.into(), move |_id| action_msg.clone());
-        let task = self.toasts.push(toast);
-        task.map(cosmic::Action::App)
+        self.show_notice(
+            text.into(),
+            Some((action_label.into(), action_msg)),
+            true,
+        )
     }
 
-    pub(crate) fn notify_applied(
+    fn show_notice(
         &mut self,
-        text: impl Into<String>,
-        action_label: impl Into<String>,
-        action_msg: Message,
+        text: String,
+        action: Option<(String, Message)>,
+        critical: bool,
     ) -> Task<cosmic::Action<Message>> {
-        // Clear previous toast notifications so they never stack up when switching wallpapers
-        self.toasts = cosmic::widget::Toasts::new(Message::CloseToast);
-        let toast = cosmic::widget::Toast::new(text)
-            .duration(cosmic::widget::toaster::Duration::Short)
-            .action(action_label.into(), move |_id| action_msg.clone());
-        let task = self.toasts.push(toast);
-        task.map(cosmic::Action::App)
+        self.notice_token = self.notice_token.wrapping_add(1);
+        let token = self.notice_token;
+        self.notice = Some(Notice {
+            text,
+            action,
+            critical,
+        });
+        let duration = if critical {
+            Duration::from_secs(15)
+        } else {
+            Duration::from_secs(5)
+        };
+        Task::perform(
+            async move {
+                tokio::time::sleep(duration).await;
+                token
+            },
+            |token| cosmic::Action::App(Message::ExpireNotice(token)),
+        )
     }
 
     pub(crate) fn set_status(&mut self, text: impl Into<String>) -> Task<cosmic::Action<Message>> {
-        let msg = text.into();
-        self.status_message = Some(msg.clone());
-        self.notify(msg)
+        self.notify(text)
     }
 
     fn retire_redundant_wildcard(&self) -> Task<cosmic::Action<Message>> {
@@ -698,7 +807,6 @@ impl AuraApp {
         self.config.record_wallpaper(output, path_str);
         let _ = self.config.save();
         if output == "*" {
-            self.is_paused = false;
             self.is_manual_pause = false;
             self.manual_paused_outputs.clear();
             for monitor in &self.outputs {
@@ -707,17 +815,23 @@ impl AuraApp {
         } else {
             self.manual_paused_outputs.remove(output);
             self.output_pause_states.insert(output.to_string(), Some(false));
-            self.is_paused = self.outputs.iter().all(|monitor| {
-                self.output_pause_states.get(&monitor.name).copied().flatten() == Some(true)
-            });
-            self.is_manual_pause = self.is_paused;
+            self.is_manual_pause = !self.outputs.is_empty()
+                && self
+                    .outputs
+                    .iter()
+                    .all(|monitor| self.manual_paused_outputs.contains(&monitor.name));
         }
+        // Applying a wallpaper starts that player, but the current window
+        // layout may still require auto-pause. Let the occlusion reconciler
+        // decide the final state instead of forcing "playing".
+        self.is_paused = self.is_manual_pause || self.auto_pause_global_reason();
 
         let file_name = video_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Video".into());
-        self.tray_controller.update_state(file_name.clone(), false, true);
+        self.tray_controller
+            .update_state(file_name.clone(), self.is_paused, true);
 
         if self.switcher_window_id.is_some() {
             let pool = self.switcher_pool();
@@ -726,29 +840,17 @@ impl AuraApp {
             }
         }
 
-        if self.config.auto_theme || self.config.theme_mode != crate::config::ThemeMode::Manual {
-            if let Some(thumb) = self
-                .videos
-                .iter()
-                .find(|v| v.path == video_path)
-                .and_then(|v| v.thumb_path.as_ref())
-            {
-                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
-            } else if let Some(ext) = video_path.extension().and_then(|e| e.to_str()) {
-                if crate::scanner::is_supported_wallpaper_ext(ext) {
-                    apply_cosmic_theme(video_path, self.config.auto_theme, self.config.theme_mode);
-                }
-            }
-        }
+        let theme_task = if self.config.auto_theme
+            || self.config.theme_mode != crate::config::ThemeMode::Manual
+        {
+            self.apply_wallpaper_theme(video_path)
+        } else {
+            Task::none()
+        };
 
         let status_msg = self.language.status_applied(output, &file_name);
-        self.status_message = Some(status_msg.clone());
         let notify_task = if show_toast {
-            self.notify_applied(
-                status_msg,
-                self.language.toast_show_in_files(),
-                Message::OpenWallpapersFolder,
-            )
+            self.notify(status_msg)
         } else {
             Task::none()
         };
@@ -757,7 +859,8 @@ impl AuraApp {
         } else {
             self.retire_redundant_wildcard()
         };
-        Task::batch([notify_task, retire_task])
+        let occlusion_task = self.apply_occlusion_state();
+        Task::batch([notify_task, retire_task, occlusion_task, theme_task])
     }
 
     fn auto_pause_reason_active(&self) -> bool {
@@ -765,6 +868,168 @@ impl AuraApp {
             || self.is_paused_by_battery
             || self.is_paused_by_overview
             || self.is_paused_by_locked
+            || !self.effective_occluded_outputs().is_empty()
+    }
+
+    fn auto_pause_global_reason(&self) -> bool {
+        self.is_paused_by_smart
+            || self.is_paused_by_battery
+            || self.is_paused_by_overview
+            || self.is_paused_by_locked
+    }
+
+    /// Outputs controlled by Aura. Fall back to configured outputs and then
+    /// the wildcard player so multi-monitor hotplug and wildcard wallpapers
+    /// still reconcile correctly.
+    fn pause_targets(&self) -> Vec<String> {
+        let mut targets: Vec<String> = self
+            .outputs
+            .iter()
+            .map(|output| output.name.clone())
+            .collect();
+        if targets.is_empty() {
+            targets.extend(
+                self.config
+                    .wallpapers
+                    .keys()
+                    .filter(|output| output.as_str() != "*")
+                    .cloned(),
+            );
+        }
+        if targets.is_empty() {
+            targets.push("*".into());
+        }
+        targets
+    }
+
+    /// Occlusion that should currently pause playback. A manual resume while
+    /// auto-paused suppresses only the current window layout; any window move,
+    /// resize, maximize, close or workspace change clears the override.
+    pub(crate) fn effective_occluded_outputs(&self) -> std::collections::HashSet<String> {
+        self.is_paused_by_occlusion
+            .iter()
+            .filter(|output| !self.auto_pause_overrides.contains(*output))
+            .cloned()
+            .collect()
+    }
+
+    fn is_manual_pause_for(&self, output: &str) -> bool {
+        self.manual_paused_outputs.contains(output)
+            || (output == "*" && self.is_manual_pause)
+            || (self.is_manual_pause
+                && self.manual_paused_outputs.is_empty()
+                && self.outputs.is_empty())
+    }
+
+    fn desired_pause_for(
+        &self,
+        output: &str,
+        global_reason: bool,
+        occluded: &std::collections::HashSet<String>,
+    ) -> bool {
+        self.is_manual_pause_for(output) || global_reason || occluded.contains(output)
+    }
+
+    /// True when the pause state Aura believes it applied matches the state
+    /// implied by the current windows, manual choices and global reasons.
+    /// Every occlusion tick uses this to recover from missed events or a
+    /// player that ignored an IPC command.
+    fn occlusion_state_is_synced(&self) -> bool {
+        let global_reason = self.auto_pause_global_reason();
+        let occluded = self.effective_occluded_outputs();
+        let mut any_paused = false;
+        for output in self.pause_targets() {
+            let desired = self.desired_pause_for(&output, global_reason, &occluded);
+            any_paused |= desired;
+            if self
+                .output_pause_states
+                .get(&output)
+                .copied()
+                .flatten()
+                != Some(desired)
+            {
+                return false;
+            }
+        }
+        self.is_paused == any_paused
+    }
+
+    fn sync_tray_playback_state(&self) {
+        let current_title = self
+            .config
+            .current
+            .as_ref()
+            .and_then(|path| {
+                std::path::Path::new(path)
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+            })
+            .unwrap_or_default();
+        self.tray_controller.update_state(
+            current_title,
+            self.is_paused,
+            !self.config.wallpapers.is_empty(),
+        );
+    }
+
+    /// Applies the watcher result per monitor. Manual pauses and global reasons
+    /// (game mode, battery, locked session) always win.
+    fn apply_occlusion_state(&mut self) -> Task<cosmic::Action<Message>> {
+        if !self.uses_mpvpaper() {
+            return Task::none();
+        }
+        let global_reason = self.auto_pause_global_reason();
+        let occluded = self.effective_occluded_outputs();
+        let targets = self.pause_targets();
+        let manual_targets: std::collections::HashSet<String> = targets
+            .iter()
+            .filter(|output| self.is_manual_pause_for(output))
+            .cloned()
+            .collect();
+
+        for output in &targets {
+            if manual_targets.contains(output) {
+                continue;
+            }
+            let pause = occluded.contains(output) || global_reason;
+            self.output_pause_states
+                .insert(output.clone(), Some(pause));
+        }
+
+        let any_paused = targets.iter().any(|output| {
+            self.output_pause_states
+                .get(output)
+                .copied()
+                .flatten()
+                == Some(true)
+        });
+        self.is_paused = global_reason
+            || self.is_manual_pause
+            || !manual_targets.is_empty()
+            || any_paused;
+        self.sync_tray_playback_state();
+
+        let engine = Arc::clone(&self.engine);
+        let engine_op_lock = Arc::clone(&self.engine_op_lock);
+        let occluded_for_task = occluded;
+        tokio::spawn(async move {
+            let _operation = engine_op_lock.lock().await;
+            let _ = tokio::task::spawn_blocking(move || {
+                let mut engine = engine
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                for output in targets {
+                    if manual_targets.contains(&output) {
+                        continue;
+                    }
+                    let pause = occluded_for_task.contains(&output) || global_reason;
+                    let _ = engine.set_output_paused(&output, pause);
+                }
+            })
+            .await;
+        });
+
+        Task::none()
     }
 
     fn spawn_engine_pause(&self, paused: bool) {
@@ -811,24 +1076,22 @@ impl AuraApp {
         });
     }
 
-    fn pause_for_auto_reason(&mut self, status: &str) {
+    fn pause_for_auto_reason(&mut self, _status: &str) {
         if !self.is_paused {
             self.spawn_engine_pause(true);
             self.is_paused = true;
+            self.sync_tray_playback_state();
         }
-        self.status_message = Some(status.to_string());
-        self.status_timer = 5;
     }
 
-    fn try_resume_after_auto_reason(&mut self, status: &str) {
+    fn try_resume_after_auto_reason(&mut self, _status: &str) {
         if self.is_paused
             && !self.is_manual_pause
             && !self.auto_pause_reason_active()
         {
             self.spawn_engine_resume_except_manual();
             self.is_paused = false;
-            self.status_message = Some(status.to_string());
-            self.status_timer = 5;
+            self.sync_tray_playback_state();
         }
     }
 
@@ -887,8 +1150,10 @@ impl AuraApp {
 
         // Repair stale selections even when Aura starts after a monitor was
         // disconnected and the current topology itself has not changed yet.
+        // Also retry any configured player that failed to start while the
+        // session was still coming up.
         if !topology_changed {
-            return Task::none();
+            return self.reconcile_missing_wallpapers();
         }
         if !self.uses_mpvpaper() {
             return Task::none();
@@ -1002,8 +1267,7 @@ impl AuraApp {
             && new_wallpapers.is_empty()
             && !stop_wildcard
         {
-            self.status_message = Some(self.language.status_topology_updated(new_count));
-            self.status_timer = 5;
+
             return Task::none();
         }
 
@@ -1278,9 +1542,15 @@ impl cosmic::Application for AuraApp {
                 .position(|name| name == &output.name)
                 .unwrap_or(usize::MAX)
         });
+        // During login the compositor may not answer yet and detection falls
+        // back to `*`. Keep the user's previous output selection in that case
+        // instead of overwriting it before the real topology arrives.
+        let outputs_unknown = outputs_are_unknown(&outputs);
         let selected_output = if config.output == "*" {
             "*".into()
         } else if outputs.iter().any(|output| output.name == config.output) {
+            config.output.clone()
+        } else if outputs_unknown && !config.output.is_empty() {
             config.output.clone()
         } else {
             outputs
@@ -1296,7 +1566,9 @@ impl cosmic::Application for AuraApp {
         }
 
         let autostart_active = config.autostart || WallpaperEngine::is_autostart_enabled();
-        if autostart_active && !WallpaperEngine::is_autostart_enabled() {
+        if autostart_active {
+            // Refresh unconditionally: this repairs entries written by older
+            // versions with a stale Exec path and keeps the KDE/GNOME keys.
             let _ = WallpaperEngine::write_autostart();
         }
 
@@ -1384,12 +1656,20 @@ impl cosmic::Application for AuraApp {
                 // skip it entirely: it would render hidden below both.
                 let all_overrides =
                     all_outputs_have_own_wallpaper(&outputs, &config.wallpapers);
+                // `detect_outputs()` uses a `*` fallback when the compositor
+                // is not ready yet (common during login). Treat that as
+                // "unknown" and still start the configured per-output
+                // wallpapers; the hotplug reconciler will retry if mpvpaper
+                // is not ready either.
+                let unknown_outputs = outputs_are_unknown(&outputs);
                 let mut startup_wallpapers: Vec<(String, String)> = config
                     .wallpapers
                     .iter()
                     .map(|(out, path)| (out.clone(), path.clone()))
                     .filter(|(out, _)| {
-                        out == "*" || outputs.iter().any(|monitor| monitor.name == *out)
+                        out == "*"
+                            || unknown_outputs
+                            || outputs.iter().any(|monitor| monitor.name == *out)
                     })
                     .collect();
                 if all_overrides {
@@ -1484,16 +1764,18 @@ impl cosmic::Application for AuraApp {
             videos,
             search_query: String::new(),
             autostart_active,
-            status_message: None,
-            status_timer: 0,
             pending_volume: None,
             gnome_apply_token: 0,
             kde_apply_token: 0,
-            toasts: cosmic::widget::Toasts::new(Message::CloseToast),
+            notice: None,
+            notice_token: 0,
             is_paused: false,
             output_pause_states: std::collections::HashMap::new(),
             manual_paused_outputs: std::collections::HashSet::new(),
             is_paused_by_smart: false,
+            is_paused_by_occlusion: std::collections::HashSet::new(),
+            auto_pause_overrides: std::collections::HashSet::new(),
+            last_occlusion_revision: 0,
             is_paused_by_battery: false,
             tray_controller,
             is_window_open,
@@ -1559,6 +1841,20 @@ impl cosmic::Application for AuraApp {
 
         app.sort_videos();
         app.update_category_counts();
+
+        // Restore Aura's own wallpaper accent on every desktop, without
+        // rewriting system settings at startup.
+        tasks.push(app.current_app_accent_task());
+
+        // COSMIC tiling leaves part of the wallpaper visible, so mpvpaper's
+        // frame-callback pause never triggers for tiled windows. Start Aura's
+        // own toplevel watcher on the compositors where it is available.
+        if app.config.auto_pause
+            && app.uses_mpvpaper()
+            && app.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
+        {
+            crate::toplevels::start();
+        }
 
         if !crate::online::updater::is_flatpak() {
             tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
@@ -1795,13 +2091,6 @@ impl cosmic::Application for AuraApp {
             );
         }
 
-        if self.status_timer > 0 {
-            subs.push(
-                cosmic::iced::time::every(Duration::from_secs(1))
-                    .map(|_| Message::TickSecond)
-            );
-        }
-
         fn tray_stream() -> impl cosmic::iced::futures::Stream<Item = Message> {
             cosmic::iced::stream::channel(10, |mut output: cosmic::iced::futures::channel::mpsc::Sender<Message>| {
                 async move {
@@ -1885,6 +2174,17 @@ impl cosmic::Application for AuraApp {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(3))
                     .map(|_| Message::SmartPauseTick)
+            );
+        }
+
+        if self.config.auto_pause
+            && self.uses_mpvpaper()
+            && self.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
+            && !self.config.wallpapers.is_empty()
+        {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_millis(700))
+                    .map(|_| Message::OcclusionTick)
             );
         }
 
@@ -2120,7 +2420,7 @@ impl cosmic::Application for AuraApp {
                     })
                     .unwrap_or(output);
                 self.selected_output = target;
-                return self.notify(format!("🖥️ {}", details));
+                return self.notify(details);
             }
 
             Message::ReorderOutputs { from, to } => {
@@ -2277,7 +2577,7 @@ impl cosmic::Application for AuraApp {
                 }
                 self.custom_interval_input = self.config.interval.to_string();
                 let warn_msg = self.language.status_interval_invalid().to_string();
-                return self.notify(warn_msg);
+                return self.notify_error(warn_msg);
             }
 
             Message::SelectRotationOrder(order) => {
@@ -2310,17 +2610,28 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::CloseToast(id) => {
-                self.toasts.remove(id);
+            Message::ExpireNotice(token) => {
+                if token == self.notice_token {
+                    self.notice = None;
+                }
+            }
+
+            Message::DismissNotice => {
+                self.notice = None;
+                self.notice_token = self.notice_token.wrapping_add(1);
+            }
+
+            Message::NoticeAction(action) => {
+                self.notice = None;
+                self.notice_token = self.notice_token.wrapping_add(1);
+                return self.update(*action);
             }
 
             Message::OpenWallpapersFolder => {
                 let dir = crate::online::wallpapers_online_dir();
                 let _ = std::fs::create_dir_all(&dir);
-                if open::that_detached(&dir).is_ok() {
-                    return self.notify(self.language.toast_folder_opened());
-                } else {
-                    return self.notify(self.language.toast_folder_open_failed());
+                if open::that_detached(&dir).is_err() {
+                    return self.notify_error(self.language.toast_folder_open_failed());
                 }
             }
 
@@ -2330,31 +2641,9 @@ impl cosmic::Application for AuraApp {
                 } else {
                     path
                 };
-                if open::that_detached(&target).is_ok() {
-                    return self.notify(self.language.toast_folder_opened());
-                } else {
-                    return self.notify(self.language.toast_folder_open_failed());
+                if open::that_detached(&target).is_err() {
+                    return self.notify_error(self.language.toast_folder_open_failed());
                 }
-            }
-
-            Message::TickSecond => {
-                let dead = self.engine_guard().reap_dead_processes();
-                if !dead.is_empty() && self.engine_guard().processes_keys().is_empty() {
-                    self.is_paused = false;
-                    self.tray_controller.update_state(String::new(), false, false);
-                }
-
-                if self.status_timer > 0 {
-                    self.status_timer -= 1;
-                    if self.status_timer == 0 {
-                        self.status_message = None;
-                    }
-                }
-            }
-
-            Message::DismissStatus => {
-                self.status_message = None;
-                self.status_timer = 0;
             }
 
             Message::TrayAction(action) => match action {
@@ -2417,7 +2706,7 @@ impl cosmic::Application for AuraApp {
 
                 if !crate::online::updater::is_flatpak() {
                     if let UpdateStatus::Available { ref latest_tag, ref download_url, ref checksum_url, .. } = self.update_status {
-                        let toast_text = format!("🚀 {} {}", self.language.about_update_available(), latest_tag);
+                        let toast_text = format!("{} {}", self.language.about_update_available(), latest_tag);
                         if let (Some(url), Some(checksum_url)) = (download_url, checksum_url) {
                             let action_lbl = self.language.toast_update_available_action();
                             tasks.push(self.notify_with_action(
@@ -3379,7 +3668,7 @@ impl cosmic::Application for AuraApp {
                                 checksum_url: release.checksum_url.clone(),
                             };
                             if self.is_window_open {
-                                let toast_text = format!("🚀 {} {}", self.language.about_update_available(), release.tag);
+                                let toast_text = format!("{} {}", self.language.about_update_available(), release.tag);
                                 if let (Some(url), Some(checksum_url)) = (release.download_url, release.checksum_url) {
                                     let action_lbl = self.language.toast_update_available_action();
                                     return self.notify_with_action(
@@ -3409,7 +3698,7 @@ impl cosmic::Application for AuraApp {
                     Err(e) => {
                         self.update_status = UpdateStatus::Error(e.clone());
                         if user_initiated {
-                            return self.notify(format!("Error: {}", e));
+                            return self.notify_error(e);
                         }
                     }
                 }
@@ -3436,14 +3725,14 @@ impl cosmic::Application for AuraApp {
                     Ok(ver) => {
                         self.update_status = UpdateStatus::UpdatedSuccess { new_version: ver.clone() };
                         return self.notify_with_action(
-                            format!("🎉 ¡Aura actualizada a {}!", ver),
+                            self.language.about_updated_toast(&ver),
                             self.language.toast_restart_action(),
                             Message::RestartApp,
                         );
                     }
                     Err(e) => {
                         self.update_status = UpdateStatus::Error(e.clone());
-                        return self.notify(format!("Error al actualizar: {}", e));
+                        return self.notify_error(e);
                     }
                 }
             }
@@ -3520,16 +3809,12 @@ impl cosmic::Application for AuraApp {
                     let task_output = output.clone();
                     let message_output = output.clone();
                     let task_scaling = scaling.clone();
+                    let auto_pause = self.config.auto_pause;
+                    let auto_pause_mode = self.config.auto_pause_mode;
                     let force_static = backend == Backend::Static;
                     let plugin_missing = is_video && !crate::engine::kde::plugin_installed();
                     let static_fallback = is_video && (force_static || plugin_missing);
                     let plugin_hint = crate::engine::kde::plugin_install_hint();
-                    self.status_message = Some(match self.language {
-                        crate::i18n::Language::Es => "Aplicando fondo en KDE Plasma…".into(),
-                        crate::i18n::Language::En => "Applying wallpaper on KDE Plasma…".into(),
-                        crate::i18n::Language::Fr => "Application du fond sur KDE Plasma…".into(),
-                    });
-                    self.status_timer = 0;
                     return Task::perform(
                         async move {
                             let result = tokio::task::spawn_blocking(move || {
@@ -3548,6 +3833,8 @@ impl cosmic::Application for AuraApp {
                                         &task_scaling,
                                         mute,
                                         volume,
+                                        auto_pause,
+                                        auto_pause_mode,
                                     )
                                 } else {
                                     crate::engine::kde::set_image_on_output(
@@ -3640,12 +3927,6 @@ impl cosmic::Application for AuraApp {
                 self.apply_token = self.apply_token.wrapping_add(1);
                 let token = self.apply_token;
                 self.pending_applies = self.pending_applies.saturating_add(1);
-                self.status_message = Some(match self.language {
-                    crate::i18n::Language::Es => "Aplicando fondo…".into(),
-                    crate::i18n::Language::En => "Applying wallpaper…".into(),
-                    crate::i18n::Language::Fr => "Application du fond…".into(),
-                });
-                self.status_timer = 0;
 
                 return Task::perform(
                     async move {
@@ -3711,9 +3992,7 @@ impl cosmic::Application for AuraApp {
                     Err(err_text) => {
                         eprintln!("[Aura] Fallo al aplicar fondo en GNOME: {}", err_text);
                         let display_msg = self.wallpaper_error_text(&err_text);
-                        self.status_message = Some(format!("Error: {}", display_msg));
-                        self.status_timer = 8;
-                        return self.notify(format!("⚠️ {}", display_msg));
+                        return self.notify_error(display_msg);
                     }
                 }
             }
@@ -3727,8 +4006,6 @@ impl cosmic::Application for AuraApp {
                         let path_str = video_path.to_string_lossy().to_string();
                         let task = self.finish_wallpaper_applied(&video_path, &output, &path_str);
                         if static_fallback {
-                            self.status_message = Some(self.language.kde_plugin_fallback_status().to_string());
-                            self.status_timer = 0;
                             let toast = self.notify_with_action(
                                 self.language.kde_plugin_fallback_toast(),
                                 self.language.kde_plugin_install_action(),
@@ -3741,8 +4018,6 @@ impl cosmic::Application for AuraApp {
                     Err(err_text) => {
                         eprintln!("[Aura] Fallo al aplicar fondo en KDE Plasma: {}", err_text);
                         let display_msg = format!("KDE Plasma: {}", err_text);
-                        self.status_message = Some(format!("Error: {}", display_msg));
-                        self.status_timer = 8;
                         if err_text.contains("Smart Video Wallpaper Reborn is not installed") {
                             return self.notify_with_action(
                                 display_msg,
@@ -3750,7 +4025,7 @@ impl cosmic::Application for AuraApp {
                                 Message::OpenKdePluginPage,
                             );
                         }
-                        return self.notify(format!("⚠️ {}", display_msg));
+                        return self.notify_error(display_msg);
                     }
                 }
             }
@@ -3788,29 +4063,36 @@ impl cosmic::Application for AuraApp {
                         eprintln!("[Aura] Fallo al aplicar fondo: {}", err_text);
                         if token == self.apply_token {
                             let display_msg = self.wallpaper_error_text(&err_text);
-                            self.status_message = Some(format!("Error: {}", display_msg));
-                            self.status_timer = 8;
-                            return self.notify(format!("⚠️ {}", display_msg));
+                            return self.notify_error(display_msg);
                         }
                     }
                 }
             }
 
             Message::EngineStopFinished { output } => {
-                if let Some(out) = output.as_ref() {
-                    let msg = self.language.status_stopped_output(out).to_string();
-                    self.status_message = Some(msg);
-                } else {
-                    self.status_message = Some(self.language.status_stopped_all().to_string());
-                }
+                let msg = match output.as_ref() {
+                    Some(out) => self.language.status_stopped_output(out),
+                    None => self.language.status_stopped_all().to_string(),
+                };
+                return self.set_status(msg);
             }
 
             Message::EnginePauseFinished(now_paused) => {
                 self.is_paused = now_paused;
                 self.is_manual_pause = now_paused;
                 self.manual_paused_outputs.clear();
+                self.auto_pause_overrides.clear();
                 if now_paused {
                     self.manual_paused_outputs.extend(self.outputs.iter().map(|output| output.name.clone()));
+                } else if !self.is_paused_by_occlusion.is_empty() {
+                    // Resuming while auto-paused is an explicit override for
+                    // the current window layout, not a no-op that re-pauses
+                    // 700 ms later.
+                    for output in self.pause_targets() {
+                        if self.is_paused_by_occlusion.contains(&output) {
+                            self.auto_pause_overrides.insert(output);
+                        }
+                    }
                 }
                 for output in &self.outputs {
                     self.output_pause_states.insert(output.name.clone(), Some(now_paused));
@@ -3856,7 +4138,43 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::PlaybackStatesUpdated(states) => {
-                self.output_pause_states = states;
+                // The one-second IPC refresh is advisory. Auto-pause, manual
+                // pause and global reasons are authoritative; otherwise a
+                // player that has not finished starting (or briefly fails to
+                // answer IPC) overwrites the state and makes the bar icon
+                // alternate between play and pause every second.
+                let global_reason = self.auto_pause_global_reason();
+                let occluded = self.effective_occluded_outputs();
+                let mut needs_reconcile = false;
+                for (output, observed) in states {
+                    let desired =
+                        self.desired_pause_for(&output, global_reason, &occluded);
+                    match observed {
+                        Some(actual) if actual != desired => {
+                            // Keep showing the intended state and retry the
+                            // actual player state below.
+                            self.output_pause_states
+                                .insert(output, Some(desired));
+                            needs_reconcile = true;
+                        }
+                        Some(actual) => {
+                            self.output_pause_states.insert(output, Some(actual));
+                        }
+                        None if desired => {
+                            self.output_pause_states.insert(output, Some(true));
+                        }
+                        None => {
+                            // Missing IPC is not proof that playback resumed.
+                            // Keep the last known state until it is known.
+                            self.output_pause_states
+                                .entry(output)
+                                .or_insert(None);
+                        }
+                    }
+                }
+                if needs_reconcile {
+                    return self.apply_occlusion_state();
+                }
             }
 
             Message::TogglePause => {
@@ -3865,12 +4183,6 @@ impl cosmic::Application for AuraApp {
                 }
                 let engine = Arc::clone(&self.engine);
                 let engine_op_lock = Arc::clone(&self.engine_op_lock);
-                self.status_message = Some(match self.language {
-                    crate::i18n::Language::Es => "Cambiando pausa…".into(),
-                    crate::i18n::Language::En => "Changing pause state…".into(),
-                    crate::i18n::Language::Fr => "Changement de pause…".into(),
-                });
-                self.status_timer = 0;
                 return Task::perform(
                     async move {
                         let _operation = engine_op_lock.lock().await;
@@ -3906,12 +4218,6 @@ impl cosmic::Application for AuraApp {
                 let auto_pause = self.config.auto_pause;
                 let gpu_preference = self.config.gpu_preference.clone();
                 let target_for_work = target.clone();
-                self.status_message = Some(match self.language {
-                    crate::i18n::Language::Es => "Cambiando reproducción…".into(),
-                    crate::i18n::Language::En => "Changing playback…".into(),
-                    crate::i18n::Language::Fr => "Changement de lecture…".into(),
-                });
-                self.status_timer = 0;
                 return Task::perform(
                     async move {
                         let _operation = engine_op_lock.lock().await;
@@ -3998,10 +4304,32 @@ impl cosmic::Application for AuraApp {
                     } else {
                         self.manual_paused_outputs.remove(&target);
                     }
+                    if paused {
+                        if target == "*" {
+                            self.auto_pause_overrides.clear();
+                        } else {
+                            self.auto_pause_overrides.remove(&target);
+                        }
+                    } else if target == "*" {
+                        // Keep an explicit resume for every monitor that was
+                        // being auto-paused until the window layout changes.
+                        for output in self.pause_targets() {
+                            if self.is_paused_by_occlusion.contains(&output) {
+                                self.auto_pause_overrides.insert(output);
+                            }
+                        }
+                    } else if self.is_paused_by_occlusion.contains(&target) {
+                        self.auto_pause_overrides.insert(target.clone());
+                    }
                     if target != "*" {
-                        self.is_paused = !self.outputs.is_empty() && self.outputs.iter().all(|output| {
-                            self.output_pause_states.get(&output.name).copied().flatten() == Some(true)
-                        });
+                        self.is_paused = self.is_manual_pause
+                            || self.outputs.iter().any(|output| {
+                                self.output_pause_states
+                                    .get(&output.name)
+                                    .copied()
+                                    .flatten()
+                                    == Some(true)
+                            });
                         if self.uses_mpvpaper() {
                             self.is_manual_pause = !self.manual_paused_outputs.is_empty()
                                 && self.outputs.iter().all(|output| self.manual_paused_outputs.contains(&output.name));
@@ -4011,10 +4339,9 @@ impl cosmic::Application for AuraApp {
                 if target == "*" && success {
                     self.is_paused = !self.output_pause_states.values().any(|state| *state == Some(false));
                     self.is_manual_pause = self.is_paused;
-                    let current_title = self.config.current.as_ref()
-                        .and_then(|c| std::path::Path::new(c).file_stem().map(|s| s.to_string_lossy().to_string()))
-                        .unwrap_or_default();
-                    self.tray_controller.update_state(current_title, self.is_paused, !self.config.wallpapers.is_empty());
+                }
+                if success {
+                    self.sync_tray_playback_state();
                 }
                 let status = if !success {
                     match self.language {
@@ -4061,6 +4388,8 @@ impl cosmic::Application for AuraApp {
                 self.is_paused_by_battery = false;
                 self.is_paused_by_overview = false;
                 self.is_paused_by_locked = false;
+                self.is_paused_by_occlusion.clear();
+                self.auto_pause_overrides.clear();
                 if stop_all {
                     self.manual_paused_outputs.clear();
                     self.output_pause_states.clear();
@@ -4107,12 +4436,6 @@ impl cosmic::Application for AuraApp {
                 let engine = Arc::clone(&self.engine);
                 let engine_op_lock = Arc::clone(&self.engine_op_lock);
                 let output_for_task = output.clone();
-                self.status_message = Some(match self.language {
-                    crate::i18n::Language::Es => "Deteniendo fondo…".into(),
-                    crate::i18n::Language::En => "Stopping wallpaper…".into(),
-                    crate::i18n::Language::Fr => "Arrêt du fond…".into(),
-                });
-                self.status_timer = 0;
                 return Task::perform(
                     async move {
                         let _operation = engine_op_lock.lock().await;
@@ -4195,40 +4518,29 @@ impl cosmic::Application for AuraApp {
             Message::ToggleAutostart(active) => {
                 self.autostart_active = active;
                 self.config.autostart = active;
-                if active {
+                let status = if active {
                     let _ = WallpaperEngine::write_autostart();
-                    self.status_message = Some(match self.language {
-                        crate::i18n::Language::Es => "Inicio automático activado".into(),
-                        crate::i18n::Language::En => "Autostart enabled".into(),
-                        crate::i18n::Language::Fr => "Démarrage automatique activé".into(),
-                    });
+                    match self.language {
+                        crate::i18n::Language::Es => "Inicio automático activado",
+                        crate::i18n::Language::En => "Autostart enabled",
+                        crate::i18n::Language::Fr => "Démarrage automatique activé",
+                    }
                 } else {
                     let _ = WallpaperEngine::remove_autostart();
-                    self.status_message = Some(match self.language {
-                        crate::i18n::Language::Es => "Inicio automático desactivado".into(),
-                        crate::i18n::Language::En => "Autostart disabled".into(),
-                        crate::i18n::Language::Fr => "Démarrage automatique désactivé".into(),
-                    });
-                }
+                    match self.language {
+                        crate::i18n::Language::Es => "Inicio automático desactivado",
+                        crate::i18n::Language::En => "Autostart disabled",
+                        crate::i18n::Language::Fr => "Démarrage automatique désactivé",
+                    }
+                };
                 let _ = self.config.save();
-                self.status_timer = 5;
+                return self.set_status(status);
             }
 
             Message::ToggleAutoTheme(active) => {
                 self.config.auto_theme = active;
                 let _ = self.config.save();
-                if active || self.config.theme_mode != crate::config::ThemeMode::Manual {
-                    if let Some(current_str) = &self.config.current {
-                        let cur_path = PathBuf::from(current_str);
-                        if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
-                            apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
-                        } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
-                            if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.theme_mode);
-                            }
-                        }
-                    }
-                }
+                return self.apply_current_wallpaper_theme();
             }
 
             Message::SelectThemeMode(mode) => {
@@ -4236,33 +4548,21 @@ impl cosmic::Application for AuraApp {
                 self.config.auto_dark = mode == crate::config::ThemeMode::Auto;
                 let _ = self.config.save();
 
-                match mode {
+                let status = match mode {
                     crate::config::ThemeMode::Dark => {
                         crate::theme::apply_cosmic_mode(true);
-                        self.status_message = Some(self.language.status_theme_mode_dark().into());
+                        self.language.status_theme_mode_dark()
                     }
                     crate::config::ThemeMode::Light => {
                         crate::theme::apply_cosmic_mode(false);
-                        self.status_message = Some(self.language.status_theme_mode_light().into());
+                        self.language.status_theme_mode_light()
                     }
-                    crate::config::ThemeMode::Auto => {
-                        if let Some(current_str) = &self.config.current {
-                            let cur_path = PathBuf::from(current_str);
-                            if let Some(thumb) = self.videos.iter().find(|v| v.path == cur_path).and_then(|v| v.thumb_path.as_ref()) {
-                                apply_cosmic_theme(thumb, self.config.auto_theme, self.config.theme_mode);
-                            } else if let Some(ext) = cur_path.extension().and_then(|e| e.to_str()) {
-                                if crate::scanner::is_supported_wallpaper_ext(ext) {
-                                    apply_cosmic_theme(&cur_path, self.config.auto_theme, self.config.theme_mode);
-                                }
-                            }
-                        }
-                        self.status_message = Some(self.language.status_theme_mode_auto().into());
-                    }
-                    crate::config::ThemeMode::Manual => {
-                        self.status_message = Some(self.language.status_theme_mode_manual().into());
-                    }
-                }
-                self.status_timer = 5;
+                    crate::config::ThemeMode::Auto => self.language.status_theme_mode_auto(),
+                    crate::config::ThemeMode::Manual => self.language.status_theme_mode_manual(),
+                };
+                let apply = self.apply_current_wallpaper_theme();
+                let toast = self.set_status(status);
+                return Task::batch([toast, apply]);
             }
 
             Message::ToggleAutoDark(active) => {
@@ -4292,8 +4592,24 @@ impl cosmic::Application for AuraApp {
 
             Message::ToggleAutoPause(active) => {
                 self.config.auto_pause = active;
+                self.auto_pause_overrides.clear();
+                self.last_occlusion_revision = 0;
                 let _ = self.config.save();
-                return self.reapply_all_wallpapers();
+                if active {
+                    if self.uses_mpvpaper()
+                        && self.desktop_environment()
+                            == crate::engine::DesktopEnvironment::Cosmic
+                    {
+                        crate::toplevels::start();
+                    }
+                } else {
+                    self.is_paused_by_occlusion.clear();
+                }
+                let reapply = self.reapply_all_wallpapers();
+                if active {
+                    return reapply;
+                }
+                return Task::batch([reapply, self.apply_occlusion_state()]);
             }
 
             Message::ToggleKeepRunningOnClose(active) => {
@@ -4310,27 +4626,37 @@ impl cosmic::Application for AuraApp {
                         self.engine_guard().set_volume(None, self.config.volume);
                     }
                 }
-                self.status_message = Some(if mute { self.language.status_muted().into() } else { self.language.status_unmuted().into() });
-                self.status_timer = 5;
+                let status = if mute {
+                    self.language.status_muted()
+                } else {
+                    self.language.status_unmuted()
+                };
+                return self.set_status(status);
             }
 
             Message::RemoveFolder(folder) => {
                 self.config.dirs.retain(|d| d != &folder);
                 let _ = self.config.save();
                 self.rescan_and_update();
-                self.status_message = Some(self.language.status_folder_removed(&folder));
-                self.status_timer = 5;
+                return self.set_status(self.language.status_folder_removed(&folder));
             }
 
             Message::RefreshLibrary => {
                 self.rescan_and_update();
-                self.status_message = Some(self.language.status_library_refreshed().into());
-                self.status_timer = 5;
+                return self.set_status(self.language.status_library_refreshed());
             }
 
             Message::ThumbnailGenerated { video_path, thumb_path } => {
+                let is_current = self
+                    .config
+                    .current
+                    .as_ref()
+                    .is_some_and(|current| Path::new(current) == video_path);
                 if let Some(item) = self.videos.iter_mut().find(|v| v.path == video_path) {
-                    item.thumb_path = Some(thumb_path);
+                    item.thumb_path = Some(thumb_path.clone());
+                }
+                if is_current {
+                    return self.app_accent_task(&thumb_path);
                 }
             }
 
@@ -4373,9 +4699,6 @@ impl cosmic::Application for AuraApp {
                     let _ = self.config.save();
                 }
                 self.rescan_and_update();
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                self.status_message = Some(self.language.status_video_added(&file_name));
-                self.status_timer = 5;
 
                 let output = self.selected_output.clone();
                 let is_image = path.extension()
@@ -4425,10 +4748,7 @@ impl cosmic::Application for AuraApp {
                     let _ = self.config.save();
                 }
                 self.rescan_and_update();
-                self.status_message = Some(self.language.status_folder_added(&folder_str));
-                self.status_timer = 5;
-
-                let mut tasks = Vec::new();
+                let mut tasks = vec![self.set_status(self.language.status_folder_added(&folder_str))];
                 for item in &self.videos {
                     if item.thumb_path.is_none() {
                         let vp = item.path.clone();
@@ -4468,8 +4788,6 @@ impl cosmic::Application for AuraApp {
                 if added_any {
                     let _ = self.config.save();
                     self.rescan_and_update();
-                    self.status_message = Some(self.language.status_videos_dropped().into());
-                    self.status_timer = 5;
 
                     if let Some(media_to_apply) = apply_last {
                         let out = self.selected_output.clone();
@@ -4501,6 +4819,11 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::HotplugTick => {
+                let dead = self.engine_guard().reap_dead_processes();
+                if !dead.is_empty() && self.engine_guard().processes_keys().is_empty() {
+                    self.is_paused = false;
+                    self.tray_controller.update_state(String::new(), false, false);
+                }
                 let current_outputs = detect_outputs();
                 return self.handle_topology_change(current_outputs);
             }
@@ -4512,8 +4835,7 @@ impl cosmic::Application for AuraApp {
             Message::TopologyEngineFinished { outputs, result } => {
                 match result {
                     Ok(()) => {
-                        self.status_message = Some(self.language.status_topology_updated(outputs));
-                        self.status_timer = 5;
+                        return self.set_status(self.language.status_topology_updated(outputs));
                     }
                     Err(error) => {
                         let message = match self.language {
@@ -4527,7 +4849,7 @@ impl cosmic::Application for AuraApp {
                                 format!("Impossible de mettre à jour la disposition des écrans : {error}")
                             }
                         };
-                        return self.notify(message);
+                        return self.notify_error(message);
                     }
                 }
             }
@@ -4545,7 +4867,16 @@ impl cosmic::Application for AuraApp {
                             format!("Impossible de mettre à jour le fond : {error}")
                         }
                     };
-                    return self.notify(message);
+                    return self.notify_error(message);
+                }
+            }
+
+            Message::PlayerReconcileFinished(result) => {
+                // Startup reconciliation runs repeatedly until the compositor
+                // and mpvpaper are ready. Failures are expected during that
+                // window, so log them instead of spamming notifications.
+                if let Err(error) = result {
+                    eprintln!("[Aura] Reintento de fondo: {error}");
                 }
             }
 
@@ -4578,6 +4909,68 @@ impl cosmic::Application for AuraApp {
                 } else {
                     self.try_resume_after_auto_reason(self.language.status_game_resumed());
                 }
+            }
+
+            Message::OcclusionTick => {
+                if !self.config.auto_pause
+                    || !self.uses_mpvpaper()
+                    || self.desktop_environment() != crate::engine::DesktopEnvironment::Cosmic
+                {
+                    return Task::none();
+                }
+                let Some(snapshot) = crate::toplevels::snapshot() else {
+                    return Task::none();
+                };
+                if !snapshot.available {
+                    return Task::none();
+                }
+
+                let previous = self.is_paused_by_occlusion.clone();
+                let revision_changed = snapshot.revision != self.last_occlusion_revision;
+                if revision_changed {
+                    // The compositor published a new window layout. A manual
+                    // resume only applies to the layout where it was made.
+                    self.last_occlusion_revision = snapshot.revision;
+                    self.auto_pause_overrides.clear();
+                }
+
+                let mut occluded = std::collections::HashSet::new();
+                for output in &self.outputs {
+                    let coverage = snapshot.coverage_for(&output.name);
+                    if self.config.auto_pause_mode.should_pause(coverage) {
+                        occluded.insert(output.name.clone());
+                    }
+                }
+
+                let occlusion_changed = occluded != previous;
+                self.is_paused_by_occlusion = occluded;
+
+                // Reapply not only when the layout changes but also when the
+                // state we last applied no longer matches the player. This
+                // covers missed compositor events, manual overrides and IPC
+                // commands that failed silently.
+                if !occlusion_changed
+                    && !revision_changed
+                    && self.occlusion_state_is_synced()
+                {
+                    return Task::none();
+                }
+                return self.apply_occlusion_state();
+            }
+
+            Message::SelectAutoPauseMode(mode) => {
+                self.config.auto_pause_mode = mode;
+                let _ = self.config.save();
+                self.is_paused_by_occlusion.clear();
+                self.auto_pause_overrides.clear();
+                self.last_occlusion_revision = 0;
+                if self.config.auto_pause
+                    && self.uses_mpvpaper()
+                    && self.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
+                {
+                    crate::toplevels::start();
+                }
+                return self.reapply_all_wallpapers();
             }
 
             Message::NiriOverviewChanged(is_open) => {
@@ -4916,8 +5309,7 @@ impl cosmic::Application for AuraApp {
                                 if self.minimalistic_page > 1 { self.minimalistic_page -= 1; }
                             }
                         }
-                        self.status_message = Some(format!("Error: {}", err));
-                        self.status_timer = 5;
+                        return self.notify_error(format!("{} {}", self.language.explore_error_prefix(), err));
                     }
                 }
             }
@@ -5173,7 +5565,7 @@ impl cosmic::Application for AuraApp {
                     let msg_text = format!("{}: {}", self.language.explore_toast_downloaded(), fname);
                     tasks.push(self.notify_with_action(
                         msg_text,
-                        self.language.toast_show_in_files(),
+                        self.language.toast_open_folder(),
                         Message::OpenWallpapersFolder,
                     ));
                 }
@@ -5191,8 +5583,11 @@ impl cosmic::Application for AuraApp {
                     self.pending_auto_apply_id = None;
                 }
                 if was_downloading && !error.contains("canceled by user") {
-                    self.status_message = Some(format!("{} {}", self.language.explore_error_prefix(), error));
-                    self.status_timer = 5;
+                    return self.notify_error(format!(
+                        "{} {}",
+                        self.language.explore_error_prefix(),
+                        error
+                    ));
                 }
             }
 
@@ -5331,14 +5726,58 @@ impl cosmic::Application for AuraApp {
             .center_x(Length::Fill)
             .padding(if self.window_width < 620.0 { 8 } else { 14 });
 
-        let root = widget::container(centered)
+        let root: Element<'_, Message> = widget::container(centered)
             .width(Length::Fill)
-            .height(Length::Fill);
-        Element::from(widget::toaster(&self.toasts, root))
+            .height(Length::Fill)
+            .into();
+        if let Some(notice) = &self.notice {
+            let overlay = widget::container(Self::view_notice(notice))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Bottom)
+                .padding([0, 0, 15, 0]);
+            Element::from(
+                cosmic::iced::widget::stack(vec![root, overlay.into()])
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+        } else {
+            root
+        }
     }
 }
 
 impl AuraApp {
+    fn view_notice(notice: &Notice) -> Element<'_, Message> {
+        let spacing = cosmic::theme::active().cosmic().spacing;
+        let controls = widget::row::with_capacity(2)
+            .push_maybe(notice.action.as_ref().map(|(label, message)| {
+                widget::button::text(label.clone())
+                    .on_press(Message::NoticeAction(Box::new(message.clone())))
+            }))
+            .push(
+                widget::button::icon(widget::icon::from_name("window-close-symbolic"))
+                    .on_press(Message::DismissNotice),
+            )
+            .align_y(Alignment::Center)
+            .spacing(spacing.space_xxs);
+        let row = widget::row::with_capacity(2)
+            .push(widget::text(notice.text.as_str()))
+            .push(controls)
+            .align_y(Alignment::Center)
+            .spacing(spacing.space_s);
+        widget::container(row)
+            .padding([
+                spacing.space_xxs,
+                spacing.space_s,
+                spacing.space_xxs,
+                spacing.space_m,
+            ])
+            .class(cosmic::theme::Container::Tooltip)
+            .into()
+    }
+
     fn view_page_layer(&self, page: Page) -> Element<'_, Message> {
         let content: Element<'_, Message> = if self.active_page == page {
             match page {
@@ -5404,6 +5843,34 @@ impl AuraApp {
         Task::none()
     }
 
+    /// Reconciles wallpapers when no output topology change was detected.
+    /// At login the compositor or mpvpaper can still be starting, so the
+    /// synchronous spawn performed by `init` may fail (or detect no outputs).
+    /// Without this retry the wallpaper stayed static until the user toggled
+    /// autostart or changed the wallpaper manually.
+    fn reconcile_missing_wallpapers(&self) -> Task<cosmic::Action<Message>> {
+        if !self.uses_mpvpaper() || self.config.wallpapers.is_empty() {
+            return Task::none();
+        }
+
+        let unknown_outputs = outputs_are_unknown(&self.outputs);
+        let all_overrides = all_outputs_have_own_wallpaper(&self.outputs, &self.config.wallpapers);
+        let candidates: Vec<(String, String)> = self
+            .config
+            .wallpapers
+            .iter()
+            .filter(|(output, path)| {
+                std::path::Path::new(path).is_file()
+                    && !(output.as_str() == "*" && all_overrides)
+                    && (output.as_str() == "*"
+                        || unknown_outputs
+                        || self.outputs.iter().any(|monitor| monitor.name == **output))
+            })
+            .map(|(output, path)| (output.clone(), path.clone()))
+            .collect();
+        self.apply_wallpaper_entries(candidates, true)
+    }
+
     fn reapply_all_wallpapers(&self) -> Task<cosmic::Action<Message>> {
         if !self.uses_mpvpaper() {
             let tasks: Vec<_> = self
@@ -5420,12 +5887,14 @@ impl AuraApp {
                 .collect();
             return Task::batch(tasks);
         }
+        let unknown_outputs = outputs_are_unknown(&self.outputs);
         let mut wallpapers: Vec<(String, String)> = self
             .config
             .wallpapers
             .iter()
             .filter(|(output, _)| {
                 output.as_str() == "*"
+                    || unknown_outputs
                     || self.outputs.iter().any(|monitor| monitor.name == **output)
             })
             .map(|(output, path)| (output.clone(), path.clone()))
@@ -5436,9 +5905,18 @@ impl AuraApp {
             wallpapers.retain(|(output, _)| output != "*");
         }
         wallpapers.sort_by_key(|(output, _)| if output == "*" { 0 } else { 1 });
+        self.apply_wallpaper_entries(wallpapers, false)
+    }
+
+    fn apply_wallpaper_entries(
+        &self,
+        mut wallpapers: Vec<(String, String)>,
+        only_missing: bool,
+    ) -> Task<cosmic::Action<Message>> {
         if wallpapers.is_empty() {
             return Task::none();
         }
+        wallpapers.sort_by_key(|(output, _)| if output == "*" { 0 } else { 1 });
         let output_names: Vec<String> =
             self.outputs.iter().map(|output| output.name.clone()).collect();
         let scaling = self.config.scaling.clone();
@@ -5457,7 +5935,17 @@ impl AuraApp {
                     let mut engine = engine
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let active: std::collections::HashSet<String> = if only_missing {
+                        engine.reap_dead_processes();
+                        engine.ensure_sockets_discovered();
+                        engine.active_keys().into_iter().collect()
+                    } else {
+                        std::collections::HashSet::new()
+                    };
                     for (output, path) in wallpapers {
+                        if only_missing && active.contains(&output) {
+                            continue;
+                        }
                         if !std::path::Path::new(&path).exists() {
                             continue;
                         }
@@ -5487,7 +5975,11 @@ impl AuraApp {
                     Ok(result) => result,
                     Err(error) => Err(format!("Maintenance engine task failed: {error}")),
                 };
-                Message::EngineMaintenanceFinished(result)
+                if only_missing {
+                    Message::PlayerReconcileFinished(result)
+                } else {
+                    Message::EngineMaintenanceFinished(result)
+                }
             },
             cosmic::Action::App,
         )

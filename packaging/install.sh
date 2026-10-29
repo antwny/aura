@@ -85,7 +85,7 @@ install -m 644 io.github.antwny.aura.desktop "${APPS_DIR}/io.github.antwny.aura.
 
 # Use absolute path for Exec and TryExec so desktop application launchers (COSMIC, GNOME, etc.)
 # launch Aura directly without depending on session PATH.
-sed -i "s|^Exec=.*|Exec=${BIN_DIR}/aura|" "${APPS_DIR}/io.github.antwny.aura.desktop"
+sed -i "s|^Exec=aura switcher$|Exec=${BIN_DIR}/aura switcher|; s|^Exec=aura$|Exec=${BIN_DIR}/aura|" "${APPS_DIR}/io.github.antwny.aura.desktop"
 if grep -q "^TryExec=" "${APPS_DIR}/io.github.antwny.aura.desktop"; then
     sed -i "s|^TryExec=.*|TryExec=${BIN_DIR}/aura|" "${APPS_DIR}/io.github.antwny.aura.desktop"
 else
@@ -109,6 +109,13 @@ fi
 
 # PATH configuration for user install
 if [ "$INSTALL_TYPE" = "user" ]; then
+    # Plasma/Wayland sessions are started by systemd and do not source shell rc
+    # files, so KDE global shortcuts could not find `aura switcher`. This file
+    # fixes the PATH for the next login (relogin required).
+    ENV_DIR="${HOME}/.config/environment.d"
+    mkdir -p "${ENV_DIR}"
+    printf 'PATH=${HOME}/.local/bin:${PATH}\n' > "${ENV_DIR}/50-aura.conf"
+
     case ":$PATH:" in
         *":$HOME/.local/bin:"*)
             # Already present in current session PATH
@@ -137,6 +144,9 @@ if [ "$INSTALL_TYPE" = "user" ]; then
                 echo ""
                 echo "Added ~/.local/bin to your PATH in ~/.bashrc / ~/.profile."
             fi
+            echo ""
+            echo "KDE Plasma: ~/.local/bin was added to ~/.config/environment.d/50-aura.conf."
+            echo "Log out and back in once so 'aura switcher' works in KDE shortcuts."
             echo ""
             echo "To use 'aura' in your current terminal session, run:"
             echo "  source ~/.bashrc"

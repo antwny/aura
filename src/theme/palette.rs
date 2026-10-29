@@ -122,7 +122,86 @@ pub fn apply_cosmic_mode(is_dark: bool) {
     atomic_write(&mode_dir.join("is_dark"), if is_dark { "true\n" } else { "false\n" });
 }
 
-pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, theme_mode: crate::config::ThemeMode) -> bool {
+/// Extract only the accent color used by Aura's own libcosmic theme.
+pub fn extract_accent(thumb_path: &Path) -> Option<RgbColor> {
+    extract_palette(thumb_path).map(|palette| palette.dominant_color)
+}
+
+/// Build an app-local libcosmic theme with the wallpaper accent. This never
+/// modifies COSMIC/GNOME/KDE settings; it only styles Aura itself.
+pub fn app_theme_with_accent(accent: RgbColor) -> cosmic::Theme {
+    use cosmic::cosmic_config::CosmicConfigEntry;
+    use cosmic::cosmic_theme::palette::Srgb;
+    use cosmic::cosmic_theme::ThemeBuilder;
+
+    let base = cosmic::theme::system_preference();
+    let base_theme = base.cosmic();
+    let accent = Srgb::new(
+        accent.r.clamp(0.0, 1.0),
+        accent.g.clamp(0.0, 1.0),
+        accent.b.clamp(0.0, 1.0),
+    );
+
+    // libcosmic's `Theme::with_accent` uses `ThemeBuilder::get_entry(&cfg).ok()`
+    // internally. If a COSMIC version left any builder key unset, `get_entry`
+    // still returns a usable partial builder together with the missing-key
+    // error, but `with_accent` throws that builder away and falls back to the
+    // default theme. That silently resets frosted glass and alpha settings.
+    // Load the builder ourselves and keep the partial result.
+    let config = if base_theme.is_dark {
+        ThemeBuilder::dark_config()
+    } else {
+        ThemeBuilder::light_config()
+    };
+    let mut builder = config
+        .ok()
+        .map(|cfg| ThemeBuilder::get_entry(&cfg).unwrap_or_else(|(_, builder)| builder))
+        .unwrap_or_else(|| {
+            if base_theme.is_dark {
+                ThemeBuilder::dark()
+            } else {
+                ThemeBuilder::light()
+            }
+        });
+
+    // The builder config can lag behind the active theme (COSMIC keeps the
+    // generated theme and its builder in separate config trees). Mirror the
+    // live values before building so the generated transparent surfaces use
+    // the same alpha/frosted values as the rest of the desktop.
+    builder.frosted = base_theme.frosted;
+    builder.frosted_windows = base_theme.frosted_windows;
+    builder.frosted_system_interface = base_theme.frosted_system_interface;
+    builder.frosted_panel = base_theme.frosted_panel;
+    builder.frosted_applets = base_theme.frosted_applets;
+    builder.frosted_maximized_apps = base_theme.frosted_maximized_apps;
+    builder.alpha_map = base_theme.alpha_map.clone();
+    builder.spacing = base_theme.spacing.clone();
+    builder.corner_radii = base_theme.corner_radii.clone();
+    builder.gaps = base_theme.gaps;
+    builder.active_hint = base_theme.active_hint;
+    builder.window_hint = base_theme.window_hint;
+
+    let mut theme = builder.accent(accent).build();
+
+    // Keep the live frosted/alpha values authoritative even if the builder
+    // had to fall back to defaults.
+    theme.frosted = base_theme.frosted;
+    theme.frosted_windows = base_theme.frosted_windows;
+    theme.frosted_system_interface = base_theme.frosted_system_interface;
+    theme.frosted_panel = base_theme.frosted_panel;
+    theme.frosted_applets = base_theme.frosted_applets;
+    theme.frosted_maximized_apps = base_theme.frosted_maximized_apps;
+    theme.alpha_map = base_theme.alpha_map.clone();
+
+    cosmic::Theme::custom(std::sync::Arc::new(theme))
+}
+
+pub fn apply_cosmic_theme(
+    thumb_path: &Path,
+    auto_theme: bool,
+    theme_mode: crate::config::ThemeMode,
+    write_system_accent: bool,
+) -> bool {
     if !auto_theme && theme_mode == crate::config::ThemeMode::Manual {
         return false;
     }
@@ -141,11 +220,19 @@ pub fn apply_cosmic_theme(thumb_path: &Path, auto_theme: bool, theme_mode: crate
         crate::config::ThemeMode::Manual => {}
     }
 
-    // 2. Apply dynamic accent color if auto_theme is enabled
+    // 2. Apply dynamic accent color if auto_theme is enabled. GNOME and KDE
+    // ignore COSMIC config, so only write it when running on COSMIC; Aura's
+    // own UI gets the accent through `app_theme_with_accent` instead.
     if auto_theme {
         let Some(palette) = palette_opt else {
             return false;
         };
+        if !write_system_accent
+            || crate::engine::DesktopEnvironment::detect()
+                != crate::engine::DesktopEnvironment::Cosmic
+        {
+            return true;
+        }
 
         let cosmic_config = crate::config::config_home().join("cosmic");
 
@@ -268,6 +355,22 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_accent_from_image() {
+        let temp_dir = std::env::temp_dir().join(format!("aura_test_accent_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let path = temp_dir.join("accent.png");
+        let image = image::RgbImage::from_pixel(16, 16, image::Rgb([220, 30, 45]));
+        image.save(&path).unwrap();
+
+        let accent = extract_accent(&path).expect("accent from solid image");
+        assert!(accent.r > 0.8);
+        assert!(accent.g < 0.2);
+        assert!(accent.b < 0.25);
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
     fn test_fmt_color() {
         let col = RgbColor { r: 1.0, g: 0.5, b: 0.0 };
         let formatted = fmt_color(col, 1.0);
@@ -280,14 +383,64 @@ mod tests {
     #[test]
     fn test_apply_disabled() {
         // When auto_theme is false and theme_mode is Manual, should return false immediately
-        assert!(!apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Manual));
+        assert!(!apply_cosmic_theme(
+            Path::new("/nonexistent"),
+            false,
+            crate::config::ThemeMode::Manual,
+            true,
+        ));
     }
 
     #[test]
     fn test_apply_theme_modes_without_accent() {
         // ThemeMode::Dark and Light return true even if auto_theme is false (mode is applied)
-        assert!(apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Dark));
-        assert!(apply_cosmic_theme(Path::new("/nonexistent"), false, crate::config::ThemeMode::Light));
+        assert!(apply_cosmic_theme(
+            Path::new("/nonexistent"),
+            false,
+            crate::config::ThemeMode::Dark,
+            true,
+        ));
+        assert!(apply_cosmic_theme(
+            Path::new("/nonexistent"),
+            false,
+            crate::config::ThemeMode::Light,
+            true,
+        ));
+        // Non-COSMIC desktops still apply the mode locally but skip the
+        // system accent files.
+        assert!(apply_cosmic_theme(
+            Path::new("/nonexistent"),
+            false,
+            crate::config::ThemeMode::Dark,
+            false,
+        ));
+    }
+
+    #[test]
+    fn test_apply_theme_skips_system_accent_when_disabled() {
+        let temp_dir = std::env::temp_dir().join(format!("aura_test_no_accent_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let path = temp_dir.join("accent.png");
+        image::RgbImage::from_pixel(8, 8, image::Rgb([40, 80, 200]))
+            .save(&path)
+            .unwrap();
+
+        let accent_path = crate::config::config_home()
+            .join("cosmic")
+            .join("com.system76.CosmicTheme.Dark")
+            .join("v2")
+            .join("accent");
+        let _ = std::fs::remove_file(&accent_path);
+
+        assert!(apply_cosmic_theme(
+            &path,
+            true,
+            crate::config::ThemeMode::Dark,
+            false,
+        ));
+        assert!(!accent_path.exists());
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]

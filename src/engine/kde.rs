@@ -8,7 +8,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+
+use crate::config::AutoPauseMode;
 
 pub const PLUGIN_ID: &str = "luisbocanegra.smart.video.wallpaper.reborn";
 pub const PLUGIN_URL: &str = "https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn";
@@ -121,6 +125,56 @@ pub fn evaluate_script(script: &str) -> Result<(), String> {
     }
 }
 
+/// Smart Video Wallpaper Reborn expects `VideoUrls` to be a JSON array of
+/// objects (not a plain list of strings). Its parser filters entries where
+/// `enabled` is falsy, so a string-only array produces a black desktop even
+/// though the plugin is installed and selected.
+fn video_urls(path: &Path) -> String {
+    serde_json::json!([{
+        "filename": file_uri(path),
+        "enabled": true,
+        "duration": 0,
+        "customDuration": 0,
+        "playbackRate": 0.0,
+        "alternativePlaybackRate": 0.0,
+        "loop": false,
+        "dayNightCycleAssignment": 0,
+    }])
+    .to_string()
+}
+
+/// Autostart can launch Aura before plasmashell has finished creating its
+/// desktop containments. `evaluateScript` succeeds on an empty `desktops()`
+/// array, which silently drops the wallpaper, so wait (once) for the service.
+fn wait_for_plasmashell() {
+    static READY: AtomicBool = AtomicBool::new(false);
+    if READY.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(command) = plasma_command() else {
+        return;
+    };
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while Instant::now() < deadline {
+        let ready = Command::new(command)
+            .arg(PLASMA_SERVICE)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if ready {
+            // Desktops are created shortly after the service appears.
+            std::thread::sleep(Duration::from_millis(400));
+            READY.store(true, Ordering::Relaxed);
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    // Leave READY unset so a later apply can retry once Plasma is up.
+}
+
 fn screen_index_for_output(output: &str) -> Option<usize> {
     if output == "*" || output.is_empty() {
         return None;
@@ -172,6 +226,7 @@ fn plugin_config_group() -> String {
 /// Applies a still image to a single output when possible. If Plasma's screen
 /// numbering cannot be matched, all desktops are updated as a safe fallback.
 pub fn set_image_on_output(output: &str, path: &Path, scaling: &str) -> Result<(), String> {
+    wait_for_plasmashell();
     let uri = js_string(&file_uri(path));
     let fill_mode = image_fill_mode(scaling);
     let body = format!(
@@ -181,23 +236,33 @@ pub fn set_image_on_output(output: &str, path: &Path, scaling: &str) -> Result<(
     evaluate_script(&desktop_loop(output, &body))
 }
 
-pub fn set_video_on_output(output: &str, path: &Path, scaling: &str, mute: bool, volume: u8) -> Result<(), String> {
+pub fn set_video_on_output(
+    output: &str,
+    path: &Path,
+    scaling: &str,
+    mute: bool,
+    volume: u8,
+    auto_pause: bool,
+    auto_pause_mode: AutoPauseMode,
+) -> Result<(), String> {
     if !plugin_installed() {
         return Err(plugin_install_hint());
     }
-    let urls = serde_json::to_string(&vec![file_uri(path)]).map_err(|error| error.to_string())?;
-    let urls = js_string(&urls);
+    wait_for_plasmashell();
+    let urls = js_string(&video_urls(path));
     let fill_mode = video_fill_mode(scaling);
     let mute_mode = if mute { 5 } else { 4 };
     let volume = (volume as f32 / 100.0).clamp(0.0, 1.0);
+    let pause_mode = auto_pause_mode.kde_pause_mode(auto_pause);
     let body = format!(
-        "  d.wallpaperPlugin = \"{}\";\n  {}\n  d.writeConfig(\"VideoUrls\", {});\n  d.writeConfig(\"FillMode\", {});\n  d.writeConfig(\"MuteMode\", {});\n  d.writeConfig(\"Volume\", {});\n  d.writeConfig(\"PauseMode\", 3);",
+        "  d.wallpaperPlugin = \"{}\";\n  {}\n  d.writeConfig(\"VideoUrls\", {});\n  d.writeConfig(\"FillMode\", {});\n  d.writeConfig(\"MuteMode\", {});\n  d.writeConfig(\"Volume\", {});\n  d.writeConfig(\"PauseMode\", {});\n  d.reloadConfig();",
         PLUGIN_ID,
         plugin_config_group(),
         urls,
         fill_mode,
         mute_mode,
-        volume
+        volume,
+        pause_mode
     );
     evaluate_script(&desktop_loop(output, &body))
 }
@@ -210,6 +275,21 @@ mod tests {
     fn js_string_escapes_quotes_and_slashes() {
         assert_eq!(js_string("a/b"), "\"a/b\"");
         assert_eq!(js_string("a\"b"), "\"a\\\"b\"");
+    }
+
+    #[test]
+    fn video_urls_use_plugin_object_schema() {
+        let encoded = video_urls(Path::new("/a/b c.mkv"));
+        let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        let entry = &value[0];
+        assert_eq!(entry["filename"], "file:///a/b%20c.mkv");
+        assert_eq!(entry["enabled"], true);
+        assert_eq!(entry["duration"], 0);
+        assert_eq!(entry["customDuration"], 0);
+        assert_eq!(entry["playbackRate"], 0.0);
+        assert_eq!(entry["alternativePlaybackRate"], 0.0);
+        assert_eq!(entry["loop"], false);
+        assert_eq!(entry["dayNightCycleAssignment"], 0);
     }
 
     #[test]

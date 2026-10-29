@@ -62,6 +62,63 @@ impl BackendPreference {
     }
 }
 
+/// How much of a monitor has to be covered before the wallpaper pauses
+/// automatically. `mpvpaper -p` only reacts when the compositor stops sending
+/// frame callbacks (full coverage), which leaves tiled windows playing behind
+/// the desktop. Aura supplements that with its own COSMIC toplevel watcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoPauseMode {
+    /// Only pause when the whole output is covered.
+    Full,
+    /// Pause for maximized/fullscreen windows (mpvpaper `--auto-mode MAX`).
+    Maximized,
+    /// Pause when windows cover at least a quarter of the output. Default:
+    /// covers tiled windows on COSMIC without reacting to small dialogs.
+    #[default]
+    Partial,
+    /// Pause when any window is visible on the output.
+    AnyWindow,
+}
+
+impl AutoPauseMode {
+    /// Whether a monitor with this covered fraction should pause. `coverage`
+    /// is clamped to `0.0..=1.0`.
+    pub fn should_pause(self, coverage: f32) -> bool {
+        let coverage = coverage.clamp(0.0, 1.0);
+        match self {
+            Self::Full => coverage >= 0.95,
+            // COSMIC keeps the panel and tiling gaps visible when a window is
+            // maximized, so a maximized window normally covers ~90–95%.
+            Self::Maximized => coverage >= 0.90,
+            Self::Partial => coverage >= 0.25,
+            Self::AnyWindow => coverage > 0.01,
+        }
+    }
+
+    /// mpvpaper 1.9+ `--auto-mode` value used on compositors without the
+    /// COSMIC toplevel protocol. `None` means plain `-p` (fullscreen only).
+    pub fn mpvpaper_auto_mode(self) -> Option<&'static str> {
+        match self {
+            Self::Full => None,
+            Self::Maximized | Self::Partial => Some("MAX"),
+            Self::AnyWindow => Some("ACTIVE"),
+        }
+    }
+
+    /// Smart Video Wallpaper Reborn `PauseMode` (0 max/fullscreen,
+    /// 1 active window, 2 any visible window, 3 never).
+    pub fn kde_pause_mode(self, auto_pause: bool) -> u32 {
+        if !auto_pause {
+            return 3;
+        }
+        match self {
+            Self::Full | Self::Maximized | Self::Partial => 0,
+            Self::AnyWindow => 2,
+        }
+    }
+}
+
 /// Optional second axis for playlist rotation. Kept separate from the
 /// favorites switch so existing configurations keep their exact behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -111,6 +168,8 @@ pub struct Config {
     pub smart_pause: bool,
     #[serde(default = "default_auto_pause")]
     pub auto_pause: bool,
+    #[serde(default)]
+    pub auto_pause_mode: AutoPauseMode,
     #[serde(default)]
     pub pause_on_battery: bool,
     pub keep_running_on_close: bool,
@@ -349,6 +408,7 @@ impl Default for Config {
             gpu_preference: default_gpu_preference(),
             smart_pause: true,
             auto_pause: true,
+            auto_pause_mode: AutoPauseMode::default(),
             pause_on_battery: false,
             keep_running_on_close: true,
             autostart: false,
@@ -602,6 +662,8 @@ mod tests {
         assert_eq!(cfg.theme_mode, ThemeMode::Auto);
         assert!(cfg.mute);
         assert!(cfg.smart_pause);
+        assert!(cfg.auto_pause);
+        assert_eq!(cfg.auto_pause_mode, AutoPauseMode::Partial);
         assert!(cfg.keep_running_on_close);
         assert_eq!(cfg.volume, 100);
         assert!(!cfg.pause_on_battery);
@@ -688,10 +750,33 @@ mod tests {
         let cfg = cfg.unwrap();
         assert!(!cfg.language.is_empty());
         assert!(cfg.auto_pause);
+        assert_eq!(cfg.auto_pause_mode, AutoPauseMode::Partial);
         assert_eq!(cfg.theme_mode, ThemeMode::Auto);
         assert_eq!(cfg.gpu_preference, "auto");
         assert_eq!(cfg.backend, BackendPreference::Auto);
         assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
+    }
+
+    #[test]
+    fn test_auto_pause_mode_thresholds_and_serialization() {
+        assert!(!AutoPauseMode::Full.should_pause(0.4));
+        assert!(AutoPauseMode::Full.should_pause(1.0));
+        assert!(!AutoPauseMode::Maximized.should_pause(0.5));
+        assert!(AutoPauseMode::Maximized.should_pause(0.90));
+        assert!(AutoPauseMode::Partial.should_pause(0.25));
+        assert!(!AutoPauseMode::Partial.should_pause(0.24));
+        assert!(AutoPauseMode::AnyWindow.should_pause(0.02));
+        assert!(!AutoPauseMode::AnyWindow.should_pause(0.0));
+        assert_eq!(AutoPauseMode::Partial.mpvpaper_auto_mode(), Some("MAX"));
+        assert_eq!(AutoPauseMode::Full.mpvpaper_auto_mode(), None);
+        assert_eq!(AutoPauseMode::AnyWindow.kde_pause_mode(true), 2);
+        assert_eq!(AutoPauseMode::Full.kde_pause_mode(false), 3);
+        assert_eq!(
+            serde_json::to_string(&AutoPauseMode::AnyWindow).unwrap(),
+            "\"any_window\""
+        );
+        let mode: AutoPauseMode = serde_json::from_str("\"maximized\"").unwrap();
+        assert_eq!(mode, AutoPauseMode::Maximized);
     }
 
     #[test]

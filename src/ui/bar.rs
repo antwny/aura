@@ -18,7 +18,7 @@ impl AuraApp {
                 .or_else(|| self.output_pause_states.get("*").copied().flatten())
         };
         if self.selected_output != "*" {
-            return match state_for(&self.selected_output).unwrap_or(false) {
+            return match state_for(&self.selected_output).unwrap_or(self.is_paused) {
                 true => BarPlaybackState::Paused,
                 false => BarPlaybackState::Playing,
             };

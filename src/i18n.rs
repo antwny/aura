@@ -17,16 +17,53 @@ impl Default for Language {
 }
 
 pub fn detect_system_language() -> Language {
-    if let Ok(lang) = std::env::var("LANG").or_else(|_| std::env::var("LC_MESSAGES")) {
-        let lang = lang.to_lowercase();
-        if lang.starts_with("es") {
-            return Language::Es;
-        }
-        if lang.starts_with("fr") {
-            return Language::Fr;
+    // Explicit override for scripts, tests and unusual sessions.
+    if let Ok(value) = std::env::var("AURA_LANG") {
+        if let Some(language) = parse_language(&value) {
+            return language;
         }
     }
+
+    // POSIX precedence for message translations. `LANGUAGE` is a
+    // colon-separated priority list and is only honored for non-C locales.
+    for key in ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"] {
+        let Ok(value) = std::env::var(key) else {
+            continue;
+        };
+        let candidates: Vec<&str> = if key == "LANGUAGE" {
+            value.split(':').collect()
+        } else {
+            vec![value.as_str()]
+        };
+        for candidate in candidates {
+            if let Some(language) = parse_language(candidate) {
+                return language;
+            }
+        }
+    }
+
     Language::En
+}
+
+/// Parses `es_ES.UTF-8`, `en_US`, `fr` or a `LANGUAGE` entry. Returns `None`
+/// for `C`, `POSIX` and unsupported locales so callers keep looking.
+pub fn parse_language(value: &str) -> Option<Language> {
+    let base = value
+        .trim()
+        .to_lowercase()
+        .split(['.', '@'])
+        .next()
+        .unwrap_or_default()
+        .replace('-', "_");
+    if base.starts_with("es") {
+        Some(Language::Es)
+    } else if base.starts_with("fr") {
+        Some(Language::Fr)
+    } else if base.starts_with("en") {
+        Some(Language::En)
+    } else {
+        None
+    }
 }
 
 impl Language {
@@ -635,27 +672,227 @@ impl Language {
         }
     }
 
+    pub fn settings_performance_desc(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "Reduce el consumo de GPU, CPU y batería deteniendo la decodificación cuando el fondo no está visible."
+            }
+            Language::En => {
+                "Reduce GPU, CPU and battery use by stopping video decoding when the wallpaper is not visible."
+            }
+            Language::Fr => {
+                "Réduit l’utilisation du GPU, du CPU et de la batterie en arrêtant le décodage lorsque le fond n’est pas visible."
+            }
+        }
+    }
+
     pub fn settings_smart_pause(&self) -> &'static str {
         match self {
-            Language::Es => "Pausar automáticamente en juegos y ventanas a pantalla completa (Smart Pause)",
-            Language::En => "Automatically pause in fullscreen games and windows (Smart Pause)",
-            Language::Fr => "Mettre automatiquement en pause dans les jeux et fenêtres en plein écran (pause intelligente)",
+            Language::Es => "Pausa inteligente",
+            Language::En => "Smart pause",
+            Language::Fr => "Pause intelligente",
+        }
+    }
+
+    pub fn settings_smart_pause_desc(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "Pausa al abrir un juego a pantalla completa o bloquear la sesión, y se reanuda al salir."
+            }
+            Language::En => {
+                "Pauses for fullscreen games or a locked session, and resumes when you return."
+            }
+            Language::Fr => {
+                "Met en pause pendant les jeux en plein écran ou le verrouillage de session, puis reprend au retour."
+            }
         }
     }
 
     pub fn settings_auto_pause(&self) -> &'static str {
         match self {
-            Language::Es => "Pausar automáticamente si el escritorio está oculto",
-            Language::En => "Automatically pause when desktop is hidden",
-            Language::Fr => "Mettre automatiquement en pause lorsque le bureau est masqué",
+            Language::Es => "Auto-pausa por ventanas",
+            Language::En => "Window-based auto-pause",
+            Language::Fr => "Pause auto selon les fenêtres",
         }
     }
 
     pub fn settings_auto_pause_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Detiene la reproducción para 0% de uso de GPU/CPU cuando las ventanas cubren el fondo",
-            Language::En => "Stops playback for 0% GPU/CPU usage when windows cover the wallpaper",
-            Language::Fr => "Arrête la lecture pour réduire l’utilisation GPU/CPU à 0 % lorsque des fenêtres couvrent le fond d’écran",
+            Language::Es => {
+                "Detiene el vídeo cuando las ventanas cubren el fondo. En COSMIC se reevalúa al cambiar de workspace o mover ventanas."
+            }
+            Language::En => {
+                "Stops the video when windows cover the wallpaper. On COSMIC it is re-evaluated when switching workspaces or moving windows."
+            }
+            Language::Fr => {
+                "Arrête la vidéo lorsque des fenêtres couvrent le fond. Sous COSMIC, l’état est réévalué lors d’un changement d’espace de travail ou de déplacement de fenêtre."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_disabled_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "Actívala para elegir cuánta pantalla debe cubrir una ventana antes de pausar.",
+            Language::En => "Enable it to choose how much of the screen a window must cover before pausing.",
+            Language::Fr => "Activez-la pour choisir la part de l’écran qu’une fenêtre doit couvrir avant la pause.",
+        }
+    }
+
+    pub fn settings_auto_pause_status_paused(self) -> &'static str {
+        match self {
+            Language::Es => "Ahora: pausado por ventanas en el workspace actual.",
+            Language::En => "Now: paused by windows on the current workspace.",
+            Language::Fr => "Actuellement : en pause à cause des fenêtres de l’espace de travail courant.",
+        }
+    }
+
+    pub fn settings_auto_pause_status_playing(self) -> &'static str {
+        match self {
+            Language::Es => "Ahora: reproduciendo; ninguna ventana alcanza la sensibilidad elegida.",
+            Language::En => "Now: playing; no window reaches the selected sensitivity.",
+            Language::Fr => "Actuellement : lecture en cours ; aucune fenêtre n’atteint le seuil choisi.",
+        }
+    }
+
+    pub fn settings_auto_pause_status_overridden(self) -> &'static str {
+        match self {
+            Language::Es => {
+                "Ahora: reproduciendo; reanudaste manualmente hasta que cambien las ventanas."
+            }
+            Language::En => {
+                "Now: playing; you resumed manually until the window layout changes."
+            }
+            Language::Fr => {
+                "Actuellement : lecture en cours ; vous avez repris manuellement jusqu’au prochain changement de fenêtres."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_status_paused_other(self) -> &'static str {
+        match self {
+            Language::Es => "Ahora: pausado por otra regla (juego, sesión bloqueada, batería o pausa manual).",
+            Language::En => "Now: paused by another rule (game, locked session, battery or manual pause).",
+            Language::Fr => "Actuellement : en pause via une autre règle (jeu, session verrouillée, batterie ou pause manuelle).",
+        }
+    }
+
+    pub fn settings_auto_pause_unavailable_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "La auto-pausa por ventanas no está disponible con el motor actual.",
+            Language::En => "Window-based auto-pause is not available with the current engine.",
+            Language::Fr => "La pause auto selon les fenêtres n’est pas disponible avec le moteur actuel.",
+        }
+    }
+
+    pub fn settings_auto_pause_platform_cosmic(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "COSMIC: detecta ventanas en mosaico y cambios de workspace en tiempo real."
+            }
+            Language::En => {
+                "COSMIC: detects tiled windows and workspace changes in real time."
+            }
+            Language::Fr => {
+                "COSMIC : détecte les fenêtres en mosaïque et les changements d’espace de travail en temps réel."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_kde(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "KDE Plasma: Smart Video Wallpaper Reborn controla la pausa. «Pantalla completa», «Maximizada» y «Mosaico» usan el modo maximizada/pantalla completa; «Cualquier ventana» usa ventanas visibles. El plugin no mide cobertura."
+            }
+            Language::En => {
+                "KDE Plasma: Smart Video Wallpaper Reborn controls pausing. “Fullscreen”, “Maximized” and “Tiled” use its maximized/fullscreen mode; “Any window” uses visible windows. The plugin does not measure coverage."
+            }
+            Language::Fr => {
+                "KDE Plasma : Smart Video Wallpaper Reborn gère la pause. « Plein écran », « Maximisée » et « Mosaïque » utilisent son mode maximisé/plein écran ; « Toute fenêtre » utilise les fenêtres visibles. Le plugin ne mesure pas la couverture."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_kde_no_dbus(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "KDE Plasma: no se pudo conectar con plasmashell. Instala las herramientas Qt D-Bus (qdbus6) o revisa que Plasma esté iniciado."
+            }
+            Language::En => {
+                "KDE Plasma: could not reach plasmashell. Install the Qt D-Bus tools (qdbus6) or check that Plasma is running."
+            }
+            Language::Fr => {
+                "KDE Plasma : impossible de joindre plasmashell. Installez les outils Qt D-Bus (qdbus6) ou vérifiez que Plasma est démarré."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_kde_missing(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "KDE Plasma: falta Smart Video Wallpaper Reborn. Instálalo en Ajustes del sistema → Fondo de pantalla → Obtener nuevos complementos."
+            }
+            Language::En => {
+                "KDE Plasma: Smart Video Wallpaper Reborn is missing. Install it from System Settings → Wallpaper → Get New Plugins."
+            }
+            Language::Fr => {
+                "KDE Plasma : Smart Video Wallpaper Reborn est absent. Installez-le dans Configuration du système → Fond d’écran → Obtenir de nouveaux modules."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_gnome(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "GNOME: Hanabi no permite pausar por ventana desde Aura. Usa el botón de pausa del panel; esta opción no tiene efecto aquí."
+            }
+            Language::En => {
+                "GNOME: Hanabi does not expose window-based pausing to Aura. Use the panel pause button; this option has no effect here."
+            }
+            Language::Fr => {
+                "GNOME : Hanabi n’expose pas la pause selon les fenêtres à Aura. Utilisez le bouton pause du panneau ; cette option est sans effet ici."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_mpvpaper_wlroots(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "mpvpaper: pausa con ventanas maximizadas o activas según el modo. Si el compositor no expone esas ventanas, solo pausa al cubrirse toda la pantalla."
+            }
+            Language::En => {
+                "mpvpaper: pauses for maximized or active windows depending on the mode. If the compositor does not expose them, it only pauses on full coverage."
+            }
+            Language::Fr => {
+                "mpvpaper : met en pause selon les fenêtres maximisées ou actives. Si le compositeur ne les expose pas, la pause n’a lieu qu’en couverture totale."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_mpvpaper(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "mpvpaper: la pausa depende de los frame callbacks del compositor; en la práctica solo se activa al cubrir toda la pantalla."
+            }
+            Language::En => {
+                "mpvpaper: pausing relies on compositor frame callbacks; in practice it only triggers on full coverage."
+            }
+            Language::Fr => {
+                "mpvpaper : la pause dépend des rappels de frame du compositeur ; en pratique, elle ne se déclenche qu’en couverture totale."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_static(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "Fondo estático: no hay vídeo que pausar, así que el consumo ya es mínimo."
+            }
+            Language::En => {
+                "Static wallpaper: there is no video to pause, so resource use is already minimal."
+            }
+            Language::Fr => {
+                "Fond statique : aucune vidéo à mettre en pause, la consommation est déjà minimale."
+            }
         }
     }
 
@@ -669,17 +906,25 @@ impl Language {
 
     pub fn settings_auto_theme(&self) -> &'static str {
         match self {
-            Language::Es => "Sincronizar color de acento del sistema con el fondo (Auto-Tema COSMIC)",
-            Language::En => "Synchronize system accent color with active wallpaper (COSMIC Auto-Theme)",
-            Language::Fr => "Synchroniser la couleur d’accentuation du système avec le fond d’écran actif (thème automatique COSMIC)",
+            Language::Es => "Acento dinámico desde el fondo",
+            Language::En => "Dynamic accent from wallpaper",
+            Language::Fr => "Accent dynamique depuis le fond d’écran",
         }
     }
 
-    pub fn settings_auto_theme_desc(&self) -> &'static str {
+    pub fn settings_auto_theme_desc_cosmic(&self) -> &'static str {
         match self {
-            Language::Es => "Extrae el color predominante del fondo y lo aplica como acento del sistema en COSMIC",
-            Language::En => "Extracts dominant wallpaper color and sets it as the COSMIC system accent",
-            Language::Fr => "Extrait la couleur dominante du fond d’écran et l’utilise comme couleur d’accentuation de COSMIC",
+            Language::Es => "Aplica el color predominante a Aura y al acento del sistema COSMIC",
+            Language::En => "Applies the dominant color to Aura and the COSMIC system accent",
+            Language::Fr => "Applique la couleur dominante à Aura et à l’accent du système COSMIC",
+        }
+    }
+
+    pub fn settings_auto_theme_desc_app_only(&self) -> &'static str {
+        match self {
+            Language::Es => "Aplica el color predominante solo dentro de Aura; no modifica el acento de este escritorio",
+            Language::En => "Applies the dominant color inside Aura only; it does not change this desktop's accent",
+            Language::Fr => "Applique la couleur dominante uniquement dans Aura ; l’accent de ce bureau n’est pas modifié",
         }
     }
 
@@ -757,33 +1002,33 @@ impl Language {
 
     pub fn status_theme_mode_dark(&self) -> &'static str {
         match self {
-            Language::Es => "✨ Modo Oscuro fijo aplicado y persistente",
-            Language::En => "✨ Fixed Dark Mode applied and persistent",
-            Language::Fr => "✨ Mode sombre fixe appliqué et persistant",
+            Language::Es => "Modo oscuro fijo aplicado",
+            Language::En => "Fixed dark mode applied",
+            Language::Fr => "Mode sombre fixe appliqué",
         }
     }
 
     pub fn status_theme_mode_light(&self) -> &'static str {
         match self {
-            Language::Es => "✨ Modo Claro fijo aplicado y persistente",
-            Language::En => "✨ Fixed Light Mode applied and persistent",
-            Language::Fr => "✨ Mode clair fixe appliqué et persistant",
+            Language::Es => "Modo claro fijo aplicado",
+            Language::En => "Fixed light mode applied",
+            Language::Fr => "Mode clair fixe appliqué",
         }
     }
 
     pub fn status_theme_mode_auto(&self) -> &'static str {
         match self {
-            Language::Es => "✨ Modo Automático activado (sincronizado con fondo)",
-            Language::En => "✨ Dynamic Mode activated (synced with wallpaper)",
-            Language::Fr => "✨ Mode dynamique activé (synchronisé avec le fond d’écran)",
+            Language::Es => "Modo automático sincronizado con el fondo",
+            Language::En => "Automatic mode synced with the wallpaper",
+            Language::Fr => "Mode automatique synchronisé avec le fond d’écran",
         }
     }
 
     pub fn status_theme_mode_manual(&self) -> &'static str {
         match self {
-            Language::Es => "✨ Modo del sistema sin alterar por Aura",
-            Language::En => "✨ System theme mode left unaltered by Aura",
-            Language::Fr => "✨ Mode du thème système laissé inchangé par Aura",
+            Language::Es => "Modo del sistema sin cambios por Aura",
+            Language::En => "System theme left unchanged by Aura",
+            Language::Fr => "Thème système laissé inchangé par Aura",
         }
     }
 
@@ -1005,6 +1250,14 @@ impl Language {
         }
     }
 
+    pub fn about_updated_toast(&self, version: &str) -> String {
+        match self {
+            Language::Es => format!("Aura actualizada a {version}"),
+            Language::En => format!("Aura updated to {version}"),
+            Language::Fr => format!("Aura mis à jour vers {version}"),
+        }
+    }
+
     pub fn about_restart_btn(&self) -> &'static str {
         match self {
             Language::Es => "Reiniciar Aura",
@@ -1200,20 +1453,8 @@ impl Language {
         }
     }
 
-    pub fn toast_show_in_files(&self) -> &'static str {
-        match self {
-            Language::Es => "Ver en archivos",
-            Language::En => "Show in files",
-            Language::Fr => "Afficher dans le gestionnaire de fichiers",
-        }
-    }
-
-    pub fn toast_folder_opened(&self) -> &'static str {
-        match self {
-            Language::Es => "Carpeta de fondos abierta en el Gestor de Archivos",
-            Language::En => "Wallpapers folder opened in File Manager",
-            Language::Fr => "Dossier des fonds d’écran ouvert dans le gestionnaire de fichiers",
-        }
+    pub fn toast_open_folder(&self) -> &'static str {
+        self.open_in_file_manager()
     }
 
     pub fn toast_folder_open_failed(&self) -> &'static str {
@@ -1531,10 +1772,11 @@ impl Language {
     }
 
     pub fn status_applied(&self, output: &str, name: &str) -> String {
+        let display = self.display_label(output);
         match self {
-            Language::Es => format!("Fondo aplicado en {}: '{}'", output, name),
-            Language::En => format!("Wallpaper applied on {}: '{}'", output, name),
-            Language::Fr => format!("Fond d’écran appliqué sur {} : '{}'", output, name),
+            Language::Es => format!("Fondo aplicado en {}: {}", display, name),
+            Language::En => format!("Wallpaper applied on {}: {}", display, name),
+            Language::Fr => format!("Fond d’écran appliqué sur {} : {}", display, name),
         }
     }
 
@@ -1555,10 +1797,11 @@ impl Language {
     }
 
     pub fn status_stopped_output(&self, output: &str) -> String {
+        let display = self.display_label(output);
         match self {
-            Language::Es => format!("Fondo detenido en {}", output),
-            Language::En => format!("Wallpaper stopped on {}", output),
-            Language::Fr => format!("Fond d’écran arrêté sur {}", output),
+            Language::Es => format!("Fondo detenido en {}", display),
+            Language::En => format!("Wallpaper stopped on {}", display),
+            Language::Fr => format!("Fond d’écran arrêté sur {}", display),
         }
     }
 
@@ -1602,14 +1845,6 @@ impl Language {
         }
     }
 
-    pub fn status_video_added(&self, name: &str) -> String {
-        match self {
-            Language::Es => format!("Video añadido: {}", name),
-            Language::En => format!("Video added: {}", name),
-            Language::Fr => format!("Vidéo ajoutée : {}", name),
-        }
-    }
-
     pub fn status_folder_added(&self, folder: &str) -> String {
         match self {
             Language::Es => format!("Carpeta añadida: {}", folder),
@@ -1618,19 +1853,20 @@ impl Language {
         }
     }
 
-    pub fn status_videos_dropped(&self) -> &'static str {
-        match self {
-            Language::Es => "Videos añadidos a la biblioteca",
-            Language::En => "Videos added to library",
-            Language::Fr => "Vidéos ajoutées à la bibliothèque",
-        }
-    }
-
     pub fn status_topology_updated(&self, count: usize) -> String {
         match self {
-            Language::Es => format!("Topología de pantallas actualizada ({} monitores)", count),
-            Language::En => format!("Display topology updated ({} displays)", count),
-            Language::Fr => format!("Topologie des écrans mise à jour ({} écrans)", count),
+            Language::Es => match count {
+                1 => "Disposición de pantallas actualizada (1 pantalla)".into(),
+                other => format!("Disposición de pantallas actualizada ({other} pantallas)"),
+            },
+            Language::En => match count {
+                1 => "Display layout updated (1 display)".into(),
+                other => format!("Display layout updated ({other} displays)"),
+            },
+            Language::Fr => match count {
+                1 => "Disposition des écrans mise à jour (1 écran)".into(),
+                other => format!("Disposition des écrans mise à jour ({other} écrans)"),
+            },
         }
     }
 
@@ -1861,21 +2097,46 @@ impl Language {
     }
 
     pub fn status_scaling_changed(&self, output: &str, scaling: &str) -> String {
+        let display = self.display_label(output);
+        let scaling = self.scaling_label(scaling);
         match self {
-            Language::Es => format!("Modo de escala para {} cambiado a '{}'", output, scaling),
-            Language::En => format!("Scaling mode for {} changed to '{}'", output, scaling),
-            Language::Fr => format!(
-                "Mode de mise à l’échelle pour {} changé en '{}'",
-                output, scaling
-            ),
+            Language::Es => format!("Escala de {}: {}", display, scaling),
+            Language::En => format!("Scaling for {}: {}", display, scaling),
+            Language::Fr => format!("Mise à l’échelle de {} : {}", display, scaling),
         }
     }
 
     pub fn status_output_selected(&self, output: &str) -> String {
+        if output == "*" {
+            return match self {
+                Language::Es => "Todas las pantallas seleccionadas".into(),
+                Language::En => "All displays selected".into(),
+                Language::Fr => "Tous les écrans sélectionnés".into(),
+            };
+        }
         match self {
             Language::Es => format!("Pantalla seleccionada: {}", output),
             Language::En => format!("Selected display: {}", output),
             Language::Fr => format!("Écran sélectionné : {}", output),
+        }
+    }
+
+    fn display_label(&self, output: &str) -> String {
+        if output != "*" {
+            return output.to_string();
+        }
+        match self {
+            Language::Es => "todas las pantallas".into(),
+            Language::En => "all displays".into(),
+            Language::Fr => "tous les écrans".into(),
+        }
+    }
+
+    fn scaling_label(&self, scaling: &str) -> &'static str {
+        match scaling {
+            "fill" => self.scaling_fill(),
+            "stretch" => self.scaling_stretch(),
+            _ => self.scaling_fit(),
         }
     }
 
@@ -1945,14 +2206,6 @@ impl Language {
             Language::Es => "La pausa la controla el escritorio con este motor",
             Language::En => "Playback pause is controlled by the desktop with this backend",
             Language::Fr => "La pause est contrôlée par le bureau avec ce moteur",
-        }
-    }
-
-    pub fn kde_plugin_fallback_status(&self) -> &'static str {
-        match self {
-            Language::Es => "Plugin de vídeo de KDE no instalado: mostrando imagen fija",
-            Language::En => "KDE video plugin missing: showing a still image",
-            Language::Fr => "Extension vidéo KDE absente : image fixe affichée",
         }
     }
 
@@ -2879,6 +3132,30 @@ mod tests {
             assert!(!lang.status_battery_resumed().is_empty());
             assert!(!lang.settings_auto_pause().is_empty());
             assert!(!lang.settings_auto_pause_desc().is_empty());
+            assert!(!lang.settings_performance_desc().is_empty());
+            assert!(!lang.settings_smart_pause_desc().is_empty());
+            assert!(!lang.settings_auto_pause_disabled_hint().is_empty());
+            assert!(!lang.settings_auto_pause_unavailable_hint().is_empty());
+            assert!(!lang.settings_auto_pause_status_paused().is_empty());
+            assert!(!lang.settings_auto_pause_status_playing().is_empty());
+            assert!(!lang.settings_auto_pause_status_overridden().is_empty());
+            assert!(!lang.settings_auto_pause_status_paused_other().is_empty());
+            assert!(!lang.settings_auto_pause_platform_cosmic().is_empty());
+            assert!(!lang.settings_auto_pause_platform_kde().is_empty());
+            assert!(!lang.settings_auto_pause_platform_kde_no_dbus().is_empty());
+            assert!(!lang.settings_auto_pause_platform_kde_missing().is_empty());
+            assert!(!lang.settings_auto_pause_platform_gnome().is_empty());
+            assert!(!lang.settings_auto_pause_platform_mpvpaper_wlroots().is_empty());
+            assert!(!lang.settings_auto_pause_platform_mpvpaper().is_empty());
+            assert!(!lang.settings_auto_pause_platform_static().is_empty());
+            for mode in [
+                crate::config::AutoPauseMode::Full,
+                crate::config::AutoPauseMode::Maximized,
+                crate::config::AutoPauseMode::Partial,
+                crate::config::AutoPauseMode::AnyWindow,
+            ] {
+                assert!(!lang.auto_pause_mode_hint(mode).is_empty());
+            }
             assert!(!lang.bar_volume().is_empty());
             assert!(!lang.bar_prev().is_empty());
             assert!(!lang.bar_next().is_empty());
@@ -2920,6 +3197,19 @@ mod tests {
         assert!(Language::En
             .status_applied("DP-1", "ocean.mp4")
             .contains("ocean.mp4"));
+        assert_eq!(
+            Language::Es.status_applied("*", "ocean.mp4"),
+            "Fondo aplicado en todas las pantallas: ocean.mp4"
+        );
+        assert_eq!(
+            Language::Es.status_output_selected("*"),
+            "Todas las pantallas seleccionadas"
+        );
+        assert!(Language::Es.status_topology_updated(1).contains("1 pantalla"));
+        assert!(Language::Es.status_topology_updated(2).contains("2 pantallas"));
+        assert!(Language::Es
+            .status_scaling_changed("DP-1", "fill")
+            .contains("Rellenar"));
         assert!(Language::Es
             .about_version_info()
             .contains(crate::engine::DesktopEnvironment::detect().label()));
@@ -2928,6 +3218,16 @@ mod tests {
             .contains(crate::engine::DesktopEnvironment::detect().label()));
         assert!(Language::Es.settings_autostart().contains("iniciar sesión"));
         assert!(Language::En.settings_autostart().contains("login"));
+    }
+
+    #[test]
+    fn test_parse_language_locale_variants() {
+        assert_eq!(parse_language("es_ES.UTF-8"), Some(Language::Es));
+        assert_eq!(parse_language("en-US"), Some(Language::En));
+        assert_eq!(parse_language("fr_FR@euro"), Some(Language::Fr));
+        assert_eq!(parse_language("C"), None);
+        assert_eq!(parse_language("POSIX"), None);
+        assert_eq!(parse_language(""), None);
     }
 
     #[test]

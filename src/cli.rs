@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::engine::{detect_outputs, WallpaperEngine};
+use crate::engine::{detect_outputs, DesktopEnvironment, WallpaperEngine};
 use crate::scanner::scan_directories;
 use crate::theme::apply_cosmic_theme;
 use std::collections::HashSet;
@@ -23,13 +23,24 @@ pub fn handle_pure_cli(args: &[String]) {
         "status" => cmd_status(),
         "help" | "--help" | "-h" => print_help(),
         "version" | "--version" | "-v" | "-V" => {
-            println!("Aura Live Wallpaper v{}", env!("CARGO_PKG_VERSION"));
+            println!("{}{}", cli_language().cli_version(), env!("CARGO_PKG_VERSION"));
         }
         "check-update" => cmd_check_update(),
         "update" => cmd_update(),
         "mode" | "theme-mode" => cmd_theme_mode(args),
         _ => {}
     }
+}
+
+/// Language used by the terminal, matching the saved GUI language. Kept in one
+/// place so `aura status`, `--help` and errors never disagree with Settings.
+fn cli_language() -> crate::i18n::Language {
+    if let Ok(value) = std::env::var("AURA_LANG") {
+        if let Some(language) = crate::i18n::parse_language(&value) {
+            return language;
+        }
+    }
+    crate::i18n::Language::from_code(&Config::load().language)
 }
 
 pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
@@ -47,27 +58,29 @@ pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
         "toggle-pause" | "pause" => (true, Some("toggle-pause".into()), Vec::new()),
         "apply" => {
             if args.len() >= 3 {
+                let lang = cli_language();
                 let target = resolve_path(&args[2]);
                 if !target.exists() {
-                    eprintln!("Error: El archivo '{}' no existe.", target.display());
+                    eprintln!("{}", lang.cli_error_file_missing(&target.display().to_string()));
                     std::process::exit(1);
                 }
                 if !target.is_file() {
-                    eprintln!("Error: '{}' es un directorio o no es un archivo regular.", target.display());
+                    eprintln!("{}", lang.cli_error_not_regular(&target.display().to_string()));
                     std::process::exit(1);
                 }
                 let ext = target.extension().and_then(|e| e.to_str()).unwrap_or_default();
                 if !crate::scanner::is_supported_wallpaper_ext(ext) {
-                    eprintln!("Error: El formato '.{}' no es compatible. Formatos soportados: mp4, mkv, webm, mov, avi, png, jpg, jpeg, webp, gif.", ext);
+                    eprintln!("{}", lang.cli_error_unsupported_format(ext));
                     std::process::exit(1);
                 }
                 (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
             } else {
-                eprintln!("Uso: aura apply <ruta_al_video_o_imagen>");
+                eprintln!("{}", cli_language().cli_usage_apply());
                 std::process::exit(1);
             }
         }
         other => {
+            let lang = cli_language();
             let p = Path::new(other);
             if p.exists() && p.is_file() {
                 let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default();
@@ -75,11 +88,11 @@ pub fn parse_flags(args: &[String]) -> (bool, Option<String>, Vec<String>) {
                     let target = resolve_path(other);
                     (true, Some("apply".into()), vec![target.to_string_lossy().to_string()])
                 } else {
-                    eprintln!("Comando desconocido: '{}'. Ejecuta 'aura help' para ver opciones.", other);
+                    eprintln!("{}", lang.cli_error_unknown_command(other));
                     std::process::exit(1);
                 }
             } else {
-                eprintln!("Comando desconocido: '{}'. Ejecuta 'aura help' para ver opciones.", other);
+                eprintln!("{}", lang.cli_error_unknown_command(other));
                 std::process::exit(1);
             }
         }
@@ -108,9 +121,10 @@ fn retire_redundant_wildcard(engine: &mut WallpaperEngine) {
 #[allow(dead_code)]
 fn cmd_next() {
     let mut config = Config::load();
+    let lang = cli_language();
     let videos = scan_directories(&config.dirs, &config.custom_videos);
     if videos.is_empty() {
-        println!("No se encontraron fondos de pantalla configurados.");
+        println!("{}", lang.cli_no_wallpapers());
         return;
     }
 
@@ -126,7 +140,7 @@ fn cmd_next() {
         config.rotation_media_filter,
     );
     if pool.is_empty() {
-        println!("Ningún fondo coincide con los filtros de rotación actuales.");
+        println!("{}", lang.cli_no_rotation_match());
         return;
     }
 
@@ -150,22 +164,28 @@ fn cmd_next() {
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_theme, config.theme_mode);
+                apply_cosmic_theme(
+                    thumb,
+                    config.auto_theme,
+                    config.theme_mode,
+                    DesktopEnvironment::detect() == DesktopEnvironment::Cosmic,
+                );
             }
         }
 
-        println!("✨ Aura: Fondo cambiado a '{}' (PID: {})", video.name, pid);
+        println!("{}", lang.cli_wallpaper_changed(&video.name, pid));
     } else {
-        eprintln!("Error al cambiar el fondo con mpvpaper.");
+        eprintln!("{}", lang.cli_engine_error());
     }
 }
 
 #[allow(dead_code)]
 fn cmd_prev() {
     let mut config = Config::load();
+    let lang = cli_language();
     let videos = scan_directories(&config.dirs, &config.custom_videos);
     if videos.is_empty() {
-        println!("No se encontraron fondos de pantalla configurados.");
+        println!("{}", lang.cli_no_wallpapers());
         return;
     }
 
@@ -181,7 +201,7 @@ fn cmd_prev() {
         config.rotation_media_filter,
     );
     if pool.is_empty() {
-        println!("Ningún fondo coincide con los filtros de rotación actuales.");
+        println!("{}", lang.cli_no_rotation_match());
         return;
     }
 
@@ -205,11 +225,16 @@ fn cmd_prev() {
 
         if config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual {
             if let Some(thumb) = &video.thumb_path {
-                apply_cosmic_theme(thumb, config.auto_theme, config.theme_mode);
+                apply_cosmic_theme(
+                    thumb,
+                    config.auto_theme,
+                    config.theme_mode,
+                    DesktopEnvironment::detect() == DesktopEnvironment::Cosmic,
+                );
             }
         }
 
-        println!("✨ Aura: Fondo anterior activado: '{}' (PID: {})", video.name, pid);
+        println!("{}", lang.cli_previous_wallpaper(&video.name, pid));
     }
 }
 
@@ -218,31 +243,34 @@ fn cmd_stop() {
     let mut engine = WallpaperEngine::new();
     engine.stop_all();
     let mut config = Config::load();
+    let lang = cli_language();
     config.wallpapers.clear();
     config.current = None;
     let _ = config.save();
-    println!("⏹ Aura: Fondo animado detenido.");
+    println!("{}", lang.cli_stopped());
 }
 
 #[allow(dead_code)]
 fn cmd_toggle_pause() {
+    let lang = cli_language();
     let pids = crate::engine::mpvpaper::find_mpvpaper_pids();
     if pids.is_empty() {
-        println!("No hay ningún fondo de mpvpaper ejecutándose.");
+        println!("{}", lang.cli_no_mpvpaper());
         return;
     }
 
     let mut engine = WallpaperEngine::new();
     let is_paused = engine.toggle_pause();
     if is_paused {
-        println!("⏸ Aura: Fondo pausado (0% GPU/CPU).");
+        println!("{}", lang.cli_paused());
     } else {
-        println!("▶ Aura: Fondo reanudado.");
+        println!("{}", lang.cli_resumed());
     }
 }
 
 #[allow(dead_code)]
 fn cmd_apply(path_arg: &str) {
+    let lang = cli_language();
     let p = PathBuf::from(path_arg);
     let full_path = if p.is_relative() {
         std::env::current_dir().unwrap_or_default().join(&p)
@@ -251,18 +279,18 @@ fn cmd_apply(path_arg: &str) {
     };
 
     if !full_path.exists() {
-        eprintln!("Error: El archivo '{}' no existe.", full_path.display());
+        eprintln!("{}", lang.cli_error_file_missing(&full_path.display().to_string()));
         return;
     }
 
     if !full_path.is_file() {
-        eprintln!("Error: '{}' es un directorio o no es un archivo regular.", full_path.display());
+        eprintln!("{}", lang.cli_error_not_regular(&full_path.display().to_string()));
         return;
     }
 
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or_default();
     if !crate::scanner::is_supported_wallpaper_ext(ext) {
-        eprintln!("Error: El formato '.{}' no es compatible. Formatos soportados: mp4, mkv, webm, mov, avi, png, jpg, jpeg, webp, gif.", ext);
+        eprintln!("{}", lang.cli_error_unsupported_format(ext));
         return;
     }
 
@@ -285,43 +313,54 @@ fn cmd_apply(path_arg: &str) {
 
             let thumb = crate::scanner::thumbs::thumb_path_for_video(&full_path);
             if thumb.exists() && (config.auto_theme || config.theme_mode != crate::config::ThemeMode::Manual) {
-                apply_cosmic_theme(&thumb, config.auto_theme, config.theme_mode);
+                apply_cosmic_theme(
+                    &thumb,
+                    config.auto_theme,
+                    config.theme_mode,
+                    DesktopEnvironment::detect() == DesktopEnvironment::Cosmic,
+                );
             }
 
-            println!("✨ Aura: Fondo aplicado exitosamente (PID: {}) -> {}", pid, full_path.display());
+            println!("{}", lang.cli_applied(pid, &full_path.display().to_string()));
         }
         Err(e) => {
-            eprintln!("Error al aplicar fondo: {}", e);
+            eprintln!("{}", lang.cli_apply_failed(&e.to_string()));
         }
     }
 }
 
 fn cmd_status() {
     let config = Config::load();
-    println!("🌌 Aura Live Wallpaper — Estado del Sistema");
+    let lang = cli_language();
+    let l = lang.cli_labels();
+    println!("{}", l.status_title);
     println!("──────────────────────────────────────────");
 
     let backend = crate::engine::Backend::detect(config.backend);
+    let label = |text: &str| format!("{:<23}", text);
     println!(
-        "Escritorio:            {}",
+        "{}{}",
+        label(l.desktop),
         crate::engine::DesktopEnvironment::detect().pretty_name()
     );
-    println!("Backend:               {}", backend.label());
+    println!("{}{}", label(l.backend), backend.label());
     if backend == crate::engine::Backend::Kde {
         println!(
-            "D-Bus Plasma:         {}",
+            "{}{}",
+            label(l.dbus),
             if crate::engine::kde::dbus_available() {
-                "Disponible"
+                l.available
             } else {
-                "⚠️  qdbus6/qdbus no encontrado"
+                l.missing
             }
         );
         println!(
-            "Plugin KDE:            {}",
+            "{}{}",
+            label(l.plugin),
             if crate::engine::kde::plugin_installed() {
-                "Smart Video Wallpaper Reborn detectado"
+                l.plugin_detected
             } else {
-                "⚠️  Smart Video Wallpaper Reborn no instalado (fallback estático)"
+                l.plugin_missing
             }
         );
     }
@@ -330,85 +369,145 @@ fn cmd_status() {
     let health = crate::engine::mpvpaper::check_engine_health();
     match &health {
         crate::engine::mpvpaper::EngineHealth::Ready => {
-            println!("Motor multimedia:      Listo (mpvpaper + libmpv funcional)");
+            println!("{}{}", label(l.engine), l.engine_ready);
         }
         crate::engine::mpvpaper::EngineHealth::MissingBinary => {
             let (distro, cmd) = crate::engine::mpvpaper::detect_distro_command();
-            println!("Motor multimedia:      ⚠️  mpvpaper no encontrado");
-            println!("                       En {}: {}", distro, cmd);
+            println!("{}{}", label(l.engine), l.engine_missing_binary);
+            println!("{}{} {}: {}", " ".repeat(23), l.install_hint, distro, cmd);
         }
         crate::engine::mpvpaper::EngineHealth::MissingLibrary(_) => {
             let (distro, cmd) = crate::engine::mpvpaper::detect_distro_command();
-            println!("Motor multimedia:      ⚠️  Falta librería multimedia (libmpv)");
-            println!("                       👉 En {}: {}", distro, cmd);
+            println!("{}{}", label(l.engine), l.engine_missing_library);
+            println!("{}{} {}: {}", " ".repeat(23), l.install_hint, distro, cmd);
         }
         crate::engine::mpvpaper::EngineHealth::ExecutionError(err) => {
-            println!("Motor multimedia:      ⚠️  Error de verificación: {}", err);
+            println!(
+                "{}{}: {}",
+                label(l.engine),
+                l.engine_error,
+                err
+            );
         }
     }
 
     // Check actual running processes
     let pids = crate::engine::mpvpaper::find_mpvpaper_pids();
     if !pids.is_empty() {
-        let paused_count = pids.iter().filter(|&&pid| crate::engine::mpvpaper::is_pid_stopped(pid)).count();
-        if paused_count == pids.len() {
-            println!("Estado de ejecución:   ⏸  Pausado (0% CPU/GPU, PIDs: {:?})", pids);
+        let paused_count = pids
+            .iter()
+            .filter(|&&pid| crate::engine::mpvpaper::is_pid_stopped(pid))
+            .count();
+        let ipc_paused = crate::engine::mpvpaper::all_mpvpaper_paused_by_ipc();
+        if paused_count == pids.len() || ipc_paused == Some(true) {
+            println!(
+                "{}{} (PIDs: {:?})",
+                label(l.run_state),
+                l.paused,
+                pids
+            );
         } else {
-            println!("Estado de ejecución:   ▶  En reproducción (PIDs: {:?})", pids);
+            println!(
+                "{}{} (PIDs: {:?})",
+                label(l.run_state),
+                l.playing,
+                pids
+            );
         }
     } else {
-        println!("Estado de ejecución:   ⏹  Detenido (Sin procesos mpvpaper activos)");
+        println!("{}{}", label(l.run_state), l.stopped);
     }
 
     if let Some(curr) = &config.current {
-        println!("Fondo configurado:     {}", curr);
+        println!("{}{}", label(l.wallpaper), curr);
     } else {
-        println!("Fondo configurado:     Ninguno");
+        println!("{}{}", label(l.wallpaper), l.none);
     }
 
-    println!("Pantallas configuradas:");
+    println!("{}", l.displays);
     for (out, wall) in &config.wallpapers {
-        let sc = config.scaling.get(out).map(|s| s.as_str()).unwrap_or("fit");
-        println!("  • {}: {} (Escala: {})", out, wall, sc);
+        let sc = config
+            .scaling
+            .get(out)
+            .map(|s| s.as_str())
+            .unwrap_or("fit");
+        println!("  • {}: {} ({}: {})", out, wall, l.scaling, sc);
     }
+
     let pool_str = if config.rotation_only_favorites {
-        format!("Solo favoritos [{}]", config.favorites.len())
+        format!("{} [{}]", l.pool_favorites, config.favorites.len())
     } else {
-        "Toda la biblioteca".to_string()
+        l.pool_all.to_string()
     };
     let media_str = match config.rotation_media_filter {
-        crate::config::RotationMediaFilter::All => "Animados + estáticos",
-        crate::config::RotationMediaFilter::Live => "Solo animados",
-        crate::config::RotationMediaFilter::Static => "Solo estáticos",
+        crate::config::RotationMediaFilter::All => l.media_all,
+        crate::config::RotationMediaFilter::Live => l.media_live,
+        crate::config::RotationMediaFilter::Static => l.media_static,
     };
-    println!("Rotación de fondos:    {} ({}, {}, {}, cada {} min)",
-        if config.rotation { "Activada" } else { "Desactivada" },
-        pool_str,
-        media_str,
-        if config.order == "random" { "Aleatorio" } else { "Secuencial" },
-        config.interval
+    println!(
+        "{}{}",
+        label(l.rotation),
+        lang.cli_rotation_line(
+            config.rotation,
+            &pool_str,
+            media_str,
+            config.order == "random",
+            config.interval,
+        )
     );
-    println!("Auto-Tema:             {}", if config.auto_theme { "Activado" } else { "Desactivado" });
-    let mode_str = match config.theme_mode {
-        crate::config::ThemeMode::Auto => "Automático (dinámico según luminancia)",
-        crate::config::ThemeMode::Dark => "Oscuro (Fijo y persistente)",
-        crate::config::ThemeMode::Light => "Claro (Fijo y persistente)",
-        crate::config::ThemeMode::Manual => "Sin alterar (Del sistema)",
-    };
-    println!("Modo de apariencia:    {}", mode_str);
-    println!("Silenciado:            {}", if config.mute { "Sí" } else { "No" });
-    println!("Volumen:               {}%", config.volume);
-    println!("Aceleración GPU:       {}", config.hwdec);
-    println!("Preferencia GPU:       {}", config.gpu_preference);
-    println!("Inicio automático:     {}", if WallpaperEngine::is_autostart_enabled() { "Activado" } else { "Desactivado" });
+    println!(
+        "{}{}",
+        label(l.auto_theme),
+        if config.auto_theme {
+            l.enabled
+        } else {
+            l.disabled
+        }
+    );
+    println!(
+        "{}{}",
+        label(l.appearance_mode),
+        lang.cli_theme_mode_name(config.theme_mode)
+    );
+    println!(
+        "{}{}",
+        label(l.auto_pause),
+        format!(
+            "{} ({})",
+            if config.auto_pause {
+                l.enabled
+            } else {
+                l.disabled
+            },
+            lang.auto_pause_mode_name(config.auto_pause_mode)
+        )
+    );
+    println!(
+        "{}{}",
+        label(l.muted),
+        if config.mute { l.yes } else { l.no }
+    );
+    println!("{}{}%", label(l.volume), config.volume);
+    println!("{}{}", label(l.gpu_accel), config.hwdec);
+    println!("{}{}", label(l.gpu_pref), config.gpu_preference);
+    println!(
+        "{}{}",
+        label(l.autostart),
+        if config.autostart || WallpaperEngine::is_autostart_enabled() {
+            l.enabled
+        } else {
+            l.disabled
+        }
+    );
 }
 
 fn cmd_check_update() {
-    println!("🔍 Buscando actualizaciones de Aura en GitHub...");
+    let lang = cli_language();
+    println!("{}", lang.cli_update_checking());
     let rt = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error al inicializar runtime: {}", e);
+            eprintln!("{}", lang.cli_runtime_error(&e.to_string()));
             return;
         }
     };
@@ -426,28 +525,35 @@ fn cmd_check_update() {
                 let clean_current = current_version.trim_start_matches('v');
 
                 if crate::online::updater::is_newer_version(clean_latest, clean_current) {
-                    println!("🚀 ¡Nueva versión disponible! {} -> {}", current_version, release.tag);
+                    println!(
+                        "{}",
+                        lang.cli_update_available(&current_version, &release.tag)
+                    );
                     if !release.body.trim().is_empty() {
-                        println!("\nNotas de la versión:\n{}", release.body);
+                        println!("{}", lang.cli_update_notes(&release.body));
                     }
-                    println!("\nPara actualizar automáticamente ejecuta:\n  aura update");
+                    println!("{}", lang.cli_update_instructions());
                 } else {
-                    println!("✅ Tienes la versión más reciente (v{}).", env!("CARGO_PKG_VERSION"));
+                    println!(
+                        "{}",
+                        lang.cli_update_up_to_date(env!("CARGO_PKG_VERSION"))
+                    );
                 }
             }
             Err(e) => {
-                eprintln!("Error al buscar actualizaciones: {}", e);
+                eprintln!("{}", lang.cli_update_check_failed(&e.to_string()));
             }
         }
     });
 }
 
 fn cmd_update() {
-    println!("🚀 Comprobando y actualizando Aura...");
+    let lang = cli_language();
+    println!("{}", lang.cli_update_starting());
     let rt = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error al inicializar runtime: {}", e);
+            eprintln!("{}", lang.cli_runtime_error(&e.to_string()));
             return;
         }
     };
@@ -461,7 +567,7 @@ fn cmd_update() {
         let release = match crate::online::updater::check_latest_release(&client).await {
             Ok(res) => res,
             Err(e) => {
-                eprintln!("No se pudo consultar actualizaciones: {}", e);
+                eprintln!("{}", lang.cli_update_query_failed(&e.to_string()));
                 return;
             }
         };
@@ -470,43 +576,44 @@ fn cmd_update() {
         let current_version = env!("CARGO_PKG_VERSION");
 
         if !crate::online::updater::is_newer_version(clean_latest, current_version) {
-            println!("✅ Ya tienes la última versión instalada (v{}).", current_version);
+            println!("{}", lang.cli_update_up_to_date(current_version));
             return;
         }
 
         let (url, checksum_url) = match (release.download_url, release.checksum_url) {
             (Some(url), Some(checksum_url)) => (url, checksum_url),
             _ => {
-                println!("No se encontró un paquete verificado compatible en la versión {}.", release.tag);
-                println!("Visita https://github.com/antwny/aura/releases para descargar manualmente.");
+                println!("{}", lang.cli_update_no_package(&release.tag));
+                println!("{}", lang.cli_update_manual());
                 return;
             }
         };
 
-        println!("Descargando versión {} (actual: v{})...", release.tag, current_version);
+        println!(
+            "{}",
+            lang.cli_update_downloading(&release.tag, current_version)
+        );
         match crate::online::updater::perform_update(&client, &url, &checksum_url).await {
             Ok(dest) => {
-                println!("🎉 ¡Aura actualizada exitosamente a {}!", release.tag);
-                println!("Ubicación: {}", dest);
+                println!("{}", lang.cli_update_success(&release.tag));
+                println!("{}", lang.cli_update_location(&dest));
             }
             Err(e) => {
-                eprintln!("Error al actualizar: {}", e);
+                eprintln!("{}", lang.cli_update_failed(&e.to_string()));
             }
         }
     });
 }
 
 fn cmd_theme_mode(args: &[String]) {
+    let lang = cli_language();
     if args.len() < 3 {
         let config = Config::load();
-        let mode_str = match config.theme_mode {
-            crate::config::ThemeMode::Auto => "auto (dinámico según luminancia del fondo)",
-            crate::config::ThemeMode::Dark => "dark (oscuro fijo y persistente)",
-            crate::config::ThemeMode::Light => "light (claro fijo y persistente)",
-            crate::config::ThemeMode::Manual => "manual (sin alterar por Aura)",
-        };
-        println!("Modo actual de apariencia: {}", mode_str);
-        println!("Uso: aura mode <dark|light|auto|manual>");
+        println!(
+            "{}",
+            lang.cli_theme_current(lang.cli_theme_mode_name(config.theme_mode))
+        );
+        println!("{}", lang.cli_theme_usage());
         return;
     }
 
@@ -516,7 +623,7 @@ fn cmd_theme_mode(args: &[String]) {
         "auto" | "dynamic" | "automatico" | "automático" => crate::config::ThemeMode::Auto,
         "manual" | "system" | "sistema" => crate::config::ThemeMode::Manual,
         other => {
-            eprintln!("Error: Modo desconocido '{}'. Opciones disponibles: dark, light, auto, manual", other);
+            eprintln!("{}", lang.cli_theme_unknown(other));
             std::process::exit(1);
         }
     };
@@ -534,35 +641,35 @@ fn cmd_theme_mode(args: &[String]) {
                 let p = PathBuf::from(cur);
                 let thumb = crate::scanner::thumbs::thumb_path_for_video(&p);
                 if thumb.exists() {
-                    apply_cosmic_theme(&thumb, config.auto_theme, target_mode);
-                } else if crate::scanner::is_supported_wallpaper_ext(p.extension().and_then(|e| e.to_str()).unwrap_or_default()) {
-                    apply_cosmic_theme(&p, config.auto_theme, target_mode);
+                    apply_cosmic_theme(
+                        &thumb,
+                        config.auto_theme,
+                        target_mode,
+                        DesktopEnvironment::detect() == DesktopEnvironment::Cosmic,
+                    );
+                } else if crate::scanner::is_supported_wallpaper_ext(
+                    p.extension().and_then(|e| e.to_str()).unwrap_or_default(),
+                ) {
+                    apply_cosmic_theme(
+                        &p,
+                        config.auto_theme,
+                        target_mode,
+                        DesktopEnvironment::detect() == DesktopEnvironment::Cosmic,
+                    );
                 }
             }
         }
         crate::config::ThemeMode::Manual => {}
     }
 
-    println!("✨ Aura: Modo de apariencia cambiado a {:?}", target_mode);
+    println!(
+        "{}",
+        lang.cli_theme_changed(lang.cli_theme_mode_name(target_mode))
+    );
 }
 
 fn print_help() {
-    println!("🌌 Aura — Gestor Nativo de Fondos Animados para escritorios Wayland");
-    println!("\nUso:");
-    println!("  aura                  Abre la interfaz gráfica de Aura");
-    println!("  aura switcher         Abre el selector rápido de fondos en el centro (HUD)");
-    println!("  aura next             Cambia al siguiente fondo de pantalla");
-    println!("  aura prev             Regresa al fondo anterior");
-    println!("  aura stop             Detiene la reproducción de fondos");
-    println!("  aura toggle-pause     Pausa o reanuda la reproducción (0% GPU al pausar)");
-    println!("  aura apply <archivo>  Aplica inmediatamente un archivo de video");
-    println!("  aura status           Muestra información del fondo y pantallas");
-    println!("  aura mode <modo>      Cambia el modo de tema: dark, light, auto, manual");
-    println!("  aura check-update     Comprueba si hay una nueva versión en GitHub");
-    println!("  aura update           Descarga e instala la última actualización");
-    println!("  aura --version, -v    Muestra la versión de Aura");
-    println!("  aura help             Muestra esta ayuda");
-    println!("\nConsejo: Asigna 'aura next' a un atajo de teclado (ej. Super + W) en los ajustes de tu escritorio.");
+    println!("{}", cli_language().cli_help());
 }
 
 #[cfg(test)]

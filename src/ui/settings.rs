@@ -1,4 +1,5 @@
 use crate::app::{AuraApp, Message, SettingsCategory};
+use crate::engine::DesktopEnvironment;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
@@ -415,9 +416,193 @@ impl AuraApp {
             .into()
     }
 
-    /// Section 3: Smart pause, desktop hidden auto pause, and battery saver.
+    /// Section 3: auto-pause, smart pause and battery saving. The controls
+    /// adapt to the active engine because COSMIC, KDE and GNOME handle window
+    /// occlusion very differently.
     fn view_performance_section(&self) -> Element<'_, Message> {
-        let section = widget::column::with_capacity(5)
+        let backend = self.backend();
+        let desktop = self.desktop_environment();
+        let kde_ready = backend != crate::engine::Backend::Kde
+            || (crate::engine::kde::plugin_installed()
+                && crate::engine::kde::dbus_available());
+        let engine_supports_pause = match backend {
+            crate::engine::Backend::Mpvpaper => true,
+            crate::engine::Backend::Kde => kde_ready,
+            crate::engine::Backend::Gnome | crate::engine::Backend::Static => false,
+        };
+
+        let (platform_icon, platform_text, platform_warning) = match backend {
+            crate::engine::Backend::Gnome => (
+                "dialog-warning-symbolic",
+                self.language.settings_auto_pause_platform_gnome(),
+                true,
+            ),
+            crate::engine::Backend::Static => (
+                "dialog-information-symbolic",
+                self.language.settings_auto_pause_platform_static(),
+                false,
+            ),
+            crate::engine::Backend::Kde => {
+                if kde_ready {
+                    (
+                        "emblem-ok-symbolic",
+                        self.language.settings_auto_pause_platform_kde(),
+                        false,
+                    )
+                } else if !crate::engine::kde::dbus_available() {
+                    (
+                        "dialog-warning-symbolic",
+                        self.language.settings_auto_pause_platform_kde_no_dbus(),
+                        true,
+                    )
+                } else {
+                    (
+                        "dialog-warning-symbolic",
+                        self.language.settings_auto_pause_platform_kde_missing(),
+                        true,
+                    )
+                }
+            }
+            crate::engine::Backend::Mpvpaper => match desktop {
+                crate::engine::DesktopEnvironment::Cosmic => (
+                    "emblem-ok-symbolic",
+                    self.language.settings_auto_pause_platform_cosmic(),
+                    false,
+                ),
+                crate::engine::DesktopEnvironment::Hyprland
+                | crate::engine::DesktopEnvironment::Sway
+                | crate::engine::DesktopEnvironment::Niri => (
+                    "emblem-ok-symbolic",
+                    self.language
+                        .settings_auto_pause_platform_mpvpaper_wlroots(),
+                    false,
+                ),
+                _ => (
+                    "dialog-information-symbolic",
+                    self.language.settings_auto_pause_platform_mpvpaper(),
+                    false,
+                ),
+            },
+        };
+
+        let platform_note = widget::container(
+            widget::row::with_capacity(2)
+                .spacing(10)
+                .align_y(Alignment::Start)
+                .push(widget::icon::from_name(platform_icon))
+                .push(
+                    widget::text::caption(platform_text)
+                        .width(Length::Fill),
+                ),
+        )
+        .padding([8, 12])
+        .width(Length::Fill)
+        .class(cosmic::theme::Container::Secondary);
+
+        let auto_pause_header = widget::row::with_capacity(2)
+            .spacing(16)
+            .align_y(Alignment::Start)
+            .push(widget::toggler(self.config.auto_pause).on_toggle(Message::ToggleAutoPause))
+            .push(
+                widget::column::with_capacity(2)
+                    .spacing(2)
+                    .push(widget::text::body(self.language.settings_auto_pause()))
+                    .push(
+                        widget::text::caption(self.language.settings_auto_pause_desc())
+                            .width(Length::Fill),
+                    ),
+            );
+
+        let mut auto_pause_block = widget::column::with_capacity(5)
+            .spacing(10)
+            .push(auto_pause_header)
+            .push(platform_note);
+
+        if self.config.auto_pause
+            && engine_supports_pause
+            && backend == crate::engine::Backend::Mpvpaper
+            && desktop == crate::engine::DesktopEnvironment::Cosmic
+        {
+            let (status_icon, status_text) = if !self.effective_occluded_outputs().is_empty() {
+                (
+                    "media-playback-pause-symbolic",
+                    self.language.settings_auto_pause_status_paused(),
+                )
+            } else if !self.is_paused_by_occlusion.is_empty() {
+                (
+                    "media-playback-start-symbolic",
+                    self.language.settings_auto_pause_status_overridden(),
+                )
+            } else if self.is_paused {
+                (
+                    "media-playback-pause-symbolic",
+                    self.language.settings_auto_pause_status_paused_other(),
+                )
+            } else {
+                (
+                    "media-playback-start-symbolic",
+                    self.language.settings_auto_pause_status_playing(),
+                )
+            };
+            auto_pause_block = auto_pause_block.push(
+                widget::container(
+                    widget::row::with_capacity(2)
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(widget::icon::from_name(status_icon))
+                        .push(
+                            widget::text::caption(status_text)
+                                .width(Length::Fill),
+                        ),
+                )
+                .padding([6, 10])
+                .width(Length::Fill)
+                .class(cosmic::theme::Container::Card),
+            );
+        }
+
+        if !self.config.auto_pause {
+            auto_pause_block = auto_pause_block.push(
+                widget::text::caption(self.language.settings_auto_pause_disabled_hint())
+                    .width(Length::Fill),
+            );
+        } else if engine_supports_pause {
+            let mode_buttons: Vec<Element<'_, Message>> = self
+                .language
+                .auto_pause_mode_choices()
+                .into_iter()
+                .map(|(mode, label)| {
+                    if self.config.auto_pause_mode == mode {
+                        widget::button::suggested(label)
+                    } else {
+                        widget::button::standard(label)
+                    }
+                    .on_press(Message::SelectAutoPauseMode(mode))
+                    .into()
+                })
+                .collect();
+            auto_pause_block = auto_pause_block
+                .push(widget::text::body(self.language.settings_auto_pause_mode()))
+                .push(self.settings_flex_row(mode_buttons, 8))
+                .push(
+                    widget::text::caption(
+                        self.language
+                            .auto_pause_mode_hint(self.config.auto_pause_mode),
+                    )
+                    .width(Length::Fill),
+                );
+        } else if platform_warning {
+            // The platform note above already explains why this engine
+            // cannot pause by itself; keep the selector out of the way.
+            auto_pause_block = auto_pause_block.push(
+                widget::text::caption(
+                    self.language.settings_auto_pause_unavailable_hint(),
+                )
+                .width(Length::Fill),
+            );
+        }
+
+        let section = widget::column::with_capacity(9)
             .spacing(14)
             .padding(if self.window_width < 620.0 { 12 } else { 18 })
             .push(
@@ -425,38 +610,55 @@ impl AuraApp {
                     .spacing(10)
                     .align_y(Alignment::Center)
                     .push(widget::icon::from_name("process-working-symbolic"))
-                    .push(widget::text::title3(self.language.settings_section_performance()))
+                    .push(widget::text::title3(self.language.settings_section_performance())),
+            )
+            .push(
+                widget::text::caption(self.language.settings_performance_desc())
+                    .width(Length::Fill),
+            )
+            .push(
+                widget::container(auto_pause_block)
+                    .padding(if self.window_width < 620.0 { 10 } else { 14 })
+                    .width(Length::Fill)
+                    .class(cosmic::theme::Container::Secondary),
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(16)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.smart_pause).on_toggle(Message::ToggleSmartPause))
-                    .push(widget::text::body(self.language.settings_smart_pause()))
-            )
-            .push(
-                widget::row::with_capacity(2)
-                    .spacing(16)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.auto_pause).on_toggle(Message::ToggleAutoPause))
+                    .align_y(Alignment::Start)
+                    .push(
+                        widget::toggler(self.config.smart_pause)
+                            .on_toggle(Message::ToggleSmartPause),
+                    )
                     .push(
                         widget::column::with_capacity(2)
                             .spacing(2)
-                            .push(widget::text::body(self.language.settings_auto_pause()))
-                            .push(widget::text::caption(self.language.settings_auto_pause_desc()))
-                    )
+                            .push(widget::text::body(self.language.settings_smart_pause()))
+                            .push(
+                                widget::text::caption(
+                                    self.language.settings_smart_pause_desc(),
+                                )
+                                .width(Length::Fill),
+                            ),
+                    ),
             )
             .push(
                 widget::row::with_capacity(2)
                     .spacing(16)
-                    .align_y(Alignment::Center)
-                    .push(widget::toggler(self.config.pause_on_battery).on_toggle(Message::TogglePauseOnBattery))
+                    .align_y(Alignment::Start)
+                    .push(
+                        widget::toggler(self.config.pause_on_battery)
+                            .on_toggle(Message::TogglePauseOnBattery),
+                    )
                     .push(
                         widget::column::with_capacity(2)
                             .spacing(2)
                             .push(widget::text::body(self.language.settings_battery_title()))
-                            .push(widget::text::caption(self.language.settings_battery_desc()))
-                    )
+                            .push(
+                                widget::text::caption(self.language.settings_battery_desc())
+                                    .width(Length::Fill),
+                            ),
+                    ),
             );
 
         widget::container(section)
@@ -778,6 +980,11 @@ impl AuraApp {
 
     /// Section 6: Dynamic accent theme and system appearance mode.
     fn view_appearance_section(&self) -> Element<'_, Message> {
+        let auto_theme_desc = if self.desktop_environment() == DesktopEnvironment::Cosmic {
+            self.language.settings_auto_theme_desc_cosmic()
+        } else {
+            self.language.settings_auto_theme_desc_app_only()
+        };
         let section = widget::column::with_capacity(5)
             .spacing(14)
             .padding(if self.window_width < 620.0 { 12 } else { 18 })
@@ -800,7 +1007,7 @@ impl AuraApp {
                         widget::column::with_capacity(2)
                             .spacing(2)
                             .push(widget::text::body(self.language.settings_auto_theme()))
-                            .push(widget::text::caption(self.language.settings_auto_theme_desc()))
+                            .push(widget::text::caption(auto_theme_desc))
                     )
             )
             .push(

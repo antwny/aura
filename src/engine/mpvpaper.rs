@@ -267,6 +267,32 @@ pub fn ipc_get_pause(sock_path: &Path) -> Option<bool> {
     None
 }
 
+/// Returns whether every live wallpaper player reports `pause=true` over
+/// IPC. Auto-pause uses the mpv property instead of SIGSTOP, so process state
+/// alone cannot tell whether playback is stopped. `None` means no live socket
+/// answered and the caller should fall back to process state.
+pub fn all_mpvpaper_paused_by_ipc() -> Option<bool> {
+    let dir = socket_dir();
+    let mut any = false;
+    let mut all_paused = true;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("mpv_")
+            || !name.ends_with(".sock")
+            || name.ends_with(".next.sock")
+        {
+            continue;
+        }
+        if let Some(paused) = ipc_get_pause(&path) {
+            any = true;
+            all_paused &= paused;
+        }
+    }
+    any.then_some(all_paused)
+}
+
 pub fn ipc_get_pid(sock_path: &Path) -> Option<u32> {
     let get_cmd = r#"{"command": ["get_property", "pid"]}"#;
     if let Ok(resp) = send_ipc_command(sock_path, get_cmd) {
@@ -418,6 +444,45 @@ pub fn detect_os_pretty_name() -> String {
         }
     }
     "Linux".to_string()
+}
+
+/// mpvpaper 1.9 added `--auto-mode`. Older builds reject the flag, so probe the
+/// installed binary once instead of breaking wallpaper application.
+fn mpvpaper_supports_auto_mode() -> bool {
+    static SUPPORTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SUPPORTS.get_or_init(|| {
+        let bin = resolve_mpvpaper_binary();
+        match Command::new(&bin).arg("--help").output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                stdout.contains("--auto-mode") || stderr.contains("--auto-mode")
+            }
+            Err(_) => false,
+        }
+    })
+}
+
+/// `--auto-mode` value for the configured sensitivity. COSMIC is handled by
+/// Aura's own toplevel watcher; on wlroots compositors mpvpaper can still pause
+/// for maximized (`MAX`) or any active (`ACTIVE`) window.
+fn mpvpaper_auto_mode(auto_pause: bool) -> Option<&'static str> {
+    if !auto_pause || !mpvpaper_supports_auto_mode() {
+        return None;
+    }
+    // `--auto-mode` needs wlr-foreign-toplevel-management. COSMIC does not
+    // implement it (Aura's watcher handles tiling there), and GNOME/KDE use
+    // their own backends, so only pass the flag where it is known to work.
+    let desktop = crate::engine::DesktopEnvironment::detect();
+    if !matches!(
+        desktop,
+        crate::engine::DesktopEnvironment::Hyprland
+            | crate::engine::DesktopEnvironment::Sway
+            | crate::engine::DesktopEnvironment::Niri
+    ) {
+        return None;
+    }
+    crate::config::Config::load().auto_pause_mode.mpvpaper_auto_mode()
 }
 
 pub fn check_engine_health() -> EngineHealth {
@@ -912,6 +977,9 @@ impl WallpaperEngine {
             cmd.arg("-l").arg("background");
             if auto_pause {
                 cmd.arg("-p");
+                if let Some(auto_mode) = mpvpaper_auto_mode(true) {
+                    cmd.arg("-a").arg(auto_mode);
+                }
             }
             let mut opts = opts.clone();
             opts = opts.replace(
@@ -952,6 +1020,9 @@ impl WallpaperEngine {
                 direct.arg("-l").arg("background");
                 if auto_pause {
                     direct.arg("-p");
+                    if let Some(auto_mode) = mpvpaper_auto_mode(true) {
+                        direct.arg("-a").arg(auto_mode);
+                    }
                 }
                 direct
                     .arg("-o")
@@ -1519,13 +1590,19 @@ impl WallpaperEngine {
                 "flatpak".to_string(),
             )
         } else {
+            // Prefer the binary that is actually running: after an update or a
+            // system-wide install, a hardcoded ~/.local/bin path can point at a
+            // missing or outdated copy and the login autostart silently fails.
+            let current = std::env::current_exe().ok().map(|path| {
+                let path = path.canonicalize().unwrap_or(path);
+                let text = path.to_string_lossy().to_string();
+                PathBuf::from(text.trim_end_matches(" (deleted)").to_string())
+            });
             let home = std::env::var("HOME").unwrap_or_default();
             let user_bin = PathBuf::from(&home).join(".local/bin/aura");
-            let path = if user_bin.exists() {
-                Some(user_bin)
-            } else {
-                std::env::current_exe().ok()
-            };
+            let path = current
+                .filter(|path| path.is_file())
+                .or_else(|| user_bin.is_file().then_some(user_bin));
             match path {
                 Some(path) => (
                     format!("{} --hidden", desktop_exec_quote(&path.to_string_lossy())),
@@ -1546,9 +1623,14 @@ impl WallpaperEngine {
             Icon=io.github.antwny.aura\n\
             Terminal=false\n\
             StartupNotify=false\n\
+            NoDisplay=true\n\
+            Hidden=false\n\
             X-GNOME-Autostart-enabled=true\n\
-            X-Cosmic-Autostart-enabled=true\n\
+            X-GNOME-Autostart-Phase=Applications\n\
             X-GNOME-Autostart-Delay=2\n\
+            X-Cosmic-Autostart-enabled=true\n\
+            X-KDE-autostart-after=panel\n\
+            X-KDE-autostart-phase=2\n\
             Categories=Utility;DesktopSettings;\n",
             try_exec,
             exec_cmd
@@ -1566,8 +1648,34 @@ impl WallpaperEngine {
         Ok(())
     }
 
+    /// True when the autostart entry exists and its `Exec` points at a file
+    /// that is still present. Paths without a separator (e.g. `aura`) are
+    /// trusted because the session PATH resolves them at login.
     pub fn is_autostart_enabled() -> bool {
-        Self::autostart_file().exists()
+        let Ok(content) = std::fs::read_to_string(Self::autostart_file()) else {
+            return false;
+        };
+        if content.lines().any(|line| line.trim() == "Hidden=true") {
+            return false;
+        }
+        let Some(exec) = content
+            .lines()
+            .find_map(|line| line.strip_prefix("Exec="))
+            .map(str::trim)
+        else {
+            return false;
+        };
+        let program = exec
+            .trim_start_matches('"')
+            .split('"')
+            .next()
+            .unwrap_or(exec)
+            .trim();
+        if program.contains('/') {
+            Path::new(program).is_file()
+        } else {
+            true
+        }
     }
 }
 

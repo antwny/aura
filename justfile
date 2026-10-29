@@ -47,7 +47,11 @@ install: build
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "${HOME}/.local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "${HOME}/.local/bin/mpvpaper"; fi
     install -d "${HOME}/.local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
-    sed -i "s|^Exec=.*|Exec=${HOME}/.local/bin/aura|" "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
+    sed -i "s|^Exec=aura switcher$|Exec=${HOME}/.local/bin/aura switcher|; s|^Exec=aura$|Exec=${HOME}/.local/bin/aura|; s|^TryExec=.*|TryExec=${HOME}/.local/bin/aura|" "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
+    # Plasma sessions started by SDDM do not read shell rc files. environment.d
+    # makes `aura switcher` resolvable from KDE global shortcuts after relogin.
+    install -d "${HOME}/.config/environment.d"
+    printf 'PATH=${HOME}/.local/bin:${PATH}\n' > "${HOME}/.config/environment.d/50-aura.conf"
     install -d "${HOME}/.local/share/icons/hicolor/scalable/apps"
     install -d "${HOME}/.local/share/icons/hicolor/scalable/actions"
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "${HOME}/.local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
@@ -67,7 +71,7 @@ install-system: build
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "/usr/local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "/usr/local/bin/mpvpaper"; fi
     install -d "/usr/local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "/usr/local/share/applications/io.github.antwny.aura.desktop"
-    sed -i "s|^Exec=.*|Exec=/usr/local/bin/aura|" "/usr/local/share/applications/io.github.antwny.aura.desktop"
+    sed -i "s|^Exec=aura switcher$|Exec=/usr/local/bin/aura switcher|; s|^Exec=aura$|Exec=/usr/local/bin/aura|; s|^TryExec=.*|TryExec=/usr/local/bin/aura|" "/usr/local/share/applications/io.github.antwny.aura.desktop"
     install -d "/usr/local/share/icons/hicolor/scalable/apps"
     install -d "/usr/local/share/icons/hicolor/scalable/actions"
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "/usr/local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
@@ -85,6 +89,7 @@ uninstall:
     rm -f "${HOME}/.local/bin/aura"
     rm -f "${HOME}/.local/bin/mpvpaper"
     rm -f "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
+    rm -f "${HOME}/.config/environment.d/50-aura.conf"
     rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
     rm -f "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg" "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg"
     rm -f "${HOME}/.local/share/metainfo/io.github.antwny.aura.metainfo.xml"
@@ -93,7 +98,7 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.9.0": build
+package version="1.9.1": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"

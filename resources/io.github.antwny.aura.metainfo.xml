@@ -60,6 +60,20 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.9.1" date="2026-10-28">
+      <description>
+        <p>Aura 1.9.1 fixes COSMIC auto-pause for tiled windows and improves startup recovery:</p>
+        <ul>
+          <li>Native COSMIC toplevel watcher measures per-output window coverage and pauses behind tiled or partially covered desktops.</li>
+          <li>Selectable sensitivity for fullscreen, maximized, tiled (25% or more) and any-window layouts, with a manual resume override for the current layout.</li>
+          <li>Wallpaper restoration retries until the compositor publishes outputs, and playback state is reconciled per monitor after applies, hotplug and IPC failures.</li>
+          <li>Wallpaper accents preserve COSMIC frosted-glass surfaces and remain app-local outside COSMIC.</li>
+          <li>Notifications use a single non-stacking slot with errors taking priority, and terminal output follows the saved language.</li>
+          <li>KDE video configuration and autostart are more reliable, including the mpvpaper wlroots auto-mode path.</li>
+          <li>Release archive includes the precompiled mpvpaper 1.9 engine and SHA-256 checksum.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.9.0" date="2026-10-27">
       <description>
         <p>Aura 1.9.0 adds a native KDE Plasma backend, sharper HUD assets, and rotation filters:</p>

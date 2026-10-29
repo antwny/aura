@@ -4,9 +4,15 @@ Type=Application
 Name=Aura
 GenericName=Live Wallpaper Manager
 Comment=Animated live wallpaper manager for COSMIC Desktop
+TryExec=aura
 Exec=aura
 Icon=io.github.antwny.aura
 Terminal=false
 StartupNotify=true
+Actions=Switcher;
 Categories=Settings;DesktopSettings;
 Keywords=wallpaper;live;video;cosmic;popos;animated;background;
+
+[Desktop Action Switcher]
+Name=Open Quick Switcher
+Exec=aura switcher

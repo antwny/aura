@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-10-28
+
+### Added
+- **Auto-pausa por cobertura en COSMIC**: un watcher nativo de toplevels mide cuánto cubre cada ventana en cada monitor y pausa el fondo cuando el escritorio queda oculto por ventanas en mosaico, no solo maximizadas.
+- **Sensibilidad configurable**: `Solo pantalla completa`, `Ventanas maximizadas`, `Ventanas en mosaico (≥25%)` y `Cualquier ventana`, con detección automática y una pausa manual por monitor que se mantiene hasta que cambia la disposición de las ventanas.
+- Acción de escritorio `Open Quick Switcher`, `TryExec` y configuración de `PATH` en `environment.d` para que los atajos de KDE encuentren `aura switcher` tras reiniciar sesión.
+
+### Changed
+- Las notificaciones usan un único espacio: los avisos rutinarios se reemplazan entre sí y los errores o acciones pendientes tienen prioridad, sin apilar mensajes.
+- La salida de la terminal sigue el idioma guardado en Ajustes; `aura status`, la ayuda y los errores dejan de mostrarse en español cuando la interfaz está en otro idioma.
+- El acento del fondo se aplica a la interfaz de Aura sin alterar el acento del sistema fuera de COSMIC y conservando el efecto frosted glass del tema activo.
+- Ajustes muestra el estado real de la auto-pausa, explica las limitaciones de cada backend y oculta el selector cuando el motor no puede pausar.
+
+### Fixed
+- La auto-pausa de COSMIC ya reacciona a ventanas en mosaico y a la cobertura parcial por monitor, resolviendo el consumo innecesario descrito en el issue #24.
+- La restauración del fondo al iniciar espera a que el compositor publique las salidas y reintenta sin dejar la reproducción bloqueada.
+- El estado de reproducción por monitor se reconcilia tras aplicar fondos, cambios de topología, pausas manuales y comandos IPC fallidos.
+- KDE aplica correctamente `VideoUrls`, espera a `plasmashell`, recarga la configuración y respeta el modo de pausa configurado.
+- `mpvpaper --auto-mode` solo se usa en compositores wlroots compatibles y el autostart apunta al ejecutable actual.
+- El Quick Switcher mantiene un estado de reproducción coherente cuando aún no hay datos por pantalla.
+
 ## [1.9.0] - 2026-10-27
 
 ### Added

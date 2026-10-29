@@ -1,5 +1,6 @@
 mod app;
 mod cli;
+mod cli_text;
 mod config;
 mod engine;
 mod i18n;
@@ -9,6 +10,7 @@ mod theme;
 mod tray;
 mod online;
 mod system;
+mod toplevels;
 mod ui;
 #[cfg(test)]
 mod test_support;
