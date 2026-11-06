@@ -5,6 +5,7 @@ use crate::online::cache::{clean_filename, clean_title_filename, thumbs_online_c
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OnlineSource {
     MotionBGS,
+    LiveWallpapers4Free,
     Bing,
     Wallhaven,
     Minimalistic,
@@ -24,7 +25,12 @@ pub struct OnlineWallpaperItem {
 
 impl OnlineWallpaperItem {
     pub fn extension(&self) -> &str {
-        if self.source == OnlineSource::MotionBGS || self.full_url.contains(".mp4") || self.full_url.contains("/dl/") {
+        if self.source == OnlineSource::MotionBGS
+            || self.source == OnlineSource::LiveWallpapers4Free
+            || self.full_url.contains(".mp4")
+            || self.full_url.contains("/dl/")
+            || self.full_url.contains("/download/")
+        {
             "mp4"
         } else if self.full_url.contains(".webm") {
             "webm"
@@ -41,6 +47,7 @@ impl OnlineWallpaperItem {
         match self.source {
             OnlineSource::Minimalistic => "jpg",
             OnlineSource::MotionBGS => "jpg",
+            OnlineSource::LiveWallpapers4Free => "jpg",
             _ => {
                 if self.thumb_url.contains(".png") {
                     "png"
@@ -56,6 +63,7 @@ impl OnlineWallpaperItem {
     pub fn source_prefix(&self) -> &'static str {
         match self.source {
             OnlineSource::MotionBGS => "motionbgs",
+            OnlineSource::LiveWallpapers4Free => "livewallpapers4free",
             OnlineSource::Bing => "bing",
             OnlineSource::Wallhaven => "wallhaven",
             OnlineSource::Minimalistic => "minimal",
@@ -97,6 +105,16 @@ impl OnlineWallpaperItem {
                 } else {
                     format!("{}.{}", clean_title, self.extension())
                 }
+            }
+            OnlineSource::LiveWallpapers4Free => {
+                let clean = clean_title_filename(&self.title);
+                let quality = self
+                    .resolution
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("video")
+                    .to_lowercase();
+                format!("{} - {}-{}.{}", clean, self.id, quality, self.extension())
             }
         }
     }

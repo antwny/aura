@@ -1292,11 +1292,11 @@ impl Language {
 
     // --- Explore View (Online Catalog) ---
     pub fn explore_source_motionbgs(&self) -> &'static str {
-        match self {
-            Language::Es => "Live Wallpapers",
-            Language::En => "Live Wallpapers",
-            Language::Fr => "Fonds d’écran animés",
-        }
+        "MotionBGS"
+    }
+
+    pub fn explore_source_livewallpapers4free(&self) -> &'static str {
+        "LW4Free"
     }
 
     pub fn explore_source_bing(&self) -> &'static str {
@@ -1328,6 +1328,81 @@ impl Language {
             Language::Es => "Catálogo de 9,400+ fondos animados en bucle 4K y HD de MotionBGS",
             Language::En => "Catalog of 9,400+ 4K and HD looping animated wallpapers from MotionBGS",
             Language::Fr => "Catalogue de plus de 9 400 fonds d’écran animés 4K et HD en boucle provenant de MotionBGS",
+        }
+    }
+
+    pub fn explore_livewallpapers4free_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Catálogo LiveWallpapers4Free: fondos HD, 2K, 4K, 8K y ultrawide",
+            Language::En => "LiveWallpapers4Free catalog: HD, 2K, 4K, 8K, and ultrawide",
+            Language::Fr => "Catalogue LiveWallpapers4Free : fonds HD, 2K, 4K, 8K et ultra-larges",
+        }
+    }
+
+    pub fn explore_search_livewallpapers4free_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar fondos animados...",
+            Language::En => "Search live wallpapers...",
+            Language::Fr => "Rechercher des fonds d’écran animés...",
+        }
+    }
+
+    pub fn explore_livewallpapers4free_category(&self, slug: &str) -> &'static str {
+        match self {
+            Language::Es => match slug {
+                "3d-live-wallpapers" => "Animación 3D",
+                "abstract-live-wallpapers" => "Abstracto",
+                "animals-live-wallpapers" => "Animales",
+                "anime-live-wallpapers" => "Anime",
+                "cars-live-wallpapers" => "Autos",
+                "fantasy-live-wallpapers" => "Fantasía",
+                "games-live-wallpapers" => "Videojuegos",
+                "holidays-live-wallpapers" => "Festividades",
+                "movies-tv-live-wallpapers" => "Películas / TV",
+                "nature-live-wallpapers" => "Naturaleza",
+                "people-live-wallpapers" => "Personas",
+                "sci-fi-live-wallpapers" => "Ciencia ficción",
+                "technology-live-wallpapers" => "Tecnología",
+                "world-live-wallpapers" => "Mundo",
+                "dual-screen" => "Pantalla doble",
+                _ => "Todos",
+            },
+            Language::En => match slug {
+                "3d-live-wallpapers" => "3D Animation",
+                "abstract-live-wallpapers" => "Abstract",
+                "animals-live-wallpapers" => "Animals",
+                "anime-live-wallpapers" => "Anime",
+                "cars-live-wallpapers" => "Cars",
+                "fantasy-live-wallpapers" => "Fantasy",
+                "games-live-wallpapers" => "Games",
+                "holidays-live-wallpapers" => "Holidays",
+                "movies-tv-live-wallpapers" => "Movies / TV",
+                "nature-live-wallpapers" => "Nature",
+                "people-live-wallpapers" => "People",
+                "sci-fi-live-wallpapers" => "Sci-Fi",
+                "technology-live-wallpapers" => "Technology",
+                "world-live-wallpapers" => "World",
+                "dual-screen" => "Dual Screen",
+                _ => "All",
+            },
+            Language::Fr => match slug {
+                "3d-live-wallpapers" => "Animation 3D",
+                "abstract-live-wallpapers" => "Abstrait",
+                "animals-live-wallpapers" => "Animaux",
+                "anime-live-wallpapers" => "Anime",
+                "cars-live-wallpapers" => "Voitures",
+                "fantasy-live-wallpapers" => "Fantastique",
+                "games-live-wallpapers" => "Jeux vidéo",
+                "holidays-live-wallpapers" => "Fêtes",
+                "movies-tv-live-wallpapers" => "Films / TV",
+                "nature-live-wallpapers" => "Nature",
+                "people-live-wallpapers" => "Personnes",
+                "sci-fi-live-wallpapers" => "Science-fiction",
+                "technology-live-wallpapers" => "Technologie",
+                "world-live-wallpapers" => "Monde",
+                "dual-screen" => "Double écran",
+                _ => "Tous",
+            },
         }
     }
 
@@ -1686,6 +1761,20 @@ impl Language {
             Language::Es => "Resolución:",
             Language::En => "Resolution:",
             Language::Fr => "Résolution :",
+        }
+    }
+
+    pub fn explore_livewallpapers4free_resolution_chip(&self, key: &str) -> &'static str {
+        match key {
+            "hd" => "HD",
+            "2k" => "2K",
+            "4k" => "4K",
+            "8k" => "8K",
+            "5k" => "5K UW",
+            "5k2k" => "5K2K UW",
+            "qhd-ultrawide" => "QHD UW",
+            "dqhd-ultrawide" => "DQHD UW",
+            _ => "4K",
         }
     }
 
@@ -3060,6 +3149,15 @@ mod tests {
             assert!(!lang.explore_sort_random().is_empty());
             assert!(!lang.explore_source_minimalistic().is_empty());
             assert!(!lang.explore_source_motionbgs().is_empty());
+            assert!(!lang.explore_source_livewallpapers4free().is_empty());
+            assert!(!lang.explore_livewallpapers4free_subtitle().is_empty());
+            assert!(!lang.explore_search_livewallpapers4free_placeholder().is_empty());
+            for (slug, _) in crate::online::livewallpapers4free::CATEGORIES {
+                assert!(!lang.explore_livewallpapers4free_category(slug).is_empty());
+            }
+            for (key, _) in crate::online::livewallpapers4free::RESOLUTIONS {
+                assert!(!lang.explore_livewallpapers4free_resolution_chip(key).is_empty());
+            }
             assert!(!lang.explore_btn_cancel().is_empty());
             assert!(!lang.explore_motionbgs_subtitle().is_empty());
             assert!(!lang.explore_search_motionbgs_placeholder().is_empty());

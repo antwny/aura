@@ -1,5 +1,5 @@
 use crate::app::{AuraApp, Message};
-use crate::online::{OnlineSource, OnlineWallpaperItem};
+use crate::online::{livewallpapers4free, OnlineSource, OnlineWallpaperItem};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
@@ -31,6 +31,14 @@ impl AuraApp {
             .leading_icon(fire_icon())
             .on_press(Message::SelectExploreSource(OnlineSource::MotionBGS));
 
+            let livewallpapers4free_btn = if current_source == OnlineSource::LiveWallpapers4Free {
+                widget::button::suggested(lang.explore_source_livewallpapers4free())
+            } else {
+                widget::button::standard(lang.explore_source_livewallpapers4free())
+            }
+            .leading_icon(widget::icon::from_name("media-playback-start-symbolic"))
+            .on_press(Message::SelectExploreSource(OnlineSource::LiveWallpapers4Free));
+
             let wallhaven_btn = if current_source == OnlineSource::Wallhaven {
                 widget::button::suggested(lang.explore_source_wallhaven())
             } else {
@@ -60,6 +68,7 @@ impl AuraApp {
 
             let top_bar = widget::flex_row(vec![
                 live_btn.into(),
+                livewallpapers4free_btn.into(),
                 wallhaven_btn.into(),
                 bing_btn.into(),
                 minimal_btn.into(),
@@ -71,6 +80,7 @@ impl AuraApp {
 
             let subtitle = match current_source {
                 OnlineSource::MotionBGS => lang.explore_motionbgs_subtitle(),
+                OnlineSource::LiveWallpapers4Free => lang.explore_livewallpapers4free_subtitle(),
                 OnlineSource::Bing => lang.explore_featured_today(),
                 OnlineSource::Wallhaven => lang.explore_recent_title(),
                 OnlineSource::Minimalistic => lang.explore_minimalistic_subtitle(),
@@ -195,6 +205,77 @@ impl AuraApp {
                 .width(Length::Fill);
 
                 header_col = header_col.push(search_row).push(filters_row).push(res_row);
+            }
+
+            if current_source == OnlineSource::LiveWallpapers4Free {
+                let search_input = widget::text_input::search_input(
+                    lang.explore_search_livewallpapers4free_placeholder(),
+                    &self.livewallpapers4free_search,
+                )
+                .on_input(Message::LiveWallpapers4FreeSearchChanged)
+                .on_submit(|_| Message::SubmitLiveWallpapers4FreeSearch)
+                .width(Length::Fill);
+
+                let mut search_row = widget::row::with_capacity(2)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(search_input);
+
+                if !self.livewallpapers4free_search.is_empty() {
+                    search_row = search_row.push(
+                        widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
+                            .on_press(Message::ClearLiveWallpapers4FreeSearch),
+                    );
+                }
+
+                let category_chips = livewallpapers4free::CATEGORIES
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (slug, _))| {
+                        let label = lang.explore_livewallpapers4free_category(slug);
+                        let button = if self.livewallpapers4free_category == *slug {
+                            widget::button::suggested(label)
+                        } else {
+                            widget::button::standard(label)
+                        }
+                        .on_press(Message::LiveWallpapers4FreeCategoryChanged(index));
+                        Element::from(button)
+                    })
+                    .collect::<Vec<_>>();
+                let category_row = widget::flex_row(category_chips)
+                    .spacing(8)
+                    .align_items(Alignment::Center)
+                    .width(Length::Fill);
+
+                let resolution_chips = livewallpapers4free::RESOLUTIONS
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (key, _))| {
+                        let label = lang.explore_livewallpapers4free_resolution_chip(key);
+                        let button = if self.livewallpapers4free_resolution == *key {
+                            widget::button::suggested(label)
+                        } else {
+                            widget::button::standard(label)
+                        }
+                        .on_press(Message::LiveWallpapers4FreeResolutionChanged(index));
+                        Element::from(button)
+                    })
+                    .collect::<Vec<_>>();
+                let resolution_row = widget::flex_row(
+                    std::iter::once(Element::from(widget::text::caption(
+                        lang.explore_resolution_label(),
+                    )))
+                    .chain(resolution_chips)
+                    .collect(),
+                )
+                .spacing(8)
+                .align_items(Alignment::Center)
+                .width(Length::Fill);
+
+                header_col = header_col
+                    .push(search_row)
+                    .push(category_row)
+                    .push(resolution_row);
             }
 
             if current_source == OnlineSource::Wallhaven {
@@ -339,6 +420,7 @@ impl AuraApp {
                 .push(widget::text::title2(lang.explore_loading()))
                 .push(widget::text::caption(match current_source {
                     OnlineSource::MotionBGS => "MotionBGS 4K & HD Live Wallpapers",
+                    OnlineSource::LiveWallpapers4Free => "LiveWallpapers4Free Live Wallpapers",
                     OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
                     OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
                     OnlineSource::Minimalistic => "Minimalistic Flat Art & Nature Collection",
@@ -385,6 +467,7 @@ impl AuraApp {
 
         let items: Vec<OnlineWallpaperItem> = match current_source {
             OnlineSource::MotionBGS => self.motionbgs_wallpapers.clone(),
+            OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_wallpapers.clone(),
             OnlineSource::Bing => self.bing_wallpapers.clone(),
             OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
             OnlineSource::Minimalistic => self.minimalistic_wallpapers.clone(),
@@ -484,7 +567,9 @@ impl AuraApp {
                     card_content = card_content.push(title);
 
                     // Metadata line: Resolution • Author/Date
-                    let meta_text = if let Some(d) = &item.date {
+                    let meta_text = if current_source == OnlineSource::LiveWallpapers4Free {
+                        item.resolution.clone()
+                    } else if let Some(d) = &item.date {
                         format!("{} • {}", item.resolution, d)
                     } else if !item.author_or_copyright.is_empty() {
                         format!("{} • {}", item.resolution, item.author_or_copyright)
@@ -583,6 +668,7 @@ impl AuraApp {
         // Pagination "Load More" Button at Bottom
         let has_more = match current_source {
             OnlineSource::MotionBGS | OnlineSource::Bing | OnlineSource::Wallhaven => true,
+            OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_has_more,
             OnlineSource::Minimalistic => {
                 let total_matching = if self.minimalistic_search.trim().is_empty() {
                     self.minimalistic_all_wallpapers.len()
@@ -629,7 +715,11 @@ impl AuraApp {
 
         Element::from(
             widget::column::with_capacity(2)
-                .spacing(14)
+                .spacing(if current_source == OnlineSource::LiveWallpapers4Free {
+                    6
+                } else {
+                    14
+                })
                 .push(build_header())
                 .push(scroll)
         )

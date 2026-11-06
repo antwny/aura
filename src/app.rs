@@ -6,8 +6,8 @@ use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
 use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
 use crate::online::{
     download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
-    fetch_motionbgs_wallpapers, fetch_wallhaven_wallpapers, fetch_minimalistic_wallpapers,
-    OnlineSource, OnlineWallpaperItem,
+    fetch_livewallpapers4free_page, fetch_motionbgs_wallpapers, fetch_wallhaven_wallpapers,
+    fetch_minimalistic_wallpapers, LiveWallpapers4FreePage, OnlineSource, OnlineWallpaperItem,
 };
 
 use cosmic::app::Core;
@@ -239,13 +239,20 @@ pub enum Message {
     SelectExploreSource(OnlineSource),
     FetchOnlineWallpapers(OnlineSource),
     OnlineWallpapersFetched(Result<(OnlineSource, Vec<OnlineWallpaperItem>), String>),
+    LiveWallpapers4FreeFetched(Result<LiveWallpapers4FreePage, String>),
     LoadMoreOnlineWallpapers,
     OnlineMoreWallpapersFetched(Result<(OnlineSource, Vec<OnlineWallpaperItem>), String>),
+    LiveWallpapers4FreeMoreFetched(Result<LiveWallpapers4FreePage, String>),
     SelectMotionbgsCategory(String),
     SelectMotionbgsResolution(String),
     MotionbgsSearchChanged(String),
     SubmitMotionbgsSearch,
     ClearMotionbgsSearch,
+    LiveWallpapers4FreeCategoryChanged(usize),
+    LiveWallpapers4FreeResolutionChanged(usize),
+    LiveWallpapers4FreeSearchChanged(String),
+    SubmitLiveWallpapers4FreeSearch,
+    ClearLiveWallpapers4FreeSearch,
     SelectWallhavenCategory(String),
     SelectWallhavenSorting(String),
     SelectWallhavenResolution(String),
@@ -458,6 +465,12 @@ pub struct AuraApp {
     pub(crate) motionbgs_category: String,
     pub(crate) motionbgs_resolution: String,
     pub(crate) motionbgs_search: String,
+    pub(crate) livewallpapers4free_wallpapers: Vec<OnlineWallpaperItem>,
+    pub(crate) livewallpapers4free_page: u32,
+    pub(crate) livewallpapers4free_category: String,
+    pub(crate) livewallpapers4free_resolution: String,
+    pub(crate) livewallpapers4free_search: String,
+    pub(crate) livewallpapers4free_has_more: bool,
     pub(crate) bing_wallpapers: Vec<OnlineWallpaperItem>,
     pub(crate) wallhaven_wallpapers: Vec<OnlineWallpaperItem>,
     pub(crate) minimalistic_all_wallpapers: Vec<OnlineWallpaperItem>,
@@ -1785,6 +1798,12 @@ impl cosmic::Application for AuraApp {
             motionbgs_category: "all".into(),
             motionbgs_resolution: "4k".into(),
             motionbgs_search: String::new(),
+            livewallpapers4free_wallpapers: Vec::new(),
+            livewallpapers4free_page: 1,
+            livewallpapers4free_category: "all".into(),
+            livewallpapers4free_resolution: "4k".into(),
+            livewallpapers4free_search: String::new(),
+            livewallpapers4free_has_more: true,
             bing_wallpapers: Vec::new(),
             wallhaven_wallpapers: Vec::new(),
             minimalistic_all_wallpapers: Vec::new(),
@@ -5094,6 +5113,7 @@ impl cosmic::Application for AuraApp {
                 self.explore_source = source;
                 let need_fetch = match source {
                     OnlineSource::MotionBGS => self.motionbgs_wallpapers.is_empty(),
+                    OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_wallpapers.is_empty(),
                     OnlineSource::Bing => self.bing_wallpapers.is_empty(),
                     OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
                     OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),
@@ -5127,6 +5147,30 @@ impl cosmic::Application for AuraApp {
                     Some(self.wallhaven_search.clone())
                 };
 
+                if source == OnlineSource::LiveWallpapers4Free {
+                    self.livewallpapers4free_page = 1;
+                    let category = self.livewallpapers4free_category.clone();
+                    let resolution = self.livewallpapers4free_resolution.clone();
+                    let query = if self.livewallpapers4free_search.trim().is_empty() {
+                        None
+                    } else {
+                        Some(self.livewallpapers4free_search.clone())
+                    };
+                    return Task::perform(
+                        async move {
+                            fetch_livewallpapers4free_page(
+                                &client,
+                                1,
+                                query.as_deref(),
+                                &category,
+                                &resolution,
+                            )
+                            .await
+                        },
+                        |res| cosmic::Action::App(Message::LiveWallpapers4FreeFetched(res)),
+                    );
+                }
+
                 return Task::perform(
                     async move {
                         match source {
@@ -5150,6 +5194,7 @@ impl cosmic::Application for AuraApp {
                                     .await
                                     .map(|items| (source, items))
                             }
+                            OnlineSource::LiveWallpapers4Free => unreachable!("handled above"),
                         }
                     },
                     |res| cosmic::Action::App(Message::OnlineWallpapersFetched(res)),
@@ -5178,6 +5223,7 @@ impl cosmic::Application for AuraApp {
                                 self.minimalistic_page = 1;
                                 self.apply_minimalistic_filter()
                             }
+                            OnlineSource::LiveWallpapers4Free => unreachable!("handled above"),
                         };
                         self.explore_error = None;
                         return self.queue_thumbnails(&items_to_thumb);
@@ -5188,6 +5234,19 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
+            Message::LiveWallpapers4FreeFetched(result) => {
+                self.explore_loading = false;
+                match result {
+                    Ok(page) => {
+                        self.livewallpapers4free_wallpapers = page.items.clone();
+                        self.livewallpapers4free_has_more = page.has_more;
+                        self.explore_error = None;
+                        return self.queue_thumbnails(&page.items);
+                    }
+                    Err(err) => self.explore_error = Some(err),
+                }
+            }
+
             Message::LoadMoreOnlineWallpapers => {
                 if self.explore_loading_more || self.explore_loading {
                     return Task::none();
@@ -5195,6 +5254,31 @@ impl cosmic::Application for AuraApp {
                 self.explore_loading_more = true;
                 let client = self.http_client.clone();
                 let source = self.explore_source;
+
+                if source == OnlineSource::LiveWallpapers4Free {
+                    self.livewallpapers4free_page += 1;
+                    let page = self.livewallpapers4free_page;
+                    let category = self.livewallpapers4free_category.clone();
+                    let resolution = self.livewallpapers4free_resolution.clone();
+                    let query = if self.livewallpapers4free_search.trim().is_empty() {
+                        None
+                    } else {
+                        Some(self.livewallpapers4free_search.clone())
+                    };
+                    return Task::perform(
+                        async move {
+                            fetch_livewallpapers4free_page(
+                                &client,
+                                page,
+                                query.as_deref(),
+                                &category,
+                                &resolution,
+                            )
+                            .await
+                        },
+                        |res| cosmic::Action::App(Message::LiveWallpapers4FreeMoreFetched(res)),
+                    );
+                }
 
                 match source {
                     OnlineSource::MotionBGS => {
@@ -5256,6 +5340,7 @@ impl cosmic::Application for AuraApp {
                         let paged = self.apply_minimalistic_filter();
                         return self.queue_thumbnails(&paged);
                     }
+                    OnlineSource::LiveWallpapers4Free => unreachable!("handled above"),
                 }
             }
 
@@ -5290,6 +5375,7 @@ impl cosmic::Application for AuraApp {
                                 }
                             }
                             OnlineSource::Minimalistic => {}
+                            OnlineSource::LiveWallpapers4Free => unreachable!("handled above"),
                         }
 
                         return self.queue_thumbnails(&new_items);
@@ -5308,6 +5394,30 @@ impl cosmic::Application for AuraApp {
                             OnlineSource::Minimalistic => {
                                 if self.minimalistic_page > 1 { self.minimalistic_page -= 1; }
                             }
+                            OnlineSource::LiveWallpapers4Free => unreachable!("handled above"),
+                        }
+                        return self.notify_error(format!("{} {}", self.language.explore_error_prefix(), err));
+                    }
+                }
+            }
+
+            Message::LiveWallpapers4FreeMoreFetched(result) => {
+                self.explore_loading_more = false;
+                match result {
+                    Ok(page) => {
+                        let mut new_items = Vec::new();
+                        for item in page.items {
+                            if !self.livewallpapers4free_wallpapers.iter().any(|existing| existing.id == item.id) {
+                                new_items.push(item.clone());
+                                self.livewallpapers4free_wallpapers.push(item);
+                            }
+                        }
+                        self.livewallpapers4free_has_more = page.has_more;
+                        return self.queue_thumbnails(&new_items);
+                    }
+                    Err(err) => {
+                        if self.livewallpapers4free_page > 1 {
+                            self.livewallpapers4free_page -= 1;
                         }
                         return self.notify_error(format!("{} {}", self.language.explore_error_prefix(), err));
                     }
@@ -5351,6 +5461,57 @@ impl cosmic::Application for AuraApp {
                     self.motionbgs_page = 1;
                     self.motionbgs_wallpapers.clear();
                     return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::MotionBGS)));
+                }
+            }
+
+            Message::LiveWallpapers4FreeCategoryChanged(category) => {
+                if let Some((category, _)) = crate::online::livewallpapers4free::CATEGORIES.get(category) {
+                    if self.livewallpapers4free_category == *category {
+                        return Task::none();
+                    }
+                    self.livewallpapers4free_category = (*category).into();
+                    self.livewallpapers4free_page = 1;
+                    self.livewallpapers4free_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(
+                        OnlineSource::LiveWallpapers4Free,
+                    )));
+                }
+            }
+
+            Message::LiveWallpapers4FreeResolutionChanged(resolution) => {
+                if let Some((resolution, _)) = crate::online::livewallpapers4free::RESOLUTIONS.get(resolution) {
+                    if self.livewallpapers4free_resolution == *resolution {
+                        return Task::none();
+                    }
+                    self.livewallpapers4free_resolution = (*resolution).into();
+                    self.livewallpapers4free_page = 1;
+                    self.livewallpapers4free_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(
+                        OnlineSource::LiveWallpapers4Free,
+                    )));
+                }
+            }
+
+            Message::LiveWallpapers4FreeSearchChanged(query) => {
+                self.livewallpapers4free_search = query;
+            }
+
+            Message::SubmitLiveWallpapers4FreeSearch => {
+                self.livewallpapers4free_page = 1;
+                self.livewallpapers4free_wallpapers.clear();
+                return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(
+                    OnlineSource::LiveWallpapers4Free,
+                )));
+            }
+
+            Message::ClearLiveWallpapers4FreeSearch => {
+                if !self.livewallpapers4free_search.is_empty() {
+                    self.livewallpapers4free_search.clear();
+                    self.livewallpapers4free_page = 1;
+                    self.livewallpapers4free_wallpapers.clear();
+                    return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(
+                        OnlineSource::LiveWallpapers4Free,
+                    )));
                 }
             }
 
@@ -5830,6 +5991,7 @@ impl AuraApp {
         if page == Page::Explore {
             let need_fetch = match self.explore_source {
                 OnlineSource::MotionBGS => self.motionbgs_wallpapers.is_empty(),
+                OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_wallpapers.is_empty(),
                 OnlineSource::Bing => self.bing_wallpapers.is_empty(),
                 OnlineSource::Wallhaven => self.wallhaven_wallpapers.is_empty(),
                 OnlineSource::Minimalistic => self.minimalistic_all_wallpapers.is_empty(),

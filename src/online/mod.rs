@@ -1,6 +1,7 @@
 pub mod models;
 pub mod cache;
 pub mod motionbgs;
+pub mod livewallpapers4free;
 pub mod bing;
 pub mod wallhaven;
 pub mod minimalistic;
@@ -9,6 +10,7 @@ pub mod updater;
 pub use models::{OnlineSource, OnlineWallpaperItem};
 pub use cache::{download_online_thumbnail, download_to_file_with_progress, wallpapers_online_dir};
 pub use motionbgs::fetch_motionbgs_wallpapers;
+pub use livewallpapers4free::{fetch_livewallpapers4free_page, LiveWallpapers4FreePage};
 pub use bing::{fetch_bing_wallpapers, fetch_bing_archive_page};
 pub use wallhaven::fetch_wallhaven_wallpapers;
 pub use minimalistic::fetch_minimalistic_wallpapers;

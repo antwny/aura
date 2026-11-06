@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 
 - **Native Rust & Wayland Layer-Shell**: Smooth 60 FPS rendering with zero compositor tearing.
 - **Smart Auto-Pause (0% CPU / 0% GPU)**: Instantly halts video playback when windows cover the desktop or when launching fullscreen games.
-- **Online Catalogs**: Browse and download thousands of curated live and static wallpapers (MotionBGS 4K/1080p, Wallhaven UHD, Bing Daily, DenverCoder1).
+- **Online Catalogs**: Browse and download live and static wallpapers from MotionBGS, LiveWallpapers4Free (HD through 8K and ultrawide), Wallhaven, Bing Daily, and DenverCoder1.
 - **Dynamic Desktop Auto-Theming**: Automatically extracts color palettes from your wallpaper to theme COSMIC window borders, accents, and controls.
 - **Multi-Monitor Studio**: Set independent wallpapers, scaling modes (Fit, Fill, Stretch), and arrangements per screen with live hotplug support.
 - **Filtered Playlist Rotation**: Combine source (all/favorites) with type (live/static) and keep the exact pool visible before enabling rotation.
