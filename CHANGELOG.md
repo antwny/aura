@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.10.0] - 2026-11-06
 
 ### Added
 - Nuevo catálogo LiveWallpapers4Free en Explore con búsqueda, categorías, resolución HD a 8K/ultrawide y descargas MP4 integradas.
+
+### Packaging
+- El archivo de lanzamiento incluye el binario `mpvpaper` 1.9 precompilado y su checksum SHA-256.
 
 ## [1.9.2] - 2026-10-29
 

@@ -5,15 +5,15 @@
 # Aura
 
 ### The definitive live wallpaper engine for COSMIC Desktop.
-*(With native GNOME and KDE Plasma support, plus generic Wayland layer-shell compositors)*
+*(With experimental GNOME and KDE Plasma support, plus generic Wayland layer-shell compositors)*
 
-**Transform your COSMIC, GNOME, KDE Plasma and Wayland workspace (including Niri, Hyprland and Sway) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming.**
+**Transform your COSMIC and Wayland workspace (including Niri, Hyprland and Sway) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming. GNOME and KDE Plasma backends are experimental.**
 
 [![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
 [![COSMIC Desktop](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/pop-os/libcosmic)
 [![Wayland Layer-Shell](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
 [![GNOME Experimental](https://img.shields.io/badge/GNOME-Experimental-4A86CF.svg?style=for-the-badge&logo=gnome&logoColor=white)](https://www.gnome.org/)
-[![KDE Plasma](https://img.shields.io/badge/KDE-Plasma-1D99F3.svg?style=for-the-badge&logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
+[![KDE Experimental](https://img.shields.io/badge/KDE-Experimental-1D99F3.svg?style=for-the-badge&logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
 [![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
 [![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
@@ -26,7 +26,7 @@
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-*Bundled video engine included. Compatible with Pop!_OS, CachyOS, Arch Linux, Fedora, and any distribution running COSMIC Desktop, KDE Plasma, GNOME, or Wayland layer-shell compositors (such as Niri, Hyprland, Sway).*
+*The release archive includes the precompiled `mpvpaper` video engine. Aura is designed for COSMIC Desktop and Wayland layer-shell compositors (such as Niri, Hyprland, and Sway); GNOME and KDE Plasma backends are experimental.*
 
 > **Prerequisites for video playback & thumbnails:**
 > - **Arch / CachyOS**: `sudo pacman -S --needed mpv ffmpeg`
@@ -116,9 +116,9 @@ Aura includes experimental support for GNOME on Wayland:
 
 ---
 
-### 🖥️ KDE Plasma Support (Wayland & X11)
+### 🖥️ KDE Plasma Support (Wayland & X11) — Experimental
 
-KWin keeps Plasma's desktop containment above wlr-layer-shell surfaces, so mpvpaper cannot draw a visible video on Plasma. Aura talks to Plasma's own wallpaper API over D-Bus instead:
+KDE Plasma support is experimental. KWin keeps Plasma's desktop containment above wlr-layer-shell surfaces, so mpvpaper cannot draw a visible video on Plasma. Aura talks to Plasma's own wallpaper API over D-Bus instead:
 
 - **Native Detection**: `XDG_CURRENT_DESKTOP=KDE` selects the Plasma backend automatically. The Settings screen shows the real desktop environment and a manual backend selector (`Auto`, `mpvpaper`, `GNOME`, `KDE`, `Static`).
 - **Live Video Wallpapers**: Requires [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn). Aura configures `VideoUrls`, fill mode, mute state and volume per screen; it never installs extensions or asks for root.
@@ -152,10 +152,10 @@ curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
 ### Precompiled Release Package
-Download `aura-v1.9.2-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
+Download `aura-v1.10.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
 ```bash
-tar -xzf aura-v1.9.2-x86_64-linux.tar.gz
-cd aura-v1.9.2-x86_64-linux
+tar -xzf aura-v1.10.0-x86_64-linux.tar.gz
+cd aura-v1.10.0-x86_64-linux
 ./install.sh
 ```
 

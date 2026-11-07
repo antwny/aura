@@ -17,7 +17,7 @@ RED="$(tput setaf 1 2>/dev/null || printf '')"
 RESET="$(tput sgr0 2>/dev/null || printf '')"
 
 echo "${BLUE}${BOLD}🌌 Aura — The definitive live wallpaper engine for COSMIC Desktop${RESET}"
-echo "${BLUE}   │ (With experimental support for GNOME & Wayland)${RESET}"
+echo "${BLUE}   │ (Experimental GNOME & KDE Plasma support)${RESET}"
 echo "────────────────────────────────────────────────────────────"
 
 # 1. Check OS and Architecture
@@ -83,7 +83,7 @@ if [ -z "$TARGET_VERSION" ]; then
     fi
 
     if [ -z "$LATEST_TAG" ]; then
-        LATEST_TAG="v1.9.2"
+        LATEST_TAG="v1.10.0"
     fi
     VERSION="${LATEST_TAG#v}"
 else
@@ -224,6 +224,11 @@ elif [[ "$DESKTOP_ENV" =~ [Gg][Nn][Oo][Mm][Ee] ]]; then
     echo "  • Fondos estáticos: Funcionan de forma nativa mediante GSettings."
     echo "  • Fondos animados (Live): Requieren la extensión externa Hanabi (gnome-ext-hanabi)."
     echo "  • Quick Switcher HUD: Debido a que Mutter no implementa layer-shell, el fondo puede lucir oscuro."
+elif [[ "$DESKTOP_ENV" =~ [Kk][Dd][Ee] ]] || [[ "$DESKTOP_ENV" =~ [Pp][Ll][Aa][Ss][Mm][Aa] ]]; then
+    echo ""
+    echo "${YELLOW}⚠️  Entorno detectado: KDE Plasma (Soporte Experimental)${RESET}"
+    echo "  • Fondos estáticos: Se aplican mediante la API nativa de Plasma."
+    echo "  • Fondos animados (Live): Requieren Smart Video Wallpaper Reborn."
 fi
 
 # If dependencies are missing, the VERY LAST output in the terminal must be this impossible-to-miss alert:
