@@ -139,6 +139,16 @@ fn exe_tokens(cmdline: &[u8]) -> Vec<String> {
     tokens
 }
 
+fn proc_exe_name(pid: u32) -> Option<String> {
+    let base = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()?
+        .file_name()?
+        .to_string_lossy()
+        .to_lowercase();
+    let base = base.trim_end_matches(" (deleted)");
+    (!base.is_empty()).then_some(base.to_owned())
+}
+
 fn game_window_tokens(pids: &[u32]) -> Vec<String> {
     let mut tokens = Vec::new();
     for pid in pids {
@@ -148,6 +158,9 @@ fn game_window_tokens(pids: &[u32]) -> Vec<String> {
                 tokens.push(comm);
             }
         }
+        if let Some(exe) = proc_exe_name(*pid) {
+            tokens.push(exe);
+        }
         if let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) {
             tokens.extend(exe_tokens(&raw));
         }
@@ -155,7 +168,16 @@ fn game_window_tokens(pids: &[u32]) -> Vec<String> {
     tokens
 }
 
-fn window_matches_game(tokens: &[String], app_id: &str, title: &str) -> bool {
+fn window_matches_game(
+    tokens: &[String],
+    pids: &[u32],
+    app_id: &str,
+    title: &str,
+    window_pid: Option<u32>,
+) -> bool {
+    if window_pid.is_some_and(|pid| pids.contains(&pid)) {
+        return true;
+    }
     let app_id = app_id.to_lowercase();
     let title = title.to_lowercase();
     tokens.iter().any(|token| {
@@ -187,7 +209,7 @@ fn active_workspace_ids() -> Option<Vec<i64>> {
     Some(ids)
 }
 
-fn game_window_visible(tokens: &[String]) -> bool {
+fn game_window_visible(tokens: &[String], pids: &[u32]) -> bool {
     let windows = match niri_json_output(&["msg", "--json", "windows"]) {
         Some(windows) => windows,
         None => return false,
@@ -214,7 +236,11 @@ fn game_window_visible(tokens: &[String]) -> bool {
                 .get("title")
                 .and_then(|title| title.as_str())
                 .unwrap_or_default();
-            window_matches_game(tokens, app_id, title)
+            let window_pid = window
+                .get("pid")
+                .and_then(|pid| pid.as_u64())
+                .and_then(|pid| u32::try_from(pid).ok());
+            window_matches_game(tokens, pids, app_id, title, window_pid)
         })
 }
 
@@ -230,10 +256,11 @@ pub async fn check_if_fullscreen_game_active() -> bool {
     if std::env::var_os("NIRI_SOCKET").is_none() {
         return true;
     }
-    let tokens = tokio::task::spawn_blocking(move || game_window_tokens(&pids))
-        .await
-        .unwrap_or_default();
-    tokio::task::spawn_blocking(move || game_window_visible(&tokens))
+    let (tokens, pids) =
+        tokio::task::spawn_blocking(move || (game_window_tokens(&pids), pids))
+            .await
+            .unwrap_or_default();
+    tokio::task::spawn_blocking(move || game_window_visible(&tokens, &pids))
         .await
         .unwrap_or(false)
 }
@@ -281,13 +308,46 @@ mod tests {
     #[test]
     fn test_window_matches_game() {
         let overwatch = vec!["overwatch.exe".to_string(), "overwatch".to_string()];
-        assert!(window_matches_game(&overwatch, "steam_app_12345", "Overwatch"));
-        assert!(window_matches_game(&overwatch, "Overwatch.exe", ""));
+        assert!(window_matches_game(&overwatch, &[], "steam_app_12345", "Overwatch", None));
+        assert!(window_matches_game(&overwatch, &[], "Overwatch.exe", "", None));
         let sober = vec!["sober".to_string()];
-        assert!(window_matches_game(&sober, "org.vinegarhq.Sober", "Sober"));
-        assert!(!window_matches_game(&overwatch, "kitty", "OC | Analisis"));
-        assert!(!window_matches_game(&[], "org.vinegarhq.Sober", "Sober"));
-        assert!(!window_matches_game(&["".to_string()], "kitty", "kitty"));
+        assert!(window_matches_game(&sober, &[], "org.vinegarhq.Sober", "Sober", None));
+        assert!(!window_matches_game(&overwatch, &[], "kitty", "OC | Analisis", None));
+        assert!(!window_matches_game(&[], &[], "org.vinegarhq.Sober", "Sober", None));
+        assert!(!window_matches_game(&["".to_string()], &[], "kitty", "kitty", None));
+    }
+
+    #[test]
+    fn test_window_matches_registered_pid_without_name_token() {
+        let tokens = vec!["main".to_string()];
+        assert!(window_matches_game(
+            &tokens,
+            &[1339513],
+            "org.vinegarhq.Sober",
+            "Sober",
+            Some(1339513)
+        ));
+        assert!(!window_matches_game(
+            &tokens,
+            &[1339513],
+            "org.vinegarhq.Sober",
+            "Sober",
+            Some(999999)
+        ));
+        assert!(!window_matches_game(
+            &tokens,
+            &[1339513],
+            "kitty",
+            "Terminal",
+            Some(1320698)
+        ));
+    }
+
+    #[test]
+    fn test_proc_exe_name_self() {
+        assert!(
+            proc_exe_name(std::process::id()).is_some_and(|name| !name.is_empty())
+        );
     }
 }
 
