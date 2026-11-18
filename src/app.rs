@@ -499,6 +499,8 @@ pub struct AuraApp {
     pub(crate) update_status: UpdateStatus,
     pub(crate) pending_auto_apply_id: Option<String>,
     pub(crate) last_update_check: Option<Instant>,
+    pub(crate) reconcile_failures: u32,
+    pub(crate) reconcile_cooldown_until: Option<Instant>,
     pub(crate) switcher_window_id: Option<cosmic::iced::window::Id>,
     pub(crate) closing_switcher_window_id: Option<cosmic::iced::window::Id>,
     pub(crate) switcher_index: usize,
@@ -1166,8 +1168,16 @@ impl AuraApp {
         // Also retry any configured player that failed to start while the
         // session was still coming up.
         if !topology_changed {
+            if self
+                .reconcile_cooldown_until
+                .is_some_and(|until| Instant::now() < until)
+            {
+                return Task::none();
+            }
             return self.reconcile_missing_wallpapers();
         }
+        self.reconcile_failures = 0;
+        self.reconcile_cooldown_until = None;
         if !self.uses_mpvpaper() {
             return Task::none();
         }
@@ -1832,6 +1842,8 @@ impl cosmic::Application for AuraApp {
             update_status: UpdateStatus::Idle,
             pending_auto_apply_id: None,
             last_update_check: None,
+            reconcile_failures: 0,
+            reconcile_cooldown_until: None,
             switcher_window_id: None,
             closing_switcher_window_id: None,
             switcher_index: 0,
@@ -4896,6 +4908,20 @@ impl cosmic::Application for AuraApp {
                 // window, so log them instead of spamming notifications.
                 if let Err(error) = result {
                     eprintln!("[Aura] Reintento de fondo: {error}");
+                    self.reconcile_failures = self.reconcile_failures.saturating_add(1);
+                    let backed_off = self
+                        .reconcile_failures
+                        .saturating_sub(Self::RECONCILE_FAST_RETRIES);
+                    if backed_off > 0 {
+                        let secs = (Self::RECONCILE_COOLDOWN_STEP_SECS
+                            .saturating_mul(backed_off as u64))
+                        .min(Self::RECONCILE_COOLDOWN_MAX_SECS);
+                        self.reconcile_cooldown_until =
+                            Some(Instant::now() + Duration::from_secs(secs));
+                    }
+                } else {
+                    self.reconcile_failures = 0;
+                    self.reconcile_cooldown_until = None;
                 }
             }
 
@@ -5910,6 +5936,10 @@ impl cosmic::Application for AuraApp {
 }
 
 impl AuraApp {
+    const RECONCILE_FAST_RETRIES: u32 = 3;
+    const RECONCILE_COOLDOWN_STEP_SECS: u64 = 60;
+    const RECONCILE_COOLDOWN_MAX_SECS: u64 = 600;
+
     fn view_notice(notice: &Notice) -> Element<'_, Message> {
         let spacing = cosmic::theme::active().cosmic().spacing;
         let controls = widget::row::with_capacity(2)
