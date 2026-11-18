@@ -493,7 +493,7 @@ fn cmd_status() {
     println!(
         "{}{}",
         label(l.autostart),
-        if config.autostart || WallpaperEngine::is_autostart_enabled() {
+        if config.autostart || crate::autostart::is_enabled() {
             l.enabled
         } else {
             l.disabled

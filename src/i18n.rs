@@ -719,13 +719,13 @@ impl Language {
     pub fn settings_auto_pause_desc(&self) -> &'static str {
         match self {
             Language::Es => {
-                "Detiene el vídeo cuando las ventanas cubren el fondo. En COSMIC se reevalúa al cambiar de workspace o mover ventanas."
+                "Detiene el vídeo cuando las ventanas cubren el fondo. En COSMIC y Niri se reevalúa al cambiar de workspace o mover ventanas."
             }
             Language::En => {
-                "Stops the video when windows cover the wallpaper. On COSMIC it is re-evaluated when switching workspaces or moving windows."
+                "Stops the video when windows cover the wallpaper. On COSMIC and Niri it is re-evaluated when switching workspaces or moving windows."
             }
             Language::Fr => {
-                "Arrête la vidéo lorsque des fenêtres couvrent le fond. Sous COSMIC, l’état est réévalué lors d’un changement d’espace de travail ou de déplacement de fenêtre."
+                "Arrête la vidéo lorsque des fenêtres couvrent le fond. Sous COSMIC et Niri, l’état est réévalué lors d’un changement d’espace de travail ou de déplacement de fenêtre."
             }
         }
     }
@@ -850,6 +850,20 @@ impl Language {
             }
             Language::Fr => {
                 "GNOME : Hanabi n’expose pas la pause selon les fenêtres à Aura. Utilisez le bouton pause du panneau ; cette option est sans effet ici."
+            }
+        }
+    }
+
+    pub fn settings_auto_pause_platform_niri(&self) -> &'static str {
+        match self {
+            Language::Es => {
+                "Niri: detecta ventanas, maximizados y espacios de trabajo en tiempo real mediante el IPC del compositor."
+            }
+            Language::En => {
+                "Niri: detects windows, maximized columns and workspaces in real time through the compositor IPC."
+            }
+            Language::Fr => {
+                "Niri : détecte les fenêtres, les colonnes maximisées et les espaces de travail en temps réel via l’IPC du compositeur."
             }
         }
     }
@@ -1808,6 +1822,14 @@ impl Language {
             Language::Es => "Reanudar Fondo",
             Language::En => "Resume Wallpaper",
             Language::Fr => "Reprendre le fond d’écran",
+        }
+    }
+
+    pub fn tray_status_paused(&self) -> &'static str {
+        match self {
+            Language::Es => "En pausa",
+            Language::En => "Paused",
+            Language::Fr => "En pause",
         }
     }
 
@@ -3135,6 +3157,7 @@ mod tests {
             assert!(!lang.about_tagline().is_empty());
             assert!(!lang.tray_switcher().is_empty());
             assert!(!lang.tray_open().is_empty());
+            assert!(!lang.tray_status_paused().is_empty());
             assert!(!lang.tray_quit().is_empty());
             assert!(!lang.status_paused().is_empty());
             assert!(!lang.status_resumed().is_empty());
@@ -3239,6 +3262,7 @@ mod tests {
             assert!(!lang.settings_auto_pause_status_overridden().is_empty());
             assert!(!lang.settings_auto_pause_status_paused_other().is_empty());
             assert!(!lang.settings_auto_pause_platform_cosmic().is_empty());
+            assert!(!lang.settings_auto_pause_platform_niri().is_empty());
             assert!(!lang.settings_auto_pause_platform_kde().is_empty());
             assert!(!lang.settings_auto_pause_platform_kde_no_dbus().is_empty());
             assert!(!lang.settings_auto_pause_platform_kde_missing().is_empty());

@@ -504,9 +504,13 @@ impl AuraApp {
                     self.language.settings_auto_pause_platform_cosmic(),
                     false,
                 ),
+                crate::engine::DesktopEnvironment::Niri => (
+                    "emblem-ok-symbolic",
+                    self.language.settings_auto_pause_platform_niri(),
+                    false,
+                ),
                 crate::engine::DesktopEnvironment::Hyprland
-                | crate::engine::DesktopEnvironment::Sway
-                | crate::engine::DesktopEnvironment::Niri => (
+                | crate::engine::DesktopEnvironment::Sway => (
                     "emblem-ok-symbolic",
                     self.language
                         .settings_auto_pause_platform_mpvpaper_wlroots(),
@@ -556,7 +560,11 @@ impl AuraApp {
         if self.config.auto_pause
             && engine_supports_pause
             && backend == crate::engine::Backend::Mpvpaper
-            && desktop == crate::engine::DesktopEnvironment::Cosmic
+            && matches!(
+                desktop,
+                crate::engine::DesktopEnvironment::Cosmic
+                    | crate::engine::DesktopEnvironment::Niri
+            )
         {
             let (status_icon, status_text) = if !self.effective_occluded_outputs().is_empty() {
                 (

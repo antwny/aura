@@ -38,6 +38,9 @@ finish-args:
   # Desktop Notifications & Tray indicator
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Desktop backends (KDE Plasma & GNOME Hanabi)
+  - --talk-name=org.kde.plasmashell
+  - --talk-name=io.github.jeffshee.HanabiRenderer
   # File Manager integration
   - --talk-name=org.freedesktop.FileManager1
 
@@ -123,10 +126,16 @@ modules:
       - install -Dm644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg /app/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg
       - install -Dm644 resources/icons/navbar-open-symbolic.svg /app/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg
       - install -Dm644 resources/icons/navbar-closed-symbolic.svg /app/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg
+      - install -Dm644 resources/icons/fire-symbolic.svg /app/share/icons/hicolor/scalable/actions/fire-symbolic.svg
+      - install -Dm644 resources/icons/window-close-symbolic.svg /app/share/icons/hicolor/scalable/actions/window-close-symbolic.svg
+      - install -Dm644 resources/icons/window-maximize-symbolic.svg /app/share/icons/hicolor/scalable/actions/window-maximize-symbolic.svg
+      - install -Dm644 resources/icons/window-minimize-symbolic.svg /app/share/icons/hicolor/scalable/actions/window-minimize-symbolic.svg
+      - install -Dm644 resources/icons/window-restore-symbolic.svg /app/share/icons/hicolor/scalable/actions/window-restore-symbolic.svg
       - install -Dm644 resources/io.github.antwny.aura.metainfo.xml /app/share/metainfo/io.github.antwny.aura.metainfo.xml
       - install -Dm644 LICENSE -t /app/share/licenses/io.github.antwny.aura/
     sources:
       - type: git
-        url: /home/antwny/aura
-        branch: feature/v1.1-enhancements
+        url: https://github.com/antwny/aura.git
+        tag: v1.10.0
+        commit: 314525b52a28c0949bc78f5e010fca714fd92ada
       - cargo-sources.json

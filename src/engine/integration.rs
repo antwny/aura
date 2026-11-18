@@ -46,6 +46,37 @@ fn command_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// True when a quickshell-based shell that paints its own wallpaper (DMS or
+/// dux) is installed. On niri those surfaces are created on the background
+/// layer, which stacks by creation order: the shell's static wallpaper can sit
+/// above Aura's animated one after login.
+pub fn shell_paints_own_wallpaper() -> bool {
+    static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| command_exists("dms") || command_exists("dux"))
+}
+
+/// True when the shell has desktop widgets configured. DMS/dux place those on
+/// the bottom layer, so Aura's wallpaper must stay on the background layer in
+/// that case.
+pub fn shell_desktop_widgets_configured() -> bool {
+    static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let Ok(output) = Command::new("dms")
+            .args(["ipc", "call", "desktopWidget", "list"])
+            .stderr(Stdio::null())
+            .output()
+        else {
+            return false;
+        };
+        if !output.status.success() {
+            return false;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let text = text.trim();
+        !text.is_empty() && !text.to_lowercase().contains("no desktop widgets")
+    })
+}
+
 fn command_version(name: &str, args: &[&str]) -> (bool, Option<String>) {
     let output = match Command::new(name).args(args).output() {
         Ok(output) => output,

@@ -63,9 +63,9 @@ impl BackendPreference {
 }
 
 /// How much of a monitor has to be covered before the wallpaper pauses
-/// automatically. `mpvpaper -p` only reacts when the compositor stops sending
-/// frame callbacks (full coverage), which leaves tiled windows playing behind
-/// the desktop. Aura supplements that with its own COSMIC toplevel watcher.
+/// automatically. On COSMIC and Niri, Aura's occlusion watcher owns the pause
+/// state (mpvpaper's `-p` is not passed on Niri). Other wlroots compositors
+/// still rely on `mpvpaper -p` / `--auto-mode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AutoPauseMode {

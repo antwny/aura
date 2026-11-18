@@ -476,13 +476,38 @@ fn mpvpaper_auto_mode(auto_pause: bool) -> Option<&'static str> {
     let desktop = crate::engine::DesktopEnvironment::detect();
     if !matches!(
         desktop,
-        crate::engine::DesktopEnvironment::Hyprland
-            | crate::engine::DesktopEnvironment::Sway
-            | crate::engine::DesktopEnvironment::Niri
+        crate::engine::DesktopEnvironment::Hyprland | crate::engine::DesktopEnvironment::Sway
     ) {
         return None;
     }
     crate::config::Config::load().auto_pause_mode.mpvpaper_auto_mode()
+}
+
+/// On Niri, Aura's occlusion watcher toggles mpv's `pause` property over IPC
+/// and is the single pause authority. mpvpaper's `-p` runs an independent
+/// frame-callback state machine: it can pause before the first frame is
+/// rendered (boot) and later clear Aura's pause when a callback arrives,
+/// leaving the video playing behind an occluding window. Do not pass `-p`
+/// there. COSMIC keeps its existing behaviour.
+fn pause_owned_by_aura() -> bool {
+    crate::engine::DesktopEnvironment::detect() == crate::engine::DesktopEnvironment::Niri
+}
+
+/// Layer for Aura's wallpaper surface. On niri, layer-shell surfaces stack by
+/// creation order within the same layer: a shell that paints its own wallpaper
+/// (DMS / dux) can be created after Aura's player at login and hide the
+/// animation. The bottom layer is always above the background layer while
+/// staying below normal windows, so the wallpaper cannot be covered. It is
+/// skipped when the shell keeps desktop widgets on that layer.
+fn wallpaper_layer() -> &'static str {
+    if crate::engine::DesktopEnvironment::detect() == crate::engine::DesktopEnvironment::Niri
+        && crate::engine::integration::shell_paints_own_wallpaper()
+        && !crate::engine::integration::shell_desktop_widgets_configured()
+    {
+        "bottom"
+    } else {
+        "background"
+    }
 }
 
 pub fn check_engine_health() -> EngineHealth {
@@ -974,8 +999,8 @@ impl WallpaperEngine {
                 Command::new(&mpv_bin)
             };
             crate::engine::gpu::apply_gpu_env(&mut cmd, gpu_pref);
-            cmd.arg("-l").arg("background");
-            if auto_pause {
+            cmd.arg("-l").arg(wallpaper_layer());
+            if auto_pause && !pause_owned_by_aura() {
                 cmd.arg("-p");
                 if let Some(auto_mode) = mpvpaper_auto_mode(true) {
                     cmd.arg("-a").arg(auto_mode);
@@ -1017,8 +1042,8 @@ impl WallpaperEngine {
                 let _ = &mut fallback;
                 let mut direct = Command::new(&mpv_bin);
                 crate::engine::gpu::apply_gpu_env(&mut direct, gpu_pref);
-                direct.arg("-l").arg("background");
-                if auto_pause {
+                direct.arg("-l").arg(wallpaper_layer());
+                if auto_pause && !pause_owned_by_aura() {
                     direct.arg("-p");
                     if let Some(auto_mode) = mpvpaper_auto_mode(true) {
                         direct.arg("-a").arg(auto_mode);
@@ -1568,115 +1593,6 @@ impl WallpaperEngine {
         opts
     }
 
-    pub fn autostart_dir() -> PathBuf {
-        crate::config::config_home().join("autostart")
-    }
-
-    pub fn autostart_file() -> PathBuf {
-        Self::autostart_dir().join("io.github.antwny.aura.desktop")
-    }
-
-    pub fn write_autostart() -> std::io::Result<()> {
-        let dir = Self::autostart_dir();
-        std::fs::create_dir_all(&dir)?;
-
-        let is_sandboxed = std::path::Path::new("/.flatpak-info").exists()
-            || std::env::var_os("FLATPAK_ID").is_some()
-            || std::env::var_os("SNAP").is_some();
-
-        let (exec_cmd, try_exec) = if is_sandboxed {
-            (
-                "flatpak run io.github.antwny.aura --hidden".to_string(),
-                "flatpak".to_string(),
-            )
-        } else {
-            // Prefer the binary that is actually running: after an update or a
-            // system-wide install, a hardcoded ~/.local/bin path can point at a
-            // missing or outdated copy and the login autostart silently fails.
-            let current = std::env::current_exe().ok().map(|path| {
-                let path = path.canonicalize().unwrap_or(path);
-                let text = path.to_string_lossy().to_string();
-                PathBuf::from(text.trim_end_matches(" (deleted)").to_string())
-            });
-            let home = std::env::var("HOME").unwrap_or_default();
-            let user_bin = PathBuf::from(&home).join(".local/bin/aura");
-            let path = current
-                .filter(|path| path.is_file())
-                .or_else(|| user_bin.is_file().then_some(user_bin));
-            match path {
-                Some(path) => (
-                    format!("{} --hidden", desktop_exec_quote(&path.to_string_lossy())),
-                    path.to_string_lossy().to_string(),
-                ),
-                None => ("aura --hidden".to_string(), "aura".to_string()),
-            }
-        };
-
-        let desktop_content = format!(
-            "[Desktop Entry]\n\
-            Type=Application\n\
-            Name=Aura\n\
-            GenericName=Live Wallpaper Manager\n\
-            Comment=Animated live wallpaper manager for Linux desktops\n\
-            TryExec={}\n\
-            Exec={}\n\
-            Icon=io.github.antwny.aura\n\
-            Terminal=false\n\
-            StartupNotify=false\n\
-            NoDisplay=true\n\
-            Hidden=false\n\
-            X-GNOME-Autostart-enabled=true\n\
-            X-GNOME-Autostart-Phase=Applications\n\
-            X-GNOME-Autostart-Delay=2\n\
-            X-Cosmic-Autostart-enabled=true\n\
-            X-KDE-autostart-after=panel\n\
-            X-KDE-autostart-phase=2\n\
-            Categories=Utility;DesktopSettings;\n",
-            try_exec,
-            exec_cmd
-        );
-
-        std::fs::write(Self::autostart_file(), desktop_content)?;
-        Ok(())
-    }
-
-    pub fn remove_autostart() -> std::io::Result<()> {
-        let file = Self::autostart_file();
-        if file.exists() {
-            std::fs::remove_file(file)?;
-        }
-        Ok(())
-    }
-
-    /// True when the autostart entry exists and its `Exec` points at a file
-    /// that is still present. Paths without a separator (e.g. `aura`) are
-    /// trusted because the session PATH resolves them at login.
-    pub fn is_autostart_enabled() -> bool {
-        let Ok(content) = std::fs::read_to_string(Self::autostart_file()) else {
-            return false;
-        };
-        if content.lines().any(|line| line.trim() == "Hidden=true") {
-            return false;
-        }
-        let Some(exec) = content
-            .lines()
-            .find_map(|line| line.strip_prefix("Exec="))
-            .map(str::trim)
-        else {
-            return false;
-        };
-        let program = exec
-            .trim_start_matches('"')
-            .split('"')
-            .next()
-            .unwrap_or(exec)
-            .trim();
-        if program.contains('/') {
-            Path::new(program).is_file()
-        } else {
-            true
-        }
-    }
 }
 
 #[allow(dead_code)]
@@ -1684,14 +1600,6 @@ pub fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-pub fn desktop_exec_quote(s: &str) -> String {
-    let escaped = s
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('`', "\\`")
-        .replace('$', "\\$");
-    format!("\"{}\"", escaped)
-}
 
 #[cfg(test)]
 mod tests {
@@ -1758,18 +1666,6 @@ mod tests {
         assert_eq!(shell_escape("with'quote"), "'with'\\''quote'");
     }
 
-    #[test]
-    fn test_desktop_exec_quote() {
-        assert_eq!(desktop_exec_quote("/home/user/Aura"), "\"/home/user/Aura\"");
-        assert_eq!(
-            desktop_exec_quote("/home/user/My Aura/aura"),
-            "\"/home/user/My Aura/aura\""
-        );
-        assert_eq!(
-            desktop_exec_quote("/tmp/a\"b$c`d\\e"),
-            "\"/tmp/a\\\"b\\$c\\`d\\\\e\""
-        );
-    }
 
     #[test]
     fn test_socket_paths() {

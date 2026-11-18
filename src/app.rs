@@ -611,6 +611,16 @@ impl AuraApp {
             .uses_desktop_shell_on(self.desktop_environment())
     }
 
+    /// Compositors where Aura can derive window coverage instead of relying
+    /// on `mpvpaper -p` frame callbacks.
+    pub(crate) fn occlusion_watcher_supported(&self) -> bool {
+        matches!(
+            self.desktop_environment(),
+            crate::engine::DesktopEnvironment::Cosmic
+                | crate::engine::DesktopEnvironment::Niri
+        )
+    }
+
     /// Device-scale bucket for HUD assets. Plasma/COSMIC commonly report 1x on
     /// 1080p monitors and 1.5x/2x on HiDPI panels; generating a 2x master and
     /// scaling it down keeps text-free artwork crisp without forcing every
@@ -1005,6 +1015,19 @@ impl AuraApp {
                 continue;
             }
             let pause = occluded.contains(output) || global_reason;
+            let previous = self
+                .output_pause_states
+                .get(output)
+                .copied()
+                .flatten();
+            if previous != Some(pause) {
+                // Traces every automatic pause change and its cause so a
+                // pause right after login can be attributed in the journal.
+                eprintln!(
+                    "[Aura] apply pause {output}: {previous:?} -> {pause} (occluded={}, global_reason={global_reason})",
+                    occluded.contains(output)
+                );
+            }
             self.output_pause_states
                 .insert(output.clone(), Some(pause));
         }
@@ -1578,11 +1601,12 @@ impl cosmic::Application for AuraApp {
             let _ = config.save();
         }
 
-        let autostart_active = config.autostart || WallpaperEngine::is_autostart_enabled();
+        let autostart_active = config.autostart || crate::autostart::is_enabled();
         if autostart_active {
             // Refresh unconditionally: this repairs entries written by older
-            // versions with a stale Exec path and keeps the KDE/GNOME keys.
-            let _ = WallpaperEngine::write_autostart();
+            // versions with a stale Exec path and picks the mechanism that
+            // fits the current desktop.
+            let _ = crate::autostart::enable();
         }
 
         // Cleanup any stale temporary download artifacts (.tmp / .tmp.jpg)
@@ -1865,13 +1889,10 @@ impl cosmic::Application for AuraApp {
         // rewriting system settings at startup.
         tasks.push(app.current_app_accent_task());
 
-        // COSMIC tiling leaves part of the wallpaper visible, so mpvpaper's
-        // frame-callback pause never triggers for tiled windows. Start Aura's
-        // own toplevel watcher on the compositors where it is available.
-        if app.config.auto_pause
-            && app.uses_mpvpaper()
-            && app.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
-        {
+        // Tiling compositors leave part of the wallpaper visible, so
+        // mpvpaper's frame-callback pause never triggers for tiled windows.
+        // Start Aura's own occlusion watcher where one is available.
+        if app.config.auto_pause && app.uses_mpvpaper() && app.occlusion_watcher_supported() {
             crate::toplevels::start();
         }
 
@@ -2137,12 +2158,24 @@ impl cosmic::Application for AuraApp {
                             if output.is_closed() {
                                 break;
                             }
-                            let Ok(mut child) = tokio::process::Command::new("niri")
+                            let mut command = tokio::process::Command::new("niri");
+                            command
                                 .args(["msg", "--json", "event-stream"])
+                                .stdin(std::process::Stdio::null())
                                 .stdout(std::process::Stdio::piped())
-                                .stderr(std::process::Stdio::null())
-                                .spawn()
-                            else {
+                                .stderr(std::process::Stdio::null());
+                            #[cfg(unix)]
+                            {
+                                // Keep the compositor client tied to Aura's
+                                // lifetime so a restart does not leak it.
+                                unsafe {
+                                    command.pre_exec(|| {
+                                        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                                        Ok(())
+                                    });
+                                }
+                            }
+                            let Ok(mut child) = command.spawn() else {
                                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                                 continue;
                             };
@@ -2198,7 +2231,7 @@ impl cosmic::Application for AuraApp {
 
         if self.config.auto_pause
             && self.uses_mpvpaper()
-            && self.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
+            && self.occlusion_watcher_supported()
             && !self.config.wallpapers.is_empty()
         {
             subs.push(
@@ -4538,14 +4571,14 @@ impl cosmic::Application for AuraApp {
                 self.autostart_active = active;
                 self.config.autostart = active;
                 let status = if active {
-                    let _ = WallpaperEngine::write_autostart();
+                    let _ = crate::autostart::enable();
                     match self.language {
                         crate::i18n::Language::Es => "Inicio automático activado",
                         crate::i18n::Language::En => "Autostart enabled",
                         crate::i18n::Language::Fr => "Démarrage automatique activé",
                     }
                 } else {
-                    let _ = WallpaperEngine::remove_autostart();
+                    let _ = crate::autostart::disable();
                     match self.language {
                         crate::i18n::Language::Es => "Inicio automático desactivado",
                         crate::i18n::Language::En => "Autostart disabled",
@@ -4614,13 +4647,8 @@ impl cosmic::Application for AuraApp {
                 self.auto_pause_overrides.clear();
                 self.last_occlusion_revision = 0;
                 let _ = self.config.save();
-                if active {
-                    if self.uses_mpvpaper()
-                        && self.desktop_environment()
-                            == crate::engine::DesktopEnvironment::Cosmic
-                    {
-                        crate::toplevels::start();
-                    }
+                if active && self.uses_mpvpaper() && self.occlusion_watcher_supported() {
+                    crate::toplevels::start();
                 } else {
                     self.is_paused_by_occlusion.clear();
                 }
@@ -4916,8 +4944,13 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::SmartPauseStateChanged { game, locked } => {
+                let changed =
+                    self.is_paused_by_smart != game || self.is_paused_by_locked != locked;
                 self.is_paused_by_smart = game;
                 self.is_paused_by_locked = locked;
+                if changed {
+                    eprintln!("[Aura] smart pause state: game={game} locked={locked}");
+                }
                 if game || locked {
                     let status = if locked {
                         self.language.status_session_locked_paused()
@@ -4933,14 +4966,25 @@ impl cosmic::Application for AuraApp {
             Message::OcclusionTick => {
                 if !self.config.auto_pause
                     || !self.uses_mpvpaper()
-                    || self.desktop_environment() != crate::engine::DesktopEnvironment::Cosmic
+                    || !self.occlusion_watcher_supported()
                 {
                     return Task::none();
                 }
                 let Some(snapshot) = crate::toplevels::snapshot() else {
                     return Task::none();
                 };
-                if !snapshot.available {
+                if !snapshot.available || !crate::toplevels::watcher_alive() {
+                    // The compositor watcher went away (compositor restart,
+                    // stalled IPC). Its last layout is no longer valid; clear
+                    // the pause instead of leaving the wallpaper stuck.
+                    if !self.is_paused_by_occlusion.is_empty() {
+                        eprintln!(
+                            "[Aura] occlusion watcher unavailable; releasing auto-pause"
+                        );
+                        self.is_paused_by_occlusion.clear();
+                        self.auto_pause_overrides.clear();
+                        return self.apply_occlusion_state();
+                    }
                     return Task::none();
                 }
 
@@ -4962,6 +5006,20 @@ impl cosmic::Application for AuraApp {
                 }
 
                 let occlusion_changed = occluded != previous;
+                if occlusion_changed {
+                    // Kept in the journal so a pause right after login can be
+                    // traced to the window layout that caused it.
+                    let coverage: Vec<_> = self
+                        .outputs
+                        .iter()
+                        .map(|output| {
+                            (output.name.clone(), snapshot.coverage_for(&output.name))
+                        })
+                        .collect();
+                    eprintln!(
+                        "[Aura] occlusion pause outputs: {previous:?} -> {occluded:?} coverage={coverage:?}"
+                    );
+                }
                 self.is_paused_by_occlusion = occluded;
 
                 // Reapply not only when the layout changes but also when the
@@ -4985,7 +5043,7 @@ impl cosmic::Application for AuraApp {
                 self.last_occlusion_revision = 0;
                 if self.config.auto_pause
                     && self.uses_mpvpaper()
-                    && self.desktop_environment() == crate::engine::DesktopEnvironment::Cosmic
+                    && self.occlusion_watcher_supported()
                 {
                     crate::toplevels::start();
                 }
@@ -4994,6 +5052,7 @@ impl cosmic::Application for AuraApp {
 
             Message::NiriOverviewChanged(is_open) => {
                 if self.config.smart_pause {
+                    eprintln!("[Aura] niri overview: is_open={is_open}");
                     self.is_paused_by_overview = is_open;
                     if is_open {
                         self.pause_for_auto_reason(self.language.status_overview_paused());
@@ -5891,21 +5950,24 @@ impl cosmic::Application for AuraApp {
             .width(Length::Fill)
             .height(Length::Fill)
             .into();
-        if let Some(notice) = &self.notice {
-            let overlay = widget::container(Self::view_notice(notice))
+        // The notice layer must always be mounted: toggling the root structure
+        // makes iced discard the widget tree, resetting scroll offsets.
+        let notice_layer: Element<'_, Message> = widget::container(
+            widget::column::with_capacity(1)
+                .push_maybe(self.notice.as_ref().map(Self::view_notice)),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Bottom)
+        .padding([0, 0, 15, 0])
+        .into();
+
+        Element::from(
+            cosmic::iced::widget::stack(vec![root, notice_layer])
                 .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Bottom)
-                .padding([0, 0, 15, 0]);
-            Element::from(
-                cosmic::iced::widget::stack(vec![root, overlay.into()])
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-        } else {
-            root
-        }
+                .height(Length::Fill),
+        )
     }
 }
 

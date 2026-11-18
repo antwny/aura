@@ -66,7 +66,23 @@ impl Tray for AuraTray {
         let is_paused = *lock(&self.is_paused);
         let has_wall = *lock(&self.has_wallpaper);
 
-        vec![
+        let mut items: Vec<MenuItem<Self>> = Vec::with_capacity(8);
+        if is_paused && has_wall {
+            // Disabled status row. Its presence changes the menu structure on
+            // every pause/resume, which makes ksni emit LayoutUpdated. Some
+            // tray hosts only refresh labels on that signal and would keep
+            // showing "Pause" while the wallpaper is already paused.
+            items.push(
+                StandardItem {
+                    label: lang.tray_status_paused().into(),
+                    enabled: false,
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+
+        items.extend(vec![
             StandardItem {
                 label: lang.tray_switcher().into(),
                 activate: Box::new(|tray: &mut AuraTray| {
@@ -123,7 +139,9 @@ impl Tray for AuraTray {
                 ..Default::default()
             }
             .into(),
-        ]
+        ]);
+
+        items
     }
 }
 

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /home/antwny/aura && cat /home/antwny/aura/package.json 2>/dev/null | head -60)",
+      "Bash(find /home/antwny/aura -maxdepth 2 -type d -not -path '*/node_modules*' -not -path '*/.git*' -not -path '*/target*' | sort | head -60)",
+      "Bash(wc:*)",
+      "Bash(ls ~/.cargo/git/checkouts/ 2>/dev/null; find ~/.cargo/git/checkouts -maxdepth 2 -type d -name 'libcosmic*' 2>/dev/null; grep -n \"libcosmic\" /home/antwny/aura/Cargo.lock | head)",
+      "Read(//home/antwny/.cargo/git/checkouts/**)",
+      "Bash(ls /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/ && ls /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/*/src/widget/ | head -50)",
+      "Bash(grep -rn \"ScrollTo\\\\|scroll_to\\\\|AbsoluteOffset\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/widget/scrollable/*.rs | head -40)",
+      "Bash(grep -n \"pub fn scroll_to\\\\|ScrollTo\\\\|AbsoluteOffset\\\\|fn scroll_by\" -r /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/ | head -40)",
+      "Bash(grep -n \"responsive\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/widget/mod.rs | head; grep -rn \"pub fn responsive\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/ --include=*.rs | head)",
+      "Bash(grep -n \"pub fn scroll_to\\\\|pub enum RelativeOffset\\\\|pub struct AbsoluteOffset\\\\|fn scroll_by\" -r /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/scrollable.rs /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/ | head -30)",
+      "Bash(grep -n \"fn layout\\\\|fn state\\\\|fn diff\\\\|offset\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/scrollable.rs | head -60)",
+      "Bash(grep -rn \"fn scroll_to\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/ --include=*.rs | head -20)",
+      "Bash(grep -n \"offset_y =\\\\|offset_x =\\\\|clamp\\\\|max_offset\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/scrollable.rs | head -40)",
+      "Bash(grep -n -i \"scroll\" /home/antwny/aura/CHANGELOG.md | head -40; grep -rn -i \"scroll\" /home/antwny/aura/docs | head -20)",
+      "Bash(grep -n \"WindowGeometryChanged\\\\|window_width\\\\|Resized\" /home/antwny/aura/src/app.rs | head -40)",
+      "Bash(cd /home/antwny/aura && git log --oneline -12 -- src/ui/library.rs src/ui/explore.rs src/app.rs && git log -3 -p -- src/ui/library.rs | head -150)",
+      "Bash(sed -n 2345,2420p /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/scrollable.rs; grep -n \"enum Offset\" -A80 /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/scrollable.rs | head -120)",
+      "Bash(grep -rn \"scrollable\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/widget/mod.rs /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/widget/scrollable/mod.rs | head -40)",
+      "Bash(grep -rn \"pub fn image\" -A40 /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/src/widget/button/mod.rs | head -80)",
+      "Bash(find /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced -name 'stack.rs' -o -name 'stack*' | head; grep -rn \"pub fn stack\" /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852/iced/widget/src/helpers.rs | head)",
+      "Bash(cd /home/antwny/.cargo/git/checkouts/libcosmic-41009aea1d72760b/b728852 && git log --oneline -15 && git log --oneline -8 --grep=\"scroll\" -i)",
+      "Bash(cd /home/antwny/aura && cat justfile | head -120)",
+      "Bash(ls -la && cat Cargo.toml | head -80)",
+      "Bash(qpause\\(\\) { python3 - <<'EOF'\nimport socket\ns=socket.socket\\(socket.AF_UNIX,socket.SOCK_STREAM\\); s.settimeout\\(1\\)\ntry:\n    s.connect\\('/run/user/1000/aura/mpv_eDP-1.sock'\\)\n    s.sendall\\(b'{\"command\":[\"get_property\",\"pause\"]}\\\\n'\\); print\\(s.recv\\(4096\\).decode\\(\\).strip\\(\\)\\); s.close\\(\\)\nexcept Exception as e: print\\('err',e\\)\nEOF\n}\necho 'mpvpaper args:'; pgrep -a mpvpaper | head -1\nniri msg action focus-workspace 1 >/dev/null 2>&1\nfor i in $\\(seq 1 20\\); do sleep 2; echo -n \"t=$\\(\\(i*2\\)\\)s \"; qpause; done)",
+      "Bash(echo '--- systemd user env ---'; systemctl --user show-environment | grep -E 'XDG_CURRENT_DESKTOP|NIRI_SOCKET|WAYLAND_DISPLAY|XDG_SESSION|SWAY|HYPRLAND' || echo 'none of the GUI vars are in the systemd user environment'; echo '--- niri --session import ---'; sed -n 255,305p /home/antwny/.cache/build-niri/niri/src/main.rs)",
+      "Bash(date; uptime -p; echo '--- autostart journal since boot ---'; journalctl --user -u 'app-io.github.antwny.aura@autostart.service' -b --no-pager 2>/dev/null | tail -40; echo '--- all aura logs ---'; journalctl --user -b --no-pager 2>/dev/null | grep -E 'aura\\\\[|Aura\\\\]' | tail -40)",
+      "Bash(ps -eo pid,ppid,lstart,args | grep -a \"[a]ura --hidden\"; echo '--- mpvpaper'; ps -eo pid,ppid,lstart,args | grep -a \"[m]pvpaper\"; echo '--- sockets'; ls -l /run/user/1000/aura/*.sock 2>/dev/null; echo '--- pause'; python3 - <<'EOF'\nimport socket,time,glob\nfor p in sorted\\(glob.glob\\('/run/user/1000/aura/*.sock'\\)\\):\n    try:\n        s=socket.socket\\(socket.AF_UNIX\\); s.connect\\(p\\)\n        s.sendall\\(b'{\"command\": [\"get_property\", \"pause\"]}\\\\n{\"command\": [\"get_property\", \"time-pos\"]}\\\\n{\"command\": [\"get_property\", \"filename\"]}\\\\n'\\)\n        time.sleep\\(0.2\\); print\\(p, s.recv\\(65536\\).decode\\(\\).strip\\(\\).replace\\('\\\\n',' | '\\)\\)\n    except Exception as e: print\\(p, 'ERR', e\\)\nEOF\necho '--- journal'; journalctl --user -u app-io.github.antwny.aura@autostart.service -b -o short-iso --no-pager 2>/dev/null | tail -25)"
+    ]
+  }
+}
