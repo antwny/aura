@@ -13,7 +13,10 @@ pub mod minimalistic;
 pub mod updater;
 
 pub use models::{OnlineSource, OnlineWallpaperItem};
-pub use cache::{download_online_thumbnail, download_to_file_with_progress, wallpapers_online_dir};
+pub use cache::{
+    clean_filename, download_online_thumbnail, download_to_file_with_progress,
+    thumbs_online_cache_dir, wallpapers_online_dir,
+};
 pub use motionbgs::fetch_motionbgs_wallpapers;
 pub use livewallpapers4free::{fetch_livewallpapers4free_page, LiveWallpapers4FreePage};
 pub use lively::fetch_lively_wallpapers;
@@ -21,10 +24,12 @@ pub use desktophut::{fetch_desktophut_wallpapers, parse_desktophut_download};
 pub use moewalls::{fetch_moewalls_wallpapers, parse_moewalls_download};
 pub use wallpaperwaifu::{fetch_wallpaperwaifu_wallpapers, parse_wallpaperwaifu_download};
 pub use bing::{fetch_bing_wallpapers, fetch_bing_archive_page};
-pub use wallhaven::fetch_wallhaven_wallpapers;
+pub use wallhaven::{fetch_wallhaven_page, fetch_wallhaven_wallpapers};
 pub use minimalistic::fetch_minimalistic_wallpapers;
 
-use filters::{category_slug, resolution_matches, resolution_slug, CategoryFilter, ResolutionFilter};
+use filters::{
+    category_slug, resolution_matches, resolution_slug, CategoryFilter, MediaFilter, ResolutionFilter,
+};
 use std::collections::HashSet;
 
 /// Result of a unified search across every catalogue.
@@ -51,6 +56,7 @@ pub async fn fetch_unified_wallpapers(
     filter: Option<OnlineSource>,
     category: Option<CategoryFilter>,
     resolution: Option<ResolutionFilter>,
+    media: MediaFilter,
 ) -> Result<UnifiedSearchPage, String> {
     let page = page.max(1);
     let query = query.map(str::trim).filter(|q| !q.is_empty());
@@ -64,6 +70,9 @@ pub async fn fetch_unified_wallpapers(
     let mut skipped = Vec::new();
     let mut sources = Vec::new();
     for source in requested {
+        if !media.allows_source(source) {
+            continue;
+        }
         if let Some(category) = category {
             if category_slug(source, category).is_none() {
                 skipped.push(source);
@@ -76,30 +85,45 @@ pub async fn fetch_unified_wallpapers(
     let futures = sources.into_iter().map(|source| async move {
         // One slow catalogue must not hold the whole unified grid hostage.
         let result = match tokio::time::timeout(
-            std::time::Duration::from_secs(8),
+            std::time::Duration::from_secs(20),
             fetch_from_source(client, source, page, query, category, resolution),
         )
         .await
         {
             Ok(result) => result,
-            Err(_) => Err("timed out after 8s".to_string()),
+            Err(_) => Err("timed out after 20s".to_string()),
         };
         (source, result)
     });
 
     let results = futures::future::join_all(futures).await;
+    aggregate_unified_results(results, skipped, resolution, media)
+}
 
+fn aggregate_unified_results(
+    results: Vec<(OnlineSource, Result<(Vec<OnlineWallpaperItem>, bool), String>)>,
+    skipped: Vec<OnlineSource>,
+    resolution: Option<ResolutionFilter>,
+    media: MediaFilter,
+) -> Result<UnifiedSearchPage, String> {
     let mut per_source: Vec<(OnlineSource, Vec<OnlineWallpaperItem>)> = Vec::new();
     let mut errors = Vec::new();
     let mut has_more = false;
+    let mut any_success = false;
 
     for (source, result) in results {
         match result {
             Ok((mut items, more)) => {
-                if let Some(resolution) = resolution {
-                    items.retain(|item| resolution_matches(&item.resolution, resolution));
-                }
+                any_success = true;
+                // Filtering a nonempty page must not hide the next page, but
+                // adapters reporting `more` on a raw empty page are exhausted.
                 has_more |= more && !items.is_empty();
+                items.retain(|item| {
+                    media.matches(item)
+                        && resolution.map_or(true, |filter| {
+                            resolution_matches(&item.resolution, filter)
+                        })
+                });
                 if !items.is_empty() {
                     per_source.push((source, items));
                 }
@@ -108,16 +132,10 @@ pub async fn fetch_unified_wallpapers(
         }
     }
 
-    if per_source.is_empty() {
+    if !any_success {
         if let Some(first) = errors.first() {
             return Err(first.clone());
         }
-        return Ok(UnifiedSearchPage {
-            items: Vec::new(),
-            errors,
-            has_more: false,
-            skipped,
-        });
     }
 
     // Round-robin: one item from each catalogue per pass, capped at the
@@ -213,7 +231,7 @@ async fn fetch_from_source(
             Ok((items, true))
         }
         OnlineSource::Wallhaven => {
-            let items = fetch_wallhaven_wallpapers(
+            let page_data = fetch_wallhaven_page(
                 client,
                 page,
                 query,
@@ -222,7 +240,7 @@ async fn fetch_from_source(
                 resolution_value.unwrap_or("all"),
             )
             .await?;
-            Ok((items, true))
+            Ok((page_data.items, page_data.has_more))
         }
         OnlineSource::Bing => {
             // Bing only offers the daily image; it is not searchable and only
@@ -305,6 +323,214 @@ pub async fn resolve_download_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_item(source: OnlineSource, id: &str, resolution: &str) -> OnlineWallpaperItem {
+        OnlineWallpaperItem {
+            id: id.into(),
+            title: "Test wallpaper".into(),
+            author_or_copyright: String::new(),
+            thumb_url: "https://example.invalid/thumb.jpg".into(),
+            full_url: format!("https://example.invalid/{id}.jpg"),
+            resolution: resolution.into(),
+            source,
+            date: None,
+        }
+    }
+
+    #[test]
+    fn filtered_empty_pages_keep_raw_continuation() {
+        for (source, resolution, media) in [
+            (
+                OnlineSource::Wallhaven,
+                Some(ResolutionFilter::Uhd4K),
+                MediaFilter::All,
+            ),
+            (OnlineSource::MotionBGS, None, MediaFilter::Static),
+            (
+                OnlineSource::MotionBGS,
+                Some(ResolutionFilter::Uhd4K),
+                MediaFilter::Static,
+            ),
+        ] {
+            for more in [false, true] {
+                let page = aggregate_unified_results(
+                    vec![(
+                        source,
+                        Ok((vec![test_item(source, "filtered", "1080p")], more)),
+                    )],
+                    Vec::new(),
+                    resolution,
+                    media,
+                )
+                .expect("a filtered page is still a successful response");
+                assert!(page.items.is_empty(), "{source:?} {media:?}");
+                assert!(page.errors.is_empty());
+                assert_eq!(page.has_more, more, "{source:?} {media:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn raw_empty_pages_do_not_claim_continuation() {
+        for results in [
+            Vec::new(),
+            vec![
+                (OnlineSource::Lively, Ok((Vec::new(), true))),
+                (OnlineSource::Wallhaven, Ok((Vec::new(), true))),
+                (OnlineSource::Bing, Ok((Vec::new(), false))),
+            ],
+        ] {
+            let page = aggregate_unified_results(results, Vec::new(), None, MediaFilter::All)
+                .expect("empty responses are successful");
+            assert!(page.items.is_empty());
+            assert!(page.errors.is_empty());
+            assert!(!page.has_more);
+        }
+    }
+
+    #[test]
+    fn mixed_failures_and_empty_pages_remain_successful() {
+        for (raw_items, more, has_more) in [
+            (Vec::new(), true, false),
+            (
+                vec![test_item(OnlineSource::Wallhaven, "filtered", "1080p")],
+                true,
+                true,
+            ),
+            (
+                vec![test_item(OnlineSource::Wallhaven, "filtered", "1080p")],
+                false,
+                false,
+            ),
+        ] {
+            let page = aggregate_unified_results(
+                vec![
+                    (OnlineSource::Lively, Err("unavailable".into())),
+                    (OnlineSource::Wallhaven, Ok((raw_items, more))),
+                ],
+                Vec::new(),
+                Some(ResolutionFilter::Uhd4K),
+                MediaFilter::All,
+            )
+            .expect("a successful empty response is not a total failure");
+            assert!(page.items.is_empty());
+            assert_eq!(page.errors, vec!["Lively: unavailable".to_string()]);
+            assert_eq!(page.has_more, has_more);
+        }
+    }
+
+    #[test]
+    fn all_queried_sources_failing_returns_first_error() {
+        let result = aggregate_unified_results(
+            vec![
+                (OnlineSource::Lively, Err("unavailable".into())),
+                (OnlineSource::Wallhaven, Err("timed out".into())),
+            ],
+            Vec::new(),
+            None,
+            MediaFilter::All,
+        );
+        assert_eq!(result.unwrap_err(), "Lively: unavailable");
+    }
+
+    #[test]
+    fn filters_run_before_interleaving_and_per_source_cap() {
+        let mut wallhaven: Vec<_> = (0..24)
+            .map(|index| {
+                test_item(
+                    OnlineSource::Wallhaven,
+                    &format!("rejected-resolution-{index}"),
+                    "1080p",
+                )
+            })
+            .collect();
+        let mut video = test_item(OnlineSource::Wallhaven, "rejected-media", "4K");
+        video.full_url = "https://example.invalid/video.mp4".into();
+        wallhaven.push(video);
+        wallhaven.extend((0..25).map(|index| {
+            test_item(OnlineSource::Wallhaven, &format!("wallhaven-{index}"), "4K")
+        }));
+
+        let page = aggregate_unified_results(
+            vec![
+                (OnlineSource::Wallhaven, Ok((wallhaven, true))),
+                (
+                    OnlineSource::Bing,
+                    Ok((vec![test_item(OnlineSource::Bing, "bing", "4K")], false)),
+                ),
+            ],
+            Vec::new(),
+            Some(ResolutionFilter::Uhd4K),
+            MediaFilter::Static,
+        )
+        .expect("matching items");
+        let mut expected = vec!["wallhaven-0".to_string(), "bing".to_string()];
+        expected.extend((1..24).map(|index| format!("wallhaven-{index}")));
+        assert_eq!(
+            page.items
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(page.has_more);
+        assert!(page.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn media_excluded_sources_are_not_category_skips() {
+        let client = reqwest::Client::new();
+        // Every case is excluded before futures are built; no request is sent.
+        for (source, category, media) in [
+            (
+                OnlineSource::MotionBGS,
+                CategoryFilter::Movies,
+                MediaFilter::Static,
+            ),
+            (
+                OnlineSource::Wallhaven,
+                CategoryFilter::Nature,
+                MediaFilter::Animated,
+            ),
+            (OnlineSource::Unified, CategoryFilter::Anime, MediaFilter::All),
+        ] {
+            let page = fetch_unified_wallpapers(
+                &client,
+                1,
+                Some("query"),
+                Some(source),
+                Some(category),
+                Some(ResolutionFilter::Uhd4K),
+                media,
+            )
+            .await
+            .expect("media-incompatible sources are excluded without a request");
+            assert!(page.items.is_empty());
+            assert!(page.errors.is_empty());
+            assert!(page.skipped.is_empty(), "{source:?}");
+            assert!(!page.has_more);
+        }
+    }
+
+    #[tokio::test]
+    async fn supported_media_keeps_unsupported_category_in_skipped() {
+        let client = reqwest::Client::new();
+        let page = fetch_unified_wallpapers(
+            &client,
+            1,
+            Some("query"),
+            Some(OnlineSource::Wallhaven),
+            Some(CategoryFilter::Nature),
+            Some(ResolutionFilter::Uhd4K),
+            MediaFilter::Static,
+        )
+        .await
+        .expect("an unsupported category is skipped without a request");
+        assert!(page.items.is_empty());
+        assert!(page.errors.is_empty());
+        assert_eq!(page.skipped, vec![OnlineSource::Wallhaven]);
+        assert!(!page.has_more);
+    }
 
     #[test]
     fn unified_never_contains_pseudo_source() {
@@ -625,6 +851,7 @@ mod tests {
             None,
             Some(CategoryFilter::Anime),
             Some(ResolutionFilter::Uhd4K),
+            MediaFilter::All,
         )
         .await
         .expect("unified");

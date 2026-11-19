@@ -310,7 +310,8 @@ impl AuraApp {
         }
 
         let selected_output = self.selected_output.clone();
-        let custom_videos = self.config.custom_videos.clone();
+        let custom_videos_set: std::collections::HashSet<String> =
+            self.config.custom_videos.iter().cloned().collect();
         let favorites_set = self.favorites_set.clone();
         let total_count = filtered_videos.len();
         let display_limit = self.library_limit.min(total_count);
@@ -408,7 +409,7 @@ impl AuraApp {
                             widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
                                 .on_press(Message::DeleteDownloadedWallpaper(video.path.clone()))
                         );
-                    } else if custom_videos.contains(&path_str) {
+                    } else if custom_videos_set.contains(&path_str) {
                         action_row = action_row.push(
                             widget::button::icon(widget::icon::from_name("list-remove-symbolic"))
                                 .on_press(Message::RemoveWallpaperFromLibrary(video.path.clone()))

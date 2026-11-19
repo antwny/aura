@@ -590,9 +590,149 @@ impl Language {
 
     pub fn settings_effects_parallax_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Convierte imágenes estáticas en fondos con profundidad que siguen el mouse suavemente. Requiere un compositor compatible con metadatos del cursor, como Niri, y no captura los clics del escritorio.",
-            Language::En => "Turn still images into depth wallpapers that smoothly follow the mouse. Requires a compositor with cursor metadata support, such as Niri, and never captures desktop clicks.",
-            Language::Fr => "Transforme les images fixes en fonds avec profondeur qui suivent doucement la souris. Nécessite un compositeur compatible avec les métadonnées du curseur, comme Niri, sans capturer les clics du bureau.",
+            Language::Es => "Da profundidad a imágenes estáticas que siguen el mouse suavemente, sin interceptar los clics del escritorio.",
+            Language::En => "Add depth to still images that smoothly follow the mouse, without intercepting desktop clicks.",
+            Language::Fr => "Donne de la profondeur aux images fixes qui suivent doucement la souris, sans intercepter les clics du bureau.",
+        }
+    }
+
+    pub fn settings_effects_diagnostics(&self) -> &'static str {
+        match self {
+            Language::Es => "Diagnóstico",
+            Language::En => "Diagnostics",
+            Language::Fr => "Diagnostic",
+        }
+    }
+
+    pub fn settings_effects_advanced(&self) -> &'static str {
+        match self {
+            Language::Es => "Opciones técnicas",
+            Language::En => "Technical options",
+            Language::Fr => "Options techniques",
+        }
+    }
+
+    pub fn settings_effects_parallax_presets(&self) -> &'static str {
+        match self {
+            Language::Es => "Sensación de profundidad",
+            Language::En => "Depth feel",
+            Language::Fr => "Sensation de profondeur",
+        }
+    }
+
+    pub fn settings_effects_parallax_preset(&self, index: u8) -> &'static str {
+        match (self, index) {
+            (Language::Es, 0) => "Suave",
+            (Language::Es, 1) => "Equilibrado",
+            (Language::Es, _) => "Intenso",
+            (Language::En, 0) => "Subtle",
+            (Language::En, 1) => "Balanced",
+            (Language::En, _) => "Strong",
+            (Language::Fr, 0) => "Doux",
+            (Language::Fr, 1) => "Équilibré",
+            (Language::Fr, _) => "Intense",
+        }
+    }
+
+    pub fn settings_effects_parallax_auto_pause(&self) -> &'static str {
+        match self {
+            Language::Es => "Pausar cuando el fondo está cubierto",
+            Language::En => "Pause when the wallpaper is covered",
+            Language::Fr => "Mettre en pause lorsque le fond est couvert",
+        }
+    }
+
+    pub fn settings_effects_parallax_auto_pause_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Conserva la última imagen con ventanas maximizadas, a pantalla completa o cobertura total, incluso si son translúcidas. Reanuda suavemente al volver a mostrar el fondo.",
+            Language::En => "Keep the last image behind maximized or fullscreen windows, or full coverage, even with translucency. Resume smoothly when the wallpaper is visible again.",
+            Language::Fr => "Conserve la dernière image derrière les fenêtres maximisées, en plein écran ou une couverture totale, même translucides. Reprend doucement lorsque le fond redevient visible.",
+        }
+    }
+
+    pub fn settings_effects_parallax_pause_unavailable(&self) -> &'static str {
+        match self {
+            Language::Es => "La detección de ventanas funciona en COSMIC y Niri; no está disponible en esta sesión. El seguimiento del cursor tiene compatibilidad independiente.",
+            Language::En => "Window detection works on COSMIC and Niri; it is unavailable in this session. Cursor tracking has separate compatibility requirements.",
+            Language::Fr => "La détection des fenêtres fonctionne sur COSMIC et Niri ; elle est indisponible dans cette session. Le suivi du curseur a une compatibilité distincte.",
+        }
+    }
+
+    pub fn settings_effects_parallax_resources(&self) -> &'static str {
+        match self {
+            Language::Es => "La pausa evita redibujar el paralaje por movimientos del mouse. Conserva la memoria y el seguimiento del cursor; el espectro de audio sigue funcionando por separado.",
+            Language::En => "Pausing avoids parallax redraws caused by mouse movement. Memory and cursor tracking remain allocated; the audio spectrum continues independently.",
+            Language::Fr => "La pause évite de redessiner la parallaxe lors des mouvements de souris. La mémoire et le suivi du curseur sont conservés ; le spectre audio continue indépendamment.",
+        }
+    }
+
+    pub fn settings_effects_parallax_status(&self, status: crate::app::EffectsParallaxStatus) -> &'static str {
+        use crate::app::EffectsParallaxStatus;
+        match status {
+            EffectsParallaxStatus::Disabled => match self {
+                Language::Es => "Desactivado",
+                Language::En => "Disabled",
+                Language::Fr => "Désactivé",
+            },
+            EffectsParallaxStatus::Unsupported => match self {
+                Language::Es => "Compositor no compatible",
+                Language::En => "Unsupported compositor",
+                Language::Fr => "Compositeur incompatible",
+            },
+            EffectsParallaxStatus::NoImage => match self {
+                Language::Es => "Requiere un fondo estático",
+                Language::En => "Requires a still wallpaper",
+                Language::Fr => "Nécessite un fond fixe",
+            },
+            EffectsParallaxStatus::ModelMissing => match self {
+                Language::Es => "Descarga el modelo para preparar la profundidad",
+                Language::En => "Download the model to prepare depth",
+                Language::Fr => "Téléchargez le modèle pour préparer la profondeur",
+            },
+            EffectsParallaxStatus::Generating => match self {
+                Language::Es => "Preparando profundidad…",
+                Language::En => "Preparing depth…",
+                Language::Fr => "Préparation de la profondeur…",
+            },
+            EffectsParallaxStatus::Ready => match self {
+                Language::Es => "Listo",
+                Language::En => "Ready",
+                Language::Fr => "Prêt",
+            },
+            EffectsParallaxStatus::Paused => match self {
+                Language::Es => "Pausado automáticamente · imagen congelada",
+                Language::En => "Automatically paused · frozen image",
+                Language::Fr => "En pause automatique · image figée",
+            },
+            EffectsParallaxStatus::Failed => match self {
+                Language::Es => "No disponible · revisa el diagnóstico",
+                Language::En => "Unavailable · check diagnostics",
+                Language::Fr => "Indisponible · consultez le diagnostic",
+            },
+        }
+    }
+
+    pub fn settings_effects_model_details(&self) -> &'static str {
+        match self {
+            Language::Es => "Detalles del modelo",
+            Language::En => "Model details",
+            Language::Fr => "Détails du modèle",
+        }
+    }
+
+    pub fn settings_effects_spectrum_appearance(&self) -> &'static str {
+        match self {
+            Language::Es => "Aspecto",
+            Language::En => "Appearance",
+            Language::Fr => "Apparence",
+        }
+    }
+
+    pub fn settings_effects_spectrum_geometry(&self) -> &'static str {
+        match self {
+            Language::Es => "Tamaño y posición",
+            Language::En => "Size and position",
+            Language::Fr => "Taille et position",
         }
     }
 
@@ -1871,6 +2011,14 @@ impl Language {
             Language::Es => "Todas",
             Language::En => "All",
             Language::Fr => "Tous",
+        }
+    }
+
+    pub fn explore_filter_type(&self) -> &'static str {
+        match self {
+            Language::Es => "Tipo:",
+            Language::En => "Type:",
+            Language::Fr => "Type :",
         }
     }
 

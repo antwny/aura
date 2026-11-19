@@ -68,6 +68,11 @@ impl OcclusionSnapshot {
         self.coverage.get(output).copied().unwrap_or(0.0)
     }
 
+    pub fn should_pause_parallax(&self, output: &str) -> bool {
+        self.available
+            && (self.maximized.contains(output) || self.coverage_for(output) >= 0.88)
+    }
+
     /// Whether this output should pause under `mode`.
     ///
     /// `Maximized` uses the compositor-reported state instead of raw coverage:
@@ -1216,6 +1221,28 @@ mod tests {
         snapshot.coverage.insert("eDP-1".into(), 0.75);
         assert_eq!(snapshot.coverage_for("eDP-1"), 0.75);
         assert_eq!(snapshot.coverage_for("HDMI-A-1"), 0.0);
+    }
+
+    #[test]
+    fn parallax_only_pauses_for_total_coverage_or_maximized_state() {
+        let mut snapshot = OcclusionSnapshot {
+            available: true,
+            ..OcclusionSnapshot::default()
+        };
+        for coverage in [0.25, 0.50, 0.75] {
+            snapshot.coverage.insert("eDP-1".into(), coverage);
+            assert!(!snapshot.should_pause_parallax("eDP-1"));
+        }
+        for coverage in [0.88, 0.9265, 0.95, 1.0] {
+            snapshot.coverage.insert("eDP-1".into(), coverage);
+            assert!(snapshot.should_pause_parallax("eDP-1"));
+        }
+        assert!(!snapshot.should_pause_parallax("HDMI-A-1"));
+        snapshot.coverage.insert("eDP-1".into(), 0.50);
+        snapshot.maximized.insert("eDP-1".into());
+        assert!(snapshot.should_pause_parallax("eDP-1"));
+        snapshot.available = false;
+        assert!(!snapshot.should_pause_parallax("eDP-1"));
     }
 
     #[test]

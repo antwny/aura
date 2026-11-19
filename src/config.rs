@@ -259,6 +259,8 @@ pub struct Config {
     pub parallax_enabled: bool,
     #[serde(default = "default_parallax_strength")]
     pub parallax_strength: f32,
+    #[serde(default = "default_true")]
+    pub parallax_auto_pause: bool,
     #[serde(default)]
     pub spectrum_enabled: bool,
     #[serde(default = "default_spectrum_bars")]
@@ -546,6 +548,7 @@ impl Default for Config {
             monitor_order: Vec::new(),
             parallax_enabled: false,
             parallax_strength: default_parallax_strength(),
+            parallax_auto_pause: true,
             spectrum_enabled: false,
             spectrum_bars: default_spectrum_bars(),
             spectrum_height_pct: default_spectrum_height(),
@@ -821,6 +824,7 @@ mod tests {
         assert!(!cfg.rotation_only_favorites);
         assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
         assert_eq!(cfg.backend, BackendPreference::Auto);
+        assert!(cfg.parallax_auto_pause);
         assert_eq!(cfg.spectrum_color_mode, SpectrumColorMode::Auto);
         assert_eq!(cfg.spectrum_position, SpectrumPosition::Bottom);
         assert_eq!(cfg.spectrum_style, SpectrumStyle::Bars);
@@ -854,11 +858,25 @@ mod tests {
             "keep_running_on_close": true
         }"#;
         let cfg: Config = serde_json::from_str(old_json).expect("legacy config");
+        assert!(cfg.parallax_auto_pause);
         assert_eq!(cfg.spectrum_color_mode, SpectrumColorMode::Auto);
         assert_eq!(cfg.spectrum_position, SpectrumPosition::Bottom);
         assert_eq!(cfg.spectrum_style, SpectrumStyle::Bars);
         assert_eq!(cfg.spectrum_bar_width_pct, 76);
         assert!(cfg.spectrum_glow);
+    }
+
+    #[test]
+    fn test_parallax_auto_pause_default_and_roundtrip() {
+        let mut config = Config::default();
+        assert!(config.parallax_auto_pause);
+        config.parallax_auto_pause = false;
+        let mut json = serde_json::to_value(&config).unwrap();
+        let restored: Config = serde_json::from_value(json.clone()).unwrap();
+        assert!(!restored.parallax_auto_pause);
+        json.as_object_mut().unwrap().remove("parallax_auto_pause");
+        let legacy: Config = serde_json::from_value(json).unwrap();
+        assert!(legacy.parallax_auto_pause);
     }
 
     #[test]

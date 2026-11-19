@@ -9,9 +9,10 @@
 //! Aura writes a JSON config and spawns this binary; it exits automatically
 //! when its parent process disappears.
 
+use std::collections::HashSet;
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
-use std::os::fd::AsRawFd;
+use std::io::{self, BufRead, BufReader, Write};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::ptr::NonNull;
@@ -153,6 +154,98 @@ fn default_bar_width() -> u32 {
 }
 fn default_glow() -> bool {
     true
+}
+
+const CONTROL_MAX_OUTPUTS: usize = 64;
+const CONTROL_MAX_NAME_BYTES: usize = 256;
+const CONTROL_MAX_MESSAGE_BYTES: usize = 4096;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlSnapshot {
+    paused_outputs: Vec<String>,
+}
+
+#[derive(Default)]
+struct ControlParser {
+    buffer: Vec<u8>,
+}
+
+impl ControlParser {
+    fn push(&mut self, bytes: &[u8]) -> Result<Option<HashSet<String>>, String> {
+        let mut latest = None;
+        for &byte in bytes {
+            if byte == b'\n' {
+                let snapshot: ControlSnapshot = serde_json::from_slice(&self.buffer)
+                    .map_err(|error| format!("Invalid control snapshot: {error}"))?;
+                if snapshot.paused_outputs.len() > CONTROL_MAX_OUTPUTS
+                    || snapshot.paused_outputs.iter().any(|name| {
+                        name.is_empty() || name.len() > CONTROL_MAX_NAME_BYTES
+                    })
+                {
+                    return Err("Control snapshot exceeds output/name limits".into());
+                }
+                latest = Some(snapshot.paused_outputs.into_iter().collect());
+                self.buffer.clear();
+            } else {
+                if self.buffer.len() >= CONTROL_MAX_MESSAGE_BYTES - 1 {
+                    return Err("Control snapshot exceeds 4096 bytes".into());
+                }
+                self.buffer.push(byte);
+            }
+        }
+        Ok(latest)
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        let incomplete = !self.buffer.is_empty();
+        self.buffer.clear();
+        if incomplete {
+            Err("Incomplete control snapshot at EOF".into())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+struct ControlInput {
+    fd: OwnedFd,
+    parser: ControlParser,
+    read_after: Instant,
+}
+
+impl ControlInput {
+    fn stdin() -> io::Result<Self> {
+        let flags = unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_GETFL) };
+        if flags < 0
+            || unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        let fd = unsafe { OwnedFd::from_raw_fd(libc::STDIN_FILENO) };
+        Ok(Self { fd, parser: ControlParser::default(), read_after: Instant::now() })
+    }
+
+    fn read_updates(&mut self) -> Result<(Option<HashSet<String>>, bool), String> {
+        let mut bytes = [0u8; CONTROL_MAX_MESSAGE_BYTES];
+        let count = unsafe {
+            libc::read(self.fd.as_raw_fd(), bytes.as_mut_ptr().cast(), bytes.len())
+        };
+        if count < 0 {
+            let error = io::Error::last_os_error();
+            return if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) {
+                Ok((None, false))
+            } else {
+                Err(format!("Cannot read control stdin: {error}"))
+            };
+        }
+        if count == 0 {
+            self.parser.finish()?;
+            return Ok((None, true));
+        }
+        self.read_after = Instant::now() + Duration::from_millis(16);
+        Ok((self.parser.push(&bytes[..count as usize])?, false))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +580,7 @@ struct EffectSurface {
     output_name: String,
     cursor: [f32; 2],
     last_cursor_update: Instant,
+    paused: bool,
     needs_redraw: bool,
     layer: LayerSurface,
     wsurf: wgpu::Surface<'static>,
@@ -535,11 +629,13 @@ struct App {
 fn main() {
     let mut config_path: Option<PathBuf> = None;
     let mut parent_pid: Option<u32> = None;
+    let mut control_stdin = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--config" => config_path = args.next().map(PathBuf::from),
             "--parent-pid" => parent_pid = args.next().and_then(|v| v.parse().ok()),
+            "--control-stdin" => control_stdin = true,
             other => eprintln!("aura-effects: ignoring unknown argument {other}"),
         }
     }
@@ -563,13 +659,18 @@ fn main() {
         std::process::exit(0);
     }
 
-    if let Err(error) = run(config, parent_pid) {
+    if let Err(error) = run(config, parent_pid, control_stdin) {
         eprintln!("aura-effects: {error}");
         std::process::exit(1);
     }
 }
 
-fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+fn run(
+    config: EffectsConfig,
+    parent_pid: Option<u32>,
+    control_stdin: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut control = control_stdin.then(ControlInput::stdin).transpose()?;
     // Leave through the render loop so cursor sessions close before the process exits.
     for signal in [libc::SIGTERM, libc::SIGINT] {
         unsafe {
@@ -867,28 +968,58 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
             app.shutdown();
             return Ok(());
         }
-        // Dispatch Wayland events with a short timeout so rendering can be
-        // paced without a separate thread.
         event_queue.flush()?;
         if let Some(guard) = event_queue.prepare_read() {
-            let fd = guard.connection_fd();
+            let now = Instant::now();
             let audio_active = app.last_active_at.elapsed() < Duration::from_millis(1500);
-            let timeout = if has_parallax || (has_spectrum && audio_active) {
-                16
-            } else if has_spectrum {
-                50
+            let redraw = app.surfaces.iter().any(|surface| surface.needs_redraw);
+            let interval = frame_interval(app.active_parallax() || redraw, has_spectrum, audio_active);
+            let mut timeout = interval.saturating_sub(now.duration_since(last_draw));
+            let control_fd = match control.as_ref() {
+                Some(input) if now >= input.read_after => input.fd.as_raw_fd(),
+                Some(input) => {
+                    timeout = timeout.min(input.read_after.duration_since(now));
+                    -1
+                }
+                None => -1,
+            };
+            let mut pollfds = [
+                libc::pollfd { fd: guard.connection_fd().as_raw_fd(), events: libc::POLLIN, revents: 0 },
+                libc::pollfd { fd: control_fd, events: libc::POLLIN, revents: 0 },
+            ];
+            let timeout_ms = timeout.as_millis() + u128::from(timeout.subsec_nanos() % 1_000_000 != 0);
+            let ready = unsafe { libc::poll(pollfds.as_mut_ptr(), 2, timeout_ms as i32) };
+            if ready < 0 {
+                let error = io::Error::last_os_error();
+                if error.kind() != io::ErrorKind::Interrupted {
+                    return Err(error.into());
+                }
+            }
+            if pollfds[0].revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP) != 0 {
+                guard.read()?;
             } else {
-                120
-            };
-            let mut pollfd = libc::pollfd {
-                fd: fd.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            let ready = unsafe { libc::poll(&mut pollfd, 1, timeout) } > 0
-                && (pollfd.revents & libc::POLLIN) != 0;
-            if ready {
-                let _ = guard.read();
+                drop(guard);
+            }
+            if pollfds[1].revents != 0 {
+                let update = if pollfds[1].revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                    Err("Control stdin disconnected".into())
+                } else {
+                    control.as_mut().unwrap().read_updates()
+                };
+                match update {
+                    Ok((snapshot, false)) => {
+                        if let Some(snapshot) = snapshot {
+                            app.set_paused_outputs(&snapshot);
+                        }
+                    }
+                    closed => {
+                        if let Err(error) = closed {
+                            eprintln!("aura-effects: {error}");
+                        }
+                        control = None;
+                        app.set_paused_outputs(&HashSet::new());
+                    }
+                }
             }
         }
         event_queue.dispatch_pending(&mut app)?;
@@ -919,12 +1050,9 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
 
         let active = app.last_active_at.elapsed() < Duration::from_millis(1500);
         let now = Instant::now();
-        let frame_budget = if has_parallax || (has_spectrum && active) {
-            16
-        } else {
-            50
-        };
-        if now.duration_since(last_draw) >= Duration::from_millis(frame_budget) {
+        let redraw = app.surfaces.iter().any(|surface| surface.needs_redraw);
+        let frame_budget = frame_interval(app.active_parallax() || redraw, has_spectrum, active);
+        if now.duration_since(last_draw) >= frame_budget {
             last_draw = now;
             app.draw_all(started.elapsed().as_secs_f32(), active, cursor.as_ref());
         }
@@ -1142,6 +1270,7 @@ fn create_effect_surface(
         output_name: pending.output_name,
         cursor: [0.0; 2],
         last_cursor_update: Instant::now(),
+        paused: false,
         needs_redraw: true,
         layer: pending.layer,
         wsurf,
@@ -1218,6 +1347,21 @@ fn create_texture(
     texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
+/// Returns `true` if the paused state changed, allowing the caller to skip
+/// work when nothing changed.  When pausing, the last cursor timestamp is
+/// frozen so that the cursor smoother does not jump on resume.
+fn set_cursor_paused(paused: &mut bool, new_value: bool, last_cursor: &mut Instant, now: Instant) -> bool {
+    if *paused == new_value {
+        return false;
+    }
+    *paused = new_value;
+    if !new_value {
+        // Resuming – reset cursor timestamp so the smoother picks up from "now"
+        *last_cursor = now;
+    }
+    true
+}
+
 impl EffectSurface {
     fn configure(&mut self, gpu: &Gpu) {
         if self.size.0 == 0 || self.size.1 == 0 {
@@ -1242,6 +1386,28 @@ impl EffectSurface {
 }
 
 impl App {
+    fn active_parallax(&self) -> bool {
+        self.surfaces.iter().any(|surface| surface.kind == Kind::Parallax && !surface.paused)
+    }
+
+    fn set_paused_outputs(&mut self, outputs: &HashSet<String>) {
+        let now = Instant::now();
+        for surface in self.surfaces.iter_mut().filter(|surface| surface.kind == Kind::Parallax) {
+            let paused = outputs.contains(&surface.output_name);
+            if !set_cursor_paused(&mut surface.paused, paused, &mut surface.last_cursor_update, now) {
+                continue;
+            }
+            if !paused {
+                surface.needs_redraw = true;
+            }
+            eprintln!(
+                "aura-effects: parallax {} on {}",
+                if paused { "frozen" } else { "resumed" },
+                surface.output_name,
+            );
+        }
+    }
+
     fn reconfigure_all(&mut self) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
@@ -1344,25 +1510,23 @@ impl App {
             if !surface.configured {
                 continue;
             }
-            let interval = if surface.kind == Kind::Parallax || audio_active {
-                Duration::from_millis(16)
-            } else {
-                Duration::from_millis(50)
-            };
-            let dt = surface.last_drawn.elapsed();
-            if dt < interval {
+            if !redraw_due(surface.kind, surface.paused, surface.needs_redraw, surface.last_drawn.elapsed(), audio_active) {
                 continue;
             }
+            let previous_cursor = surface.cursor;
             if surface.kind == Kind::Parallax {
-                let target = cursor
-                    .map(|tracker| tracker.position(&surface.output_name))
-                    .unwrap_or([0.0; 2]);
-                let moved = smooth_cursor(
+                let target = if surface.paused {
+                    surface.cursor
+                } else {
+                    cursor.map(|tracker| tracker.position(&surface.output_name)).unwrap_or([0.0; 2])
+                };
+                let moved = smooth_active_cursor(
                     &mut surface.cursor,
                     target,
-                    surface.last_cursor_update.elapsed().as_secs_f32(),
+                    &mut surface.last_cursor_update,
+                    Instant::now(),
+                    surface.paused,
                 );
-                surface.last_cursor_update = Instant::now();
                 if !moved && !surface.needs_redraw {
                     continue;
                 }
@@ -1370,9 +1534,41 @@ impl App {
             if draw_surface(gpu, surface, levels, elapsed) {
                 surface.needs_redraw = false;
                 surface.last_drawn = Instant::now();
+            } else {
+                surface.cursor = previous_cursor;
             }
         }
     }
+}
+
+fn frame_interval(active_parallax: bool, has_spectrum: bool, audio_active: bool) -> Duration {
+    Duration::from_millis(if active_parallax || (has_spectrum && audio_active) {
+        16
+    } else if has_spectrum {
+        50
+    } else {
+        1000
+    })
+}
+
+fn redraw_due(kind: Kind, paused: bool, dirty: bool, since_draw: Duration, audio_active: bool) -> bool {
+    dirty || (!(kind == Kind::Parallax && paused)
+        && since_draw >= frame_interval(kind == Kind::Parallax, kind == Kind::Spectrum, audio_active))
+}
+
+fn smooth_active_cursor(
+    current: &mut [f32; 2],
+    target: [f32; 2],
+    last_update: &mut Instant,
+    now: Instant,
+    paused: bool,
+) -> bool {
+    if paused {
+        return false;
+    }
+    let moved = smooth_cursor(current, target, now.duration_since(*last_update).as_secs_f32());
+    *last_update = now;
+    moved
 }
 
 fn smooth_cursor(current: &mut [f32; 2], target: [f32; 2], dt: f32) -> bool {

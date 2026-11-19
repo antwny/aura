@@ -4,7 +4,7 @@ use crate::config::{
 use crate::engine::backend::{Backend, DesktopEnvironment};
 use crate::engine::{detect_outputs, MonitorOutput, WallpaperEngine};
 use crate::scanner::{scan_directories, thumbs::generate_thumbnail, VideoItem};
-use crate::online::filters::{CategoryFilter, ResolutionFilter};
+use crate::online::filters::{CategoryFilter, MediaFilter, ResolutionFilter};
 use crate::online::{
     download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
     fetch_desktophut_wallpapers, fetch_livewallpapers4free_page, fetch_lively_wallpapers,
@@ -28,6 +28,32 @@ use std::time::{Duration, Instant};
 /// Number of unified results rendered on the first Explore paint. The rest of
 /// the fetched page is revealed locally before another network request.
 const UNIFIED_INITIAL_VISIBLE: usize = 72;
+
+fn parallax_paused_outputs(
+    config: &Config,
+    outputs: &[MonitorOutput],
+    snapshot: Option<&crate::toplevels::OcclusionSnapshot>,
+    global_pause: bool,
+) -> std::collections::HashSet<String> {
+    if !config.parallax_enabled || !config.parallax_auto_pause {
+        return std::collections::HashSet::new();
+    }
+    outputs
+        .iter()
+        .filter(|output| {
+            config
+                .wallpaper_for(&output.name)
+                .is_some_and(|path| is_static_image(Path::new(path)))
+                && (global_pause
+                    || snapshot.is_some_and(|snapshot| snapshot.should_pause_parallax(&output.name)))
+        })
+        .map(|output| output.name.clone())
+        .collect()
+}
+
+fn unified_response_matches(current_token: u64, expected_page: u32, token: u64, page: u32) -> bool {
+    current_token == token && expected_page == page
+}
 
 const SWITCHER_SCROLL_THRESHOLD: f32 = 60.0;
 
@@ -171,6 +197,18 @@ pub enum EffectsDepthStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectsParallaxStatus {
+    Disabled,
+    Unsupported,
+    NoImage,
+    ModelMissing,
+    Generating,
+    Ready,
+    Paused,
+    Failed,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EffectsModelStatus {
     Absent,
@@ -230,6 +268,9 @@ pub enum Message {
     SelectGpuPreference(String),
     SelectBackendPreference(BackendPreference),
     ToggleParallax(bool),
+    ToggleParallaxAutoPause(bool),
+    ToggleEffectsDiagnostics,
+    ToggleDepthModelDetails,
     SetParallaxStrength(f32),
     DownloadDepthModel,
     CancelDepthModelDownload,
@@ -400,8 +441,16 @@ pub enum Message {
     UnifiedSearchChanged(String),
     SubmitUnifiedSearch,
     ClearUnifiedSearch,
-    UnifiedSearchFetched(Result<crate::online::UnifiedSearchPage, String>),
-    UnifiedMoreFetched(Result<crate::online::UnifiedSearchPage, String>),
+    UnifiedSearchFetched {
+        token: u64,
+        result: Result<crate::online::UnifiedSearchPage, String>,
+    },
+    UnifiedMoreFetched {
+        token: u64,
+        page: u32,
+        result: Result<crate::online::UnifiedSearchPage, String>,
+    },
+    UnifiedMediaChanged(MediaFilter),
     SelectUnifiedSourceFilter(Option<OnlineSource>),
     UnifiedCategoryChanged(Option<CategoryFilter>),
     UnifiedResolutionChanged(Option<ResolutionFilter>),
@@ -576,6 +625,9 @@ pub struct AuraApp {
     pub(crate) effects_depth_status: EffectsDepthStatus,
     pub(crate) effects_model_status: EffectsModelStatus,
     pub(crate) effects_renderer_status: crate::effects::EffectsStatus,
+    pub(crate) effects_parallax_paused_outputs: std::collections::HashSet<String>,
+    pub(crate) effects_diagnostics_expanded: bool,
+    pub(crate) effects_model_details_expanded: bool,
     pub(crate) spectrum_color1_picker: cosmic::widget::color_picker::ColorPickerModel,
     pub(crate) spectrum_color2_picker: cosmic::widget::color_picker::ColorPickerModel,
     effects_sync_token: u64,
@@ -636,6 +688,8 @@ pub struct AuraApp {
     pub(crate) unified_source_filter: Option<OnlineSource>,
     pub(crate) unified_category: Option<CategoryFilter>,
     pub(crate) unified_resolution: Option<ResolutionFilter>,
+    pub(crate) unified_media: MediaFilter,
+    unified_request_token: u64,
     pub(crate) unified_skipped: Vec<OnlineSource>,
     pub(crate) unified_errors: Vec<String>,
     pub(crate) livewallpapers4free_wallpapers: Vec<OnlineWallpaperItem>,
@@ -1013,11 +1067,16 @@ impl AuraApp {
     }
 
     fn refresh_unified_explore(&mut self) -> Task<cosmic::Action<Message>> {
+        self.unified_request_token = self.unified_request_token.wrapping_add(1);
+        let token = self.unified_request_token;
         self.unified_page = 1;
         self.unified_visible = UNIFIED_INITIAL_VISIBLE;
-        self.unified_has_more = true;
+        self.unified_has_more = false;
+        self.unified_skipped.clear();
+        self.unified_errors.clear();
         self.explore_source = OnlineSource::Unified;
         self.explore_loading = true;
+        self.explore_loading_more = false;
         self.explore_error = None;
         let client = self.http_client.clone();
         let query = if self.unified_search.trim().is_empty() {
@@ -1028,6 +1087,7 @@ impl AuraApp {
         let filter = self.unified_source_filter;
         let category = self.unified_category;
         let resolution = self.unified_resolution;
+        let media = self.unified_media;
         Task::batch([
             self.scroll_to_top(self.explore_scroll_id.clone()),
             Task::perform(
@@ -1039,16 +1099,73 @@ impl AuraApp {
                         filter,
                         category,
                         resolution,
+                        media,
                     )
                     .await
                 },
-                |res| cosmic::Action::App(Message::UnifiedSearchFetched(res)),
+                move |result| cosmic::Action::App(Message::UnifiedSearchFetched { token, result }),
             ),
         ])
     }
 
+    fn needs_occlusion_watcher(&self) -> bool {
+        self.occlusion_watcher_supported()
+            && ((self.config.auto_pause && self.uses_mpvpaper())
+                || (self.config.parallax_enabled && self.config.parallax_auto_pause))
+            && !self.config.wallpapers.is_empty()
+    }
+
+    pub(crate) fn parallax_status_for(&self, output: &str) -> EffectsParallaxStatus {
+        if !self.config.parallax_enabled {
+            return EffectsParallaxStatus::Disabled;
+        }
+        if !crate::effects::renderer_supported() {
+            return EffectsParallaxStatus::Unsupported;
+        }
+        let Some(path) = self.config.wallpaper_for(output).map(Path::new) else {
+            return EffectsParallaxStatus::NoImage;
+        };
+        if !path.is_file() || !is_static_image(path) {
+            return EffectsParallaxStatus::NoImage;
+        }
+        if matches!(self.effects_renderer_status, crate::effects::EffectsStatus::Failed(_))
+            || self.depth_generation_failed.contains(path)
+        {
+            return EffectsParallaxStatus::Failed;
+        }
+        if !crate::depth::depth_map_path(path).is_file() {
+            return if self.depth_generation_pending.contains(path) {
+                EffectsParallaxStatus::Generating
+            } else if !crate::depth::model_present() {
+                EffectsParallaxStatus::ModelMissing
+            } else {
+                EffectsParallaxStatus::Generating
+            };
+        }
+        if self.effects_parallax_paused_outputs.contains(output) {
+            EffectsParallaxStatus::Paused
+        } else {
+            EffectsParallaxStatus::Ready
+        }
+    }
+
     fn sync_effects_renderer(&mut self) {
-        if let Err(error) = self.effects_manager.sync(&self.config, &self.outputs) {
+        if self.needs_occlusion_watcher() {
+            crate::toplevels::start();
+        }
+        let snapshot = crate::toplevels::snapshot()
+            .filter(|snapshot| snapshot.available && crate::toplevels::watcher_alive());
+        self.effects_parallax_paused_outputs = parallax_paused_outputs(
+            &self.config,
+            &self.outputs,
+            snapshot.as_ref(),
+            self.auto_pause_global_reason(),
+        );
+        if let Err(error) = self.effects_manager.sync(
+            &self.config,
+            &self.outputs,
+            &self.effects_parallax_paused_outputs,
+        ) {
             eprintln!("[Aura] Could not sync wallpaper effects: {error}");
         }
         self.effects_renderer_status = self.effects_manager.status();
@@ -1372,6 +1489,7 @@ impl AuraApp {
     /// (game mode, battery, locked session) always win.
     fn apply_occlusion_state(&mut self) -> Task<cosmic::Action<Message>> {
         if !self.uses_mpvpaper() {
+            self.sync_effects_renderer();
             return Task::none();
         }
         let global_reason = self.auto_pause_global_reason();
@@ -2174,6 +2292,9 @@ impl cosmic::Application for AuraApp {
                 EffectsModelStatus::Absent
             },
             effects_renderer_status: crate::effects::EffectsStatus::Disabled,
+            effects_parallax_paused_outputs: std::collections::HashSet::new(),
+            effects_diagnostics_expanded: false,
+            effects_model_details_expanded: false,
             spectrum_color1_picker,
             spectrum_color2_picker,
             effects_sync_token: 0,
@@ -2232,6 +2353,8 @@ impl cosmic::Application for AuraApp {
             unified_source_filter: None,
             unified_category: None,
             unified_resolution: None,
+            unified_media: MediaFilter::All,
+            unified_request_token: 0,
             unified_skipped: Vec::new(),
             unified_errors: Vec::new(),
             livewallpapers4free_wallpapers: Vec::new(),
@@ -2307,7 +2430,7 @@ impl cosmic::Application for AuraApp {
         // Tiling compositors leave part of the wallpaper visible, so
         // mpvpaper's frame-callback pause never triggers for tiled windows.
         // Start Aura's own occlusion watcher where one is available.
-        if app.config.auto_pause && app.uses_mpvpaper() && app.occlusion_watcher_supported() {
+        if app.needs_occlusion_watcher() {
             crate::toplevels::start();
         }
 
@@ -2644,13 +2767,14 @@ impl cosmic::Application for AuraApp {
             );
         }
 
-        if self.config.auto_pause
-            && self.uses_mpvpaper()
-            && self.occlusion_watcher_supported()
-            && !self.config.wallpapers.is_empty()
-        {
+        if self.needs_occlusion_watcher() {
+            let interval = if self.config.parallax_enabled && self.config.parallax_auto_pause {
+                250
+            } else {
+                700
+            };
             subs.push(
-                cosmic::iced::time::every(Duration::from_millis(700))
+                cosmic::iced::time::every(Duration::from_millis(interval))
                     .map(|_| Message::OcclusionTick)
             );
         }
@@ -2963,6 +3087,20 @@ impl cosmic::Application for AuraApp {
                 }
                 let _ = self.config.save();
                 return self.sync_effects();
+            }
+
+            Message::ToggleParallaxAutoPause(enabled) => {
+                self.config.parallax_auto_pause = enabled;
+                let _ = self.config.save();
+                self.sync_effects_renderer();
+            }
+
+            Message::ToggleEffectsDiagnostics => {
+                self.effects_diagnostics_expanded = !self.effects_diagnostics_expanded;
+            }
+
+            Message::ToggleDepthModelDetails => {
+                self.effects_model_details_expanded = !self.effects_model_details_expanded;
             }
 
             Message::SetParallaxStrength(strength) => {
@@ -5626,10 +5764,11 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::OcclusionTick => {
-                if !self.config.auto_pause
-                    || !self.uses_mpvpaper()
-                    || !self.occlusion_watcher_supported()
-                {
+                if !self.needs_occlusion_watcher() {
+                    return Task::none();
+                }
+                self.sync_effects_renderer();
+                if !self.config.auto_pause || !self.uses_mpvpaper() {
                     return Task::none();
                 }
                 let Some(snapshot) = crate::toplevels::snapshot() else {
@@ -5873,31 +6012,7 @@ impl cosmic::Application for AuraApp {
                 };
 
                 if source == OnlineSource::Unified {
-                    self.unified_page = 1;
-                    self.unified_visible = UNIFIED_INITIAL_VISIBLE;
-                    self.unified_has_more = true;
-                    let query = if self.unified_search.trim().is_empty() {
-                        None
-                    } else {
-                        Some(self.unified_search.clone())
-                    };
-                    let filter = self.unified_source_filter;
-                    let category = self.unified_category;
-                    let resolution = self.unified_resolution;
-                    return Task::perform(
-                        async move {
-                            fetch_unified_wallpapers(
-                                &client,
-                                1,
-                                query.as_deref(),
-                                filter,
-                                category,
-                                resolution,
-                            )
-                            .await
-                        },
-                        |res| cosmic::Action::App(Message::UnifiedSearchFetched(res)),
-                    );
+                    return self.refresh_unified_explore();
                 }
 
                 if source == OnlineSource::LiveWallpapers4Free {
@@ -6063,8 +6178,12 @@ impl cosmic::Application for AuraApp {
                 let source = self.explore_source;
 
                 if source == OnlineSource::Unified {
-                    self.unified_page += 1;
-                    let page = self.unified_page;
+                    if !self.unified_has_more {
+                        self.explore_loading_more = false;
+                        return Task::none();
+                    }
+                    let page = self.unified_page + 1;
+                    let token = self.unified_request_token;
                     let query = if self.unified_search.trim().is_empty() {
                         None
                     } else {
@@ -6073,6 +6192,7 @@ impl cosmic::Application for AuraApp {
                     let filter = self.unified_source_filter;
                     let category = self.unified_category;
                     let resolution = self.unified_resolution;
+                    let media = self.unified_media;
                     return Task::perform(
                         async move {
                             fetch_unified_wallpapers(
@@ -6082,10 +6202,11 @@ impl cosmic::Application for AuraApp {
                                 filter,
                                 category,
                                 resolution,
+                                media,
                             )
                             .await
                         },
-                        |res| cosmic::Action::App(Message::UnifiedMoreFetched(res)),
+                        move |result| cosmic::Action::App(Message::UnifiedMoreFetched { token, page, result }),
                     );
                 }
 
@@ -6361,92 +6482,27 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::SubmitUnifiedSearch => {
-                self.unified_page = 1;
-                self.unified_visible = UNIFIED_INITIAL_VISIBLE;
-                self.unified_has_more = true;
-                self.explore_source = OnlineSource::Unified;
-                self.explore_loading = true;
-                self.explore_error = None;
-                let client = self.http_client.clone();
-                let query = if self.unified_search.trim().is_empty() {
-                    None
-                } else {
-                    Some(self.unified_search.clone())
-                };
-                let filter = self.unified_source_filter;
-                let category = self.unified_category;
-                let resolution = self.unified_resolution;
-                return Task::batch([
-                    self.scroll_to_top(self.explore_scroll_id.clone()),
-                    Task::perform(
-                        async move {
-                            fetch_unified_wallpapers(
-                                &client,
-                                1,
-                                query.as_deref(),
-                                filter,
-                                category,
-                                resolution,
-                            )
-                            .await
-                        },
-                        |res| cosmic::Action::App(Message::UnifiedSearchFetched(res)),
-                    ),
-                ]);
+                return self.refresh_unified_explore();
             }
 
             Message::ClearUnifiedSearch => {
                 self.unified_search.clear();
                 if self.explore_source == OnlineSource::Unified {
-                    self.unified_page = 1;
-                    self.unified_visible = UNIFIED_INITIAL_VISIBLE;
-                    self.explore_loading = true;
-                    self.explore_error = None;
-                    let client = self.http_client.clone();
-                    let filter = self.unified_source_filter;
-                    let category = self.unified_category;
-                    let resolution = self.unified_resolution;
-                    return Task::perform(
-                        async move {
-                            fetch_unified_wallpapers(
-                                &client, 1, None, filter, category, resolution,
-                            )
-                            .await
-                        },
-                        |res| cosmic::Action::App(Message::UnifiedSearchFetched(res)),
-                    );
+                    return self.refresh_unified_explore();
                 }
             }
 
             Message::SelectUnifiedSourceFilter(filter) => {
                 self.unified_source_filter = filter;
                 if self.explore_source == OnlineSource::Unified {
-                    self.unified_page = 1;
-                    self.unified_visible = UNIFIED_INITIAL_VISIBLE;
-                    self.explore_loading = true;
-                    self.explore_error = None;
-                    let client = self.http_client.clone();
-                    let query = if self.unified_search.trim().is_empty() {
-                        None
-                    } else {
-                        Some(self.unified_search.clone())
-                    };
-                    let category = self.unified_category;
-                    let resolution = self.unified_resolution;
-                    return Task::perform(
-                        async move {
-                            fetch_unified_wallpapers(
-                                &client,
-                                1,
-                                query.as_deref(),
-                                filter,
-                                category,
-                                resolution,
-                            )
-                            .await
-                        },
-                        |res| cosmic::Action::App(Message::UnifiedSearchFetched(res)),
-                    );
+                    return self.refresh_unified_explore();
+                }
+            }
+
+            Message::UnifiedMediaChanged(media) => {
+                if self.unified_media != media {
+                    self.unified_media = media;
+                    return self.refresh_unified_explore();
                 }
             }
 
@@ -6460,7 +6516,12 @@ impl cosmic::Application for AuraApp {
                 return self.refresh_unified_explore();
             }
 
-            Message::UnifiedSearchFetched(result) => {
+            Message::UnifiedSearchFetched { token, result } => {
+                if self.explore_source != OnlineSource::Unified
+                    || !unified_response_matches(self.unified_request_token, 1, token, 1)
+                {
+                    return Task::none();
+                }
                 self.explore_loading = false;
                 match result {
                     Ok(page) => {
@@ -6488,14 +6549,25 @@ impl cosmic::Application for AuraApp {
                 }
             }
 
-            Message::UnifiedMoreFetched(result) => {
+            Message::UnifiedMoreFetched { token, page, result } => {
+                if self.explore_source != OnlineSource::Unified
+                    || !unified_response_matches(
+                        self.unified_request_token,
+                        self.unified_page + 1,
+                        token,
+                        page,
+                    )
+                {
+                    return Task::none();
+                }
                 self.explore_loading_more = false;
                 match result {
-                    Ok(page) => {
-                        self.unified_has_more = page.has_more;
-                        self.unified_skipped = page.skipped.clone();
-                        self.unified_errors = page.errors.clone();
-                        for item in page.items {
+                    Ok(result_page) => {
+                        self.unified_page = page;
+                        self.unified_has_more = result_page.has_more;
+                        self.unified_skipped = result_page.skipped.clone();
+                        self.unified_errors = result_page.errors.clone();
+                        for item in result_page.items {
                             if !self.unified_wallpapers.iter().any(|e| e.id == item.id) {
                                 self.unified_wallpapers.push(item);
                             }
@@ -6508,9 +6580,6 @@ impl cosmic::Application for AuraApp {
                         return self.queue_thumbnails(&reveal);
                     }
                     Err(err) => {
-                        if self.unified_page > 1 {
-                            self.unified_page -= 1;
-                        }
                         return self.notify_error(format!(
                             "{} {}",
                             self.language.explore_error_prefix(),
@@ -7348,6 +7417,61 @@ mod tests {
     use super::*;
     use crate::engine::MonitorOutput;
     use std::collections::HashMap;
+
+    #[test]
+    fn parallax_pause_is_per_output_and_independent_of_video_pause() {
+        let mut config = Config::default();
+        config.parallax_enabled = true;
+        config.auto_pause = false;
+        config.wallpapers.insert("*".into(), "/wallpaper.jpg".into());
+        let outputs = vec![
+            MonitorOutput { name: "eDP-1".into(), ..MonitorOutput::default() },
+            MonitorOutput { name: "HDMI-A-1".into(), ..MonitorOutput::default() },
+        ];
+        let mut snapshot = crate::toplevels::OcclusionSnapshot {
+            available: true,
+            ..crate::toplevels::OcclusionSnapshot::default()
+        };
+        snapshot.maximized.insert("eDP-1".into());
+        snapshot.coverage.insert("HDMI-A-1".into(), 0.70);
+        assert_eq!(
+            parallax_paused_outputs(&config, &outputs, Some(&snapshot), false),
+            std::collections::HashSet::from(["eDP-1".into()]),
+        );
+        snapshot.coverage.insert("HDMI-A-1".into(), 0.95);
+        assert_eq!(parallax_paused_outputs(&config, &outputs, Some(&snapshot), false).len(), 2);
+        config.wallpapers.insert("HDMI-A-1".into(), "/wallpaper.mp4".into());
+        assert_eq!(parallax_paused_outputs(&config, &outputs, Some(&snapshot), false).len(), 1);
+        config.parallax_auto_pause = false;
+        assert!(parallax_paused_outputs(&config, &outputs, Some(&snapshot), true).is_empty());
+    }
+
+    #[test]
+    fn parallax_releases_stale_occlusion_and_respects_global_pause() {
+        let mut config = Config::default();
+        config.parallax_enabled = true;
+        config.wallpapers.insert("*".into(), "/wallpaper.png".into());
+        let outputs = vec![MonitorOutput { name: "eDP-1".into(), ..MonitorOutput::default() }];
+        let mut stale = crate::toplevels::OcclusionSnapshot::default();
+        stale.maximized.insert("eDP-1".into());
+        assert!(parallax_paused_outputs(&config, &outputs, Some(&stale), false).is_empty());
+        assert!(parallax_paused_outputs(&config, &outputs, None, false).is_empty());
+        assert_eq!(
+            parallax_paused_outputs(&config, &outputs, None, true),
+            std::collections::HashSet::from(["eDP-1".into()]),
+        );
+        config.parallax_enabled = false;
+        assert!(parallax_paused_outputs(&config, &outputs, None, true).is_empty());
+    }
+
+    #[test]
+    fn unified_responses_must_match_generation_and_requested_page() {
+        assert!(unified_response_matches(7, 1, 7, 1));
+        assert!(unified_response_matches(7, 2, 7, 2));
+        assert!(!unified_response_matches(8, 1, 7, 1));
+        assert!(!unified_response_matches(8, 2, 7, 2));
+        assert!(!unified_response_matches(8, 3, 8, 2));
+    }
 
     #[test]
     fn test_all_outputs_have_own_wallpaper() {

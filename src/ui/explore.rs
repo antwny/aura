@@ -1,5 +1,5 @@
 use crate::app::{AuraApp, Message};
-use crate::online::filters::{CategoryFilter, ResolutionFilter};
+use crate::online::filters::{CategoryFilter, MediaFilter, ResolutionFilter};
 use crate::online::{OnlineSource, OnlineWallpaperItem};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
@@ -118,6 +118,25 @@ impl AuraApp {
                 .on_press(Message::FetchOnlineWallpapers(OnlineSource::Unified)),
         );
 
+        let mut media_chips = vec![Element::from(widget::text::caption(
+            lang.explore_filter_type(),
+        ))];
+        for (media, label) in [
+            (MediaFilter::All, lang.library_filter_all()),
+            (MediaFilter::Static, lang.library_filter_static()),
+            (MediaFilter::Animated, lang.library_filter_live()),
+        ] {
+            media_chips.push(chip_button(
+                label,
+                self.unified_media == media,
+                Message::UnifiedMediaChanged(media),
+            ));
+        }
+        let media_row = widget::flex_row(media_chips)
+            .spacing(6)
+            .align_items(Alignment::Center)
+            .width(Length::Fill);
+
         let mut category_chips = vec![Element::from(widget::text::caption(
             lang.explore_filter_category(),
         ))];
@@ -156,9 +175,10 @@ impl AuraApp {
             .align_items(Alignment::Center)
             .width(Length::Fill);
 
-        let mut header = widget::column::with_capacity(4)
+        let mut header = widget::column::with_capacity(5)
             .spacing(8)
             .push(search_row)
+            .push(media_row)
             .push(category_row)
             .push(resolution_row);
 
@@ -309,6 +329,15 @@ impl AuraApp {
                         .on_press(Message::ClearUnifiedSearch),
                 );
             }
+            if self.unified_has_more {
+                let load_more = if is_loading_more {
+                    widget::button::standard(lang.explore_btn_loading_more())
+                } else {
+                    widget::button::suggested(lang.explore_btn_load_more())
+                        .on_press(Message::LoadMoreOnlineWallpapers)
+                };
+                actions = actions.push(load_more);
+            }
             let empty_content = widget::column::with_capacity(3)
                 .spacing(10)
                 .align_x(Horizontal::Center)
@@ -333,6 +362,29 @@ impl AuraApp {
             );
         }
 
+        // Bulk pre-scan directories once instead of doing hundreds of synchronous stat syscalls in the render pass
+        let (downloaded_files, cached_thumbs) = {
+            let mut d_files = std::collections::HashSet::new();
+            if let Ok(entries) = std::fs::read_dir(crate::online::wallpapers_online_dir()) {
+                for entry in entries.flatten() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        d_files.insert(name);
+                    }
+                }
+            }
+            let mut t_files = std::collections::HashSet::new();
+            if let Ok(entries) = std::fs::read_dir(crate::online::thumbs_online_cache_dir()) {
+                for entry in entries.flatten() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        t_files.insert(name);
+                    }
+                }
+            }
+            (d_files, t_files)
+        };
+        let active_paths_set: std::collections::HashSet<String> =
+            active_wallpapers.values().cloned().collect();
+
         let grid = widget::responsive(move |size| {
             let gap = 16.0f32;
             let available_w = size.width.max(280.0);
@@ -356,19 +408,38 @@ impl AuraApp {
                     .width(Length::Fill);
                 for item in chunk {
                     let is_downloading = downloading_ids.contains(&item.id);
-                    let downloaded_path = item.is_downloaded();
+                    let downloaded_path = {
+                        let dir = crate::online::wallpapers_online_dir();
+                        let filename = item.wallpaper_filename();
+                        if downloaded_files.contains(&filename) {
+                            Some(dir.join(filename))
+                        } else {
+                            let prefix = item.source_prefix();
+                            let mut found = None;
+                            for ext in &["mp4", "webm", "jpg", "jpeg", "png", "webp"] {
+                                let clean = crate::online::clean_filename(prefix, &item.id, ext);
+                                if downloaded_files.contains(&clean) {
+                                    found = Some(dir.join(clean));
+                                    break;
+                                }
+                            }
+                            found
+                        }
+                    };
                     let is_active = if let Some(dp) = &downloaded_path {
-                        active_wallpapers
-                            .values()
-                            .any(|p| p == &dp.to_string_lossy().to_string())
+                        active_paths_set.contains(&dp.to_string_lossy().to_string())
                     } else {
                         false
                     };
 
                     let thumb_path = online_thumbs.get(&item.id).cloned().or_else(|| {
-                        let p = item.local_thumb_path();
-                        if p.exists() {
-                            Some(p)
+                        let filename = crate::online::clean_filename(
+                            item.source_prefix(),
+                            &item.id,
+                            item.thumb_extension(),
+                        );
+                        if cached_thumbs.contains(&filename) {
+                            Some(crate::online::thumbs_online_cache_dir().join(filename))
                         } else {
                             None
                         }

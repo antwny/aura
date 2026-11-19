@@ -3,9 +3,12 @@
 use crate::config::Config;
 use crate::engine::outputs::MonitorOutput;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
+use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectsStatus {
@@ -20,6 +23,11 @@ pub struct EffectsManager {
     config_path: Option<PathBuf>,
     last_config: Option<String>,
     last_error: Option<String>,
+    desired_paused: Vec<u8>,
+    last_sent_paused: Option<Vec<u8>>,
+    control_stdin: Option<ChildStdin>,
+    control_pipe_buf: usize,
+    control_error: Option<String>,
     palette_cache: std::collections::HashMap<(PathBuf, bool), (u64, ([u8; 3], [u8; 3], [u8; 3]))>,
 }
 
@@ -117,7 +125,12 @@ impl EffectsManager {
     /// deliberately independent from video pause state: a paused wallpaper
     /// should not hide the spectrum, and a static wallpaper has no player to
     /// pause at all.
-    pub fn sync(&mut self, config: &Config, outputs: &[MonitorOutput]) -> Result<(), String> {
+    pub fn sync(
+        &mut self,
+        config: &Config,
+        outputs: &[MonitorOutput],
+        paused_outputs: &HashSet<String>,
+    ) -> Result<(), String> {
         if !config.parallax_enabled && !config.spectrum_enabled {
             self.stop();
             return Ok(());
@@ -195,6 +208,7 @@ impl EffectsManager {
             return Ok(());
         }
 
+        self.desired_paused = paused_snapshot(paused_outputs)?;
         let config_text = serde_json::to_string(&EffectsConfig {
             outputs: effect_outputs,
         })
@@ -202,7 +216,7 @@ impl EffectsManager {
 
         if self.last_config.as_deref() == Some(config_text.as_str()) {
             if self.child_is_running() {
-                return Ok(());
+                return self.flush_control();
             }
             return self.start_child();
         }
@@ -230,7 +244,10 @@ impl EffectsManager {
 
     pub fn status(&mut self) -> EffectsStatus {
         if self.child_is_running() {
-            return EffectsStatus::Running;
+            return match &self.control_error {
+                Some(error) => EffectsStatus::Failed(error.clone()),
+                None => EffectsStatus::Running,
+            };
         }
         match &self.last_error {
             Some(error) => EffectsStatus::Failed(error.clone()),
@@ -245,9 +262,18 @@ impl EffectsManager {
         }
         self.last_config = None;
         self.last_error = None;
+        self.desired_paused.clear();
+    }
+
+    fn reset_control(&mut self) {
+        self.control_stdin = None;
+        self.last_sent_paused = None;
+        self.control_pipe_buf = 0;
+        self.control_error = None;
     }
 
     fn stop_renderer(&mut self) {
+        self.reset_control();
         if let Some(mut child) = self.child.take() {
             if matches!(child.try_wait(), Ok(None)) {
                 terminate_renderer(&mut child);
@@ -264,6 +290,7 @@ impl EffectsManager {
             Ok(None) => true,
             Ok(Some(status)) => {
                 self.child = None;
+                self.reset_control();
                 self.last_error = Some(format!(
                     "El renderizador terminó inesperadamente ({status}); revisa {}",
                     log_path().display()
@@ -272,9 +299,39 @@ impl EffectsManager {
             }
             Err(error) => {
                 self.child = None;
+                self.reset_control();
                 self.last_error = Some(format!("No se pudo consultar el renderizador: {error}"));
                 false
             }
+        }
+    }
+
+    fn fail_control(&mut self, error: io::Error) -> String {
+        let message = format!("No se pudo controlar el paralaje: {error}");
+        self.control_stdin = None;
+        self.last_sent_paused = None;
+        self.control_error = Some(message.clone());
+        message
+    }
+
+    fn flush_control(&mut self) -> Result<(), String> {
+        if let Some(error) = &self.control_error {
+            return Err(error.clone());
+        }
+        if self.last_sent_paused.as_ref() == Some(&self.desired_paused) {
+            return Ok(());
+        }
+        let result = match self.control_stdin.as_mut() {
+            Some(stdin) => write_control(stdin, &self.desired_paused, self.control_pipe_buf),
+            None => Err(io::Error::other("Control stdin unavailable")),
+        };
+        match result {
+            Ok(true) => {
+                self.last_sent_paused = Some(self.desired_paused.clone());
+                Ok(())
+            }
+            Ok(false) => Ok(()),
+            Err(error) => Err(self.fail_control(error)),
         }
     }
 
@@ -290,7 +347,8 @@ impl EffectsManager {
             .arg(config_path)
             .arg("--parent-pid")
             .arg(std::process::id().to_string())
-            .stdin(Stdio::null())
+            .arg("--control-stdin")
+            .stdin(Stdio::piped())
             .stdout(Stdio::null());
         // Own process group: `cava` inherits it, so terminating the renderer
         // also reaps the audio visualizer instead of leaving it sampling.
@@ -318,10 +376,34 @@ impl EffectsManager {
         });
 
         match command.spawn() {
-            Ok(child) => {
+            Ok(mut child) => {
+                self.reset_control();
+                let stdin = child.stdin.take();
                 self.child = Some(child);
                 self.last_error = None;
-                Ok(())
+                let setup = (|| {
+                    let stdin = stdin.ok_or_else(|| io::Error::other("Missing control stdin"))?;
+                    let fd = stdin.as_raw_fd();
+                    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+                    if flags < 0
+                        || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+                    {
+                        return Err(io::Error::last_os_error());
+                    }
+                    let pipe_buf = unsafe { libc::fpathconf(fd, libc::_PC_PIPE_BUF) };
+                    if pipe_buf <= 0 {
+                        return Err(io::Error::other("Cannot determine control PIPE_BUF"));
+                    }
+                    Ok((stdin, pipe_buf as usize))
+                })();
+                match setup {
+                    Ok((stdin, pipe_buf)) => {
+                        self.control_stdin = Some(stdin);
+                        self.control_pipe_buf = pipe_buf;
+                        self.flush_control()
+                    }
+                    Err(error) => Err(self.fail_control(error)),
+                }
             }
             Err(error) => {
                 let message = format!(
@@ -332,6 +414,36 @@ impl EffectsManager {
                 Err(message)
             }
         }
+    }
+}
+
+fn paused_snapshot(outputs: &HashSet<String>) -> Result<Vec<u8>, String> {
+    if outputs.len() > 64 || outputs.iter().any(|name| name.is_empty() || name.len() > 256) {
+        return Err("Invalid paused outputs: maximum 64 nonempty names of 256 bytes".into());
+    }
+    let mut names: Vec<&str> = outputs.iter().map(String::as_str).collect();
+    names.sort_unstable();
+    let mut message = serde_json::to_vec(&serde_json::json!({ "paused_outputs": names }))
+        .map_err(|error| error.to_string())?;
+    message.push(b'\n');
+    if message.len() >= 4096 {
+        return Err("Paused outputs control snapshot must be smaller than 4096 bytes".into());
+    }
+    Ok(message)
+}
+
+fn write_control(writer: &mut impl Write, message: &[u8], pipe_buf: usize) -> io::Result<bool> {
+    if message.is_empty() || message.len() >= pipe_buf {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Control snapshot exceeds PIPE_BUF"));
+    }
+    // One atomic pipe write; EAGAIN keeps only the latest desired snapshot.
+    match writer.write(message) {
+        Ok(written) if written == message.len() => Ok(true),
+        Ok(_) => Err(io::Error::new(io::ErrorKind::WriteZero, "Incomplete atomic control write")),
+        Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => {
+            Ok(false)
+        }
+        Err(error) => Err(error),
     }
 }
 
