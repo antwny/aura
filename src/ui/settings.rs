@@ -88,6 +88,7 @@ impl AuraApp {
             SettingsCategory::Hud => self.language.settings_switcher_title(),
             SettingsCategory::Rotation => self.language.settings_rotation_title(),
             SettingsCategory::Appearance => self.language.settings_section_appearance(),
+            SettingsCategory::Effects => self.language.settings_section_effects(),
         }
     }
 
@@ -98,6 +99,7 @@ impl AuraApp {
             SettingsCategory::Hud => "view-grid-symbolic",
             SettingsCategory::Rotation => "media-playlist-repeat-symbolic",
             SettingsCategory::Appearance => "weather-clear-symbolic",
+            SettingsCategory::Effects => "applications-graphics-symbolic",
         }
     }
 
@@ -142,6 +144,7 @@ impl AuraApp {
             SettingsCategory::Hud => self.view_switcher_section().into(),
             SettingsCategory::Rotation => self.view_rotation_section().into(),
             SettingsCategory::Appearance => self.view_appearance_section().into(),
+            SettingsCategory::Effects => self.view_effects_section(),
         };
 
         widget::scrollable(content)
@@ -216,6 +219,257 @@ impl AuraApp {
     }
 
     /// Section 2: Desktop environment detection, active backend, Hanabi diagnostics on GNOME, and GPU preferences.
+    fn view_effects_section(&self) -> Element<'_, Message> {
+        let compact = self.window_width < 620.0;
+        let lang = self.language;
+        let mut section = widget::column::with_capacity(24)
+            .spacing(14)
+            .padding(if compact { 12 } else { 18 })
+            .push(
+                widget::row::with_capacity(2)
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(widget::icon::from_name("applications-graphics-symbolic"))
+                    .push(widget::text::title3(lang.settings_section_effects())),
+            )
+            .push(widget::text::caption(lang.settings_effects_desc()));
+
+        let renderer_status = match &self.effects_renderer_status {
+            crate::effects::EffectsStatus::Running => {
+                lang.settings_effects_renderer_running().to_string()
+            }
+            crate::effects::EffectsStatus::Disabled => {
+                lang.settings_effects_renderer_disabled().to_string()
+            }
+            crate::effects::EffectsStatus::Failed(error) => {
+                format!("{}: {}", lang.settings_effects_renderer_failed(), error)
+            }
+        };
+        section = section
+            .push(
+                widget::row::with_capacity(4)
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(widget::text::body(format!(
+                        "{}: {}",
+                        lang.settings_effects_renderer_status(),
+                        renderer_status
+                    )))
+                    .push(
+                        widget::button::standard(lang.settings_effects_restart())
+                            .on_press(Message::RestartEffects),
+                    )
+                    .push(
+                        widget::button::text(lang.settings_effects_open_log())
+                            .on_press(Message::OpenEffectsLog),
+                    ),
+            )
+            .push(widget::text::caption(format!(
+                "{}: {}",
+                lang.settings_effects_open_log(),
+                crate::effects::log_path().display()
+            )));
+
+        section = section.push(
+            widget::row::with_capacity(2)
+                .spacing(14)
+                .align_y(Alignment::Center)
+                .push(widget::toggler(self.config.parallax_enabled).on_toggle(Message::ToggleParallax))
+                .push(
+                    widget::column::with_capacity(2)
+                        .spacing(3)
+                        .push(widget::text::body(lang.settings_effects_parallax()))
+                        .push(
+                            widget::text::caption(lang.settings_effects_parallax_desc())
+                                .width(Length::Fill),
+                        ),
+                ),
+        );
+
+        if self.config.parallax_enabled {
+            section = section
+                .push(widget::text::caption(format!(
+                    "{}: {}%",
+                    lang.settings_effects_strength(),
+                    (self.config.parallax_strength * 100.0).round() as u32
+                )))
+                .push(widget::slider(
+                    10u32..=100u32,
+                    (self.config.parallax_strength * 100.0).round() as u32,
+                    |value| Message::SetParallaxStrength(value as f32 / 100.0),
+                ))
+                .push(widget::text::caption(format!(
+                    "{}: {}",
+                    lang.settings_effects_depth_status_label(),
+                    lang.settings_effects_depth_status(self.effects_depth_status)
+                )));
+
+            let mut model_card = widget::column::with_capacity(6)
+                .spacing(8)
+                .push(widget::text::body(lang.settings_effects_model_title()))
+                .push(widget::text::caption(lang.settings_effects_model_desc()))
+                .push(widget::text::caption(format!(
+                    "{}: {}",
+                    lang.settings_effects_model_path(),
+                    crate::depth::model_path().display()
+                )));
+
+            match &self.effects_model_status {
+                crate::app::EffectsModelStatus::Absent => {
+                    model_card = model_card
+                        .push(widget::text::caption(lang.settings_effects_model_absent()))
+                        .push(
+                            widget::button::suggested(lang.settings_effects_model_download())
+                                .leading_icon(widget::icon::from_name("folder-download-symbolic"))
+                                .on_press(Message::DownloadDepthModel),
+                        );
+                }
+                crate::app::EffectsModelStatus::Downloading {
+                    downloaded,
+                    total,
+                    percent,
+                } => {
+                    let bar: Element<'_, Message> = if *percent > 0.0 {
+                        widget::progress_bar::determinate_linear(*percent)
+                            .width(Length::Fill)
+                            .into()
+                    } else {
+                        widget::progress_bar::indeterminate_linear()
+                            .width(Length::Fill)
+                            .into()
+                    };
+                    let mb_down = *downloaded as f64 / (1024.0 * 1024.0);
+                    let progress_text = if let Some(total) = total {
+                        let mb_total = *total as f64 / (1024.0 * 1024.0);
+                        format!(
+                            "{}: {:.1} / {:.1} MB ({:.0}%)",
+                            lang.settings_effects_model_downloading(),
+                            mb_down,
+                            mb_total,
+                            percent * 100.0
+                        )
+                    } else {
+                        format!(
+                            "{}: {:.1} MB",
+                            lang.settings_effects_model_downloading(),
+                            mb_down
+                        )
+                    };
+                    model_card = model_card.push(bar).push(
+                        widget::row::with_capacity(2)
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(widget::text::caption(progress_text))
+                            .push(
+                                widget::button::standard(lang.settings_effects_model_cancel())
+                                    .on_press(Message::CancelDepthModelDownload),
+                            ),
+                    );
+                }
+                crate::app::EffectsModelStatus::Ready => {
+                    let size = crate::depth::model_size().unwrap_or(0) as f64 / (1024.0 * 1024.0);
+                    model_card = model_card
+                        .push(widget::text::caption(format!(
+                            "{}: {:.1} MB",
+                            lang.settings_effects_model_ready(),
+                            size
+                        )))
+                        .push(
+                            widget::button::standard(lang.settings_effects_model_delete())
+                                .leading_icon(widget::icon::from_name("edit-delete-symbolic"))
+                                .on_press(Message::DeleteDepthModel),
+                        );
+                }
+                crate::app::EffectsModelStatus::Failed(error) => {
+                    model_card = model_card
+                        .push(widget::text::caption(format!(
+                            "{}: {}",
+                            lang.settings_effects_model_failed(),
+                            error
+                        )))
+                        .push(
+                            widget::row::with_capacity(2)
+                                .spacing(8)
+                                .align_y(Alignment::Center)
+                                .push(
+                                    widget::button::suggested(lang.settings_effects_model_retry())
+                                        .on_press(Message::DownloadDepthModel),
+                                )
+                                .push(
+                                    widget::button::standard(lang.settings_effects_model_delete())
+                                        .on_press(Message::DeleteDepthModel),
+                                ),
+                        );
+                }
+            }
+
+            section = section.push(
+                widget::container(model_card)
+                    .class(cosmic::theme::Container::Card)
+                    .padding(12)
+                    .width(Length::Fill),
+            );
+        }
+
+        section = section.push(
+            widget::row::with_capacity(2)
+                .spacing(14)
+                .align_y(Alignment::Center)
+                .push(widget::toggler(self.config.spectrum_enabled).on_toggle(Message::ToggleSpectrum))
+                .push(
+                    widget::column::with_capacity(2)
+                        .spacing(3)
+                        .push(widget::text::body(lang.settings_effects_spectrum()))
+                        .push(
+                            widget::text::caption(lang.settings_effects_spectrum_desc())
+                                .width(Length::Fill),
+                        ),
+                ),
+        );
+
+        if self.config.spectrum_enabled {
+            section = section
+                .push(widget::text::caption(format!(
+                    "{}: {}",
+                    lang.settings_effects_bars(),
+                    self.config.spectrum_bars
+                )))
+                .push(widget::slider(
+                    8u32..=64u32,
+                    self.config.spectrum_bars,
+                    Message::SetSpectrumBars,
+                ))
+                .push(widget::text::caption(format!(
+                    "{}: {}%",
+                    lang.settings_effects_height(),
+                    self.config.spectrum_height_pct
+                )))
+                .push(widget::slider(
+                    5u32..=40u32,
+                    self.config.spectrum_height_pct,
+                    Message::SetSpectrumHeight,
+                ))
+                .push(widget::text::caption(format!(
+                    "{}: {}%",
+                    lang.settings_effects_opacity(),
+                    (self.config.spectrum_alpha * 100.0).round() as u32
+                )))
+                .push(widget::slider(
+                    10u32..=100u32,
+                    (self.config.spectrum_alpha * 100.0).round() as u32,
+                    |value| Message::SetSpectrumAlpha(value as f32 / 100.0),
+                ))
+                .push(widget::text::caption(
+                    lang.settings_effects_spectrum_cava_hint(),
+                ));
+        }
+
+        widget::container(section)
+            .width(Length::Fill)
+            .class(cosmic::theme::Container::Card)
+            .into()
+    }
+
     fn view_engine_section(&self) -> Element<'_, Message> {
         let backend = self.backend();
         let is_gnome = backend == crate::engine::Backend::Gnome;

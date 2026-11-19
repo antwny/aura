@@ -68,6 +68,13 @@ install -d "${META_DIR}"
 # Install binary
 install -m 755 aura "${BIN_DIR}/aura"
 
+# Install the optional Wayland parallax and audio-spectrum renderer when the
+# release archive includes it. Keeping it beside Aura lets Aura locate it
+# without relying on the shell's PATH.
+if [ -f "aura-effects" ]; then
+    install -m 755 aura-effects "${BIN_DIR}/aura-effects"
+fi
+
 # Install bundled mpvpaper if provided
 if [ -f "mpvpaper" ]; then
     install -m 755 mpvpaper "${BIN_DIR}/mpvpaper"

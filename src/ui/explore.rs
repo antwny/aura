@@ -1,430 +1,161 @@
 use crate::app::{AuraApp, Message};
-use crate::online::{livewallpapers4free, OnlineSource, OnlineWallpaperItem};
+use crate::online::filters::{CategoryFilter, ResolutionFilter};
+use crate::online::{OnlineSource, OnlineWallpaperItem};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget;
 use cosmic::Element;
 
-fn fire_icon() -> widget::icon::Handle {
-    widget::icon::from_svg_bytes(include_bytes!("../../resources/icons/fire-symbolic.svg")).symbolic(true)
+fn chip_button<'a>(
+    label: impl Into<std::borrow::Cow<'a, str>>,
+    active: bool,
+    message: Message,
+) -> Element<'a, Message> {
+    let button = if active {
+        widget::button::suggested(label)
+    } else {
+        widget::button::standard(label)
+    };
+    Element::from(button.on_press(message))
 }
 
+/// Curated category chips. Every catalogue is queried; sources that cannot
+/// honour the category are reported below the filters instead of showing
+/// unrelated results.
+const CATEGORY_CHIPS: [Option<CategoryFilter>; 8] = [
+    None,
+    Some(CategoryFilter::Anime),
+    Some(CategoryFilter::Games),
+    Some(CategoryFilter::Nature),
+    Some(CategoryFilter::Fantasy),
+    Some(CategoryFilter::SciFi),
+    Some(CategoryFilter::Movies),
+    Some(CategoryFilter::Abstract),
+];
+
+const RESOLUTION_CHIPS: [Option<ResolutionFilter>; 5] = [
+    None,
+    Some(ResolutionFilter::Hd1080),
+    Some(ResolutionFilter::Qhd2K),
+    Some(ResolutionFilter::Uhd4K),
+    Some(ResolutionFilter::Ultrawide),
+];
+
 impl AuraApp {
+    fn explore_header(&self) -> Element<'_, Message> {
+        let lang = self.language;
+
+        let search_input = widget::text_input::search_input(
+            lang.explore_unified_search_placeholder(),
+            &self.unified_search,
+        )
+        .on_input(Message::UnifiedSearchChanged)
+        .on_submit(|_| Message::SubmitUnifiedSearch)
+        .width(Length::Fill);
+
+        let mut search_row = widget::row::with_capacity(3)
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .push(search_input);
+
+        if !self.unified_search.is_empty() {
+            search_row = search_row.push(
+                widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
+                    .on_press(Message::ClearUnifiedSearch),
+            );
+        }
+
+        search_row = search_row.push(
+            widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
+                .on_press(Message::FetchOnlineWallpapers(OnlineSource::Unified)),
+        );
+
+        let mut category_chips = vec![Element::from(widget::text::caption(
+            lang.explore_filter_category(),
+        ))];
+        for category in CATEGORY_CHIPS {
+            let label = match category {
+                None => lang.explore_filter_all().to_string(),
+                Some(category) => lang.explore_category_label(category).to_string(),
+            };
+            category_chips.push(chip_button(
+                label,
+                self.unified_category == category,
+                Message::UnifiedCategoryChanged(category),
+            ));
+        }
+        let category_row = widget::flex_row(category_chips)
+            .spacing(6)
+            .align_items(Alignment::Center)
+            .width(Length::Fill);
+
+        let mut resolution_chips = vec![Element::from(widget::text::caption(
+            lang.explore_filter_resolution(),
+        ))];
+        for resolution in RESOLUTION_CHIPS {
+            let label = match resolution {
+                None => lang.explore_filter_all().to_string(),
+                Some(resolution) => lang.explore_resolution_chip_label(resolution).to_string(),
+            };
+            resolution_chips.push(chip_button(
+                label,
+                self.unified_resolution == resolution,
+                Message::UnifiedResolutionChanged(resolution),
+            ));
+        }
+        let resolution_row = widget::flex_row(resolution_chips)
+            .spacing(6)
+            .align_items(Alignment::Center)
+            .width(Length::Fill);
+
+        let mut header = widget::column::with_capacity(4)
+            .spacing(8)
+            .push(search_row)
+            .push(category_row)
+            .push(resolution_row);
+
+        if self.unified_skipped.is_empty() {
+            header = header.push(widget::text::caption(lang.explore_unified_subtitle()));
+        } else {
+            let skipped = self
+                .unified_skipped
+                .iter()
+                .map(|source| source.label())
+                .collect::<Vec<_>>()
+                .join(", ");
+            header = header.push(widget::text::caption(format!(
+                "{}: {}",
+                lang.explore_filter_skipped(),
+                skipped
+            )));
+        }
+
+        if !self.unified_errors.is_empty() {
+            header = header.push(widget::text::caption(format!(
+                "{} {}",
+                lang.explore_filter_errors(),
+                self.unified_errors.join(" · ")
+            )));
+        }
+
+        header.into()
+    }
+
     pub(crate) fn view_explore(&self) -> Element<'_, Message> {
         let lang = self.language;
         let active_wallpapers = self.config.wallpapers.clone();
         let downloading_ids = self.downloading_online_ids.clone();
         let download_progress = self.download_progress.clone();
         let online_thumbs = self.online_thumbs.clone();
-        let current_source = self.explore_source;
-        let wallhaven_cat = &self.wallhaven_category;
-        let wallhaven_sort = &self.wallhaven_sorting;
-        let wallhaven_search = &self.wallhaven_search;
+        let thumb_failures = self.online_thumb_failures.clone();
         let is_loading_more = self.explore_loading_more;
 
-        let build_header = || {
-            let live_btn = if current_source == OnlineSource::MotionBGS {
-                widget::button::suggested(lang.explore_source_motionbgs())
-            } else {
-                widget::button::standard(lang.explore_source_motionbgs())
-            }
-            .leading_icon(fire_icon())
-            .on_press(Message::SelectExploreSource(OnlineSource::MotionBGS));
-
-            let livewallpapers4free_btn = if current_source == OnlineSource::LiveWallpapers4Free {
-                widget::button::suggested(lang.explore_source_livewallpapers4free())
-            } else {
-                widget::button::standard(lang.explore_source_livewallpapers4free())
-            }
-            .leading_icon(widget::icon::from_name("media-playback-start-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::LiveWallpapers4Free));
-
-            let wallhaven_btn = if current_source == OnlineSource::Wallhaven {
-                widget::button::suggested(lang.explore_source_wallhaven())
-            } else {
-                widget::button::standard(lang.explore_source_wallhaven())
-            }
-            .leading_icon(widget::icon::from_name("view-grid-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Wallhaven));
-
-            let bing_btn = if current_source == OnlineSource::Bing {
-                widget::button::suggested(lang.explore_source_bing())
-            } else {
-                widget::button::standard(lang.explore_source_bing())
-            }
-            .leading_icon(widget::icon::from_name("image-x-generic-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Bing));
-
-            let minimal_btn = if current_source == OnlineSource::Minimalistic {
-                widget::button::suggested(lang.explore_source_minimalistic())
-            } else {
-                widget::button::standard(lang.explore_source_minimalistic())
-            }
-            .leading_icon(widget::icon::from_name("applications-graphics-symbolic"))
-            .on_press(Message::SelectExploreSource(OnlineSource::Minimalistic));
-
-            let reload_btn = widget::button::icon(widget::icon::from_name("view-refresh-symbolic"))
-                .on_press(Message::FetchOnlineWallpapers(current_source));
-
-            let top_bar = widget::flex_row(vec![
-                live_btn.into(),
-                livewallpapers4free_btn.into(),
-                wallhaven_btn.into(),
-                bing_btn.into(),
-                minimal_btn.into(),
-                reload_btn.into(),
-            ])
-            .spacing(8)
-            .align_items(Alignment::Center)
-            .width(Length::Fill);
-
-            let subtitle = match current_source {
-                OnlineSource::MotionBGS => lang.explore_motionbgs_subtitle(),
-                OnlineSource::LiveWallpapers4Free => lang.explore_livewallpapers4free_subtitle(),
-                OnlineSource::Bing => lang.explore_featured_today(),
-                OnlineSource::Wallhaven => lang.explore_recent_title(),
-                OnlineSource::Minimalistic => lang.explore_minimalistic_subtitle(),
-            };
-
-            let mut header_col = widget::column::with_capacity(5)
-                .spacing(8)
-                .push(top_bar)
-                .push(widget::text::caption(subtitle));
-
-            if current_source == OnlineSource::MotionBGS {
-                let search_input = widget::text_input::search_input(
-                    lang.explore_search_motionbgs_placeholder(),
-                    &self.motionbgs_search,
-                )
-                .on_input(Message::MotionbgsSearchChanged)
-                .on_submit(|_| Message::SubmitMotionbgsSearch)
-                .width(Length::Fill);
-
-                let mut search_row = widget::row::with_capacity(2)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(search_input);
-
-                if !self.motionbgs_search.is_empty() {
-                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
-                        .on_press(Message::ClearMotionbgsSearch);
-                    search_row = search_row.push(clear_btn);
-                }
-
-                let motion_cat = &self.motionbgs_category;
-
-                let cat_all = if motion_cat == "all" {
-                    widget::button::suggested(lang.explore_cat_all())
-                } else {
-                    widget::button::standard(lang.explore_cat_all())
-                }.on_press(Message::SelectMotionbgsCategory("all".into()));
-
-                let cat_anime = if motion_cat == "anime" {
-                    widget::button::suggested(lang.explore_cat_anime())
-                } else {
-                    widget::button::standard(lang.explore_cat_anime())
-                }.on_press(Message::SelectMotionbgsCategory("anime".into()));
-
-                let cat_games = if motion_cat == "games" {
-                    widget::button::suggested(lang.explore_cat_games())
-                } else {
-                    widget::button::standard(lang.explore_cat_games())
-                }.on_press(Message::SelectMotionbgsCategory("games".into()));
-
-                let cat_nature = if motion_cat == "nature" {
-                    widget::button::suggested(lang.explore_cat_nature())
-                } else {
-                    widget::button::standard(lang.explore_cat_nature())
-                }.on_press(Message::SelectMotionbgsCategory("nature".into()));
-
-                let cat_space = if motion_cat == "space" {
-                    widget::button::suggested(lang.explore_cat_space())
-                } else {
-                    widget::button::standard(lang.explore_cat_space())
-                }.on_press(Message::SelectMotionbgsCategory("space".into()));
-
-                let cat_cars = if motion_cat == "car" {
-                    widget::button::suggested(lang.explore_cat_cars())
-                } else {
-                    widget::button::standard(lang.explore_cat_cars())
-                }.on_press(Message::SelectMotionbgsCategory("car".into()));
-
-                let cat_superhero = if motion_cat == "superhero" {
-                    widget::button::suggested(lang.explore_cat_superhero())
-                } else {
-                    widget::button::standard(lang.explore_cat_superhero())
-                }.on_press(Message::SelectMotionbgsCategory("superhero".into()));
-
-                let cat_fantasy = if motion_cat == "fantasy" {
-                    widget::button::suggested(lang.explore_cat_fantasy())
-                } else {
-                    widget::button::standard(lang.explore_cat_fantasy())
-                }.on_press(Message::SelectMotionbgsCategory("fantasy".into()));
-
-                let cat_tech = if motion_cat == "technology" {
-                    widget::button::suggested(lang.explore_cat_technology())
-                } else {
-                    widget::button::standard(lang.explore_cat_technology())
-                }.on_press(Message::SelectMotionbgsCategory("technology".into()));
-
-                let motion_res = &self.motionbgs_resolution;
-                let res_4k = if motion_res == "4k" {
-                    widget::button::suggested(lang.explore_res_4k())
-                } else {
-                    widget::button::standard(lang.explore_res_4k())
-                }.on_press(Message::SelectMotionbgsResolution("4k".into()));
-
-                let res_hd = if motion_res == "hd" {
-                    widget::button::suggested(lang.explore_res_1080p())
-                } else {
-                    widget::button::standard(lang.explore_res_1080p())
-                }.on_press(Message::SelectMotionbgsResolution("hd".into()));
-
-                let filters_row = widget::flex_row(vec![
-                    cat_all.into(),
-                    cat_anime.into(),
-                    cat_games.into(),
-                    cat_nature.into(),
-                    cat_space.into(),
-                    cat_cars.into(),
-                    cat_superhero.into(),
-                    cat_fantasy.into(),
-                    cat_tech.into(),
-                ])
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::Fill);
-
-                let res_row = widget::flex_row(vec![
-                    widget::text::caption(lang.explore_resolution_label()).into(),
-                    res_4k.into(),
-                    res_hd.into(),
-                ])
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::Fill);
-
-                header_col = header_col.push(search_row).push(filters_row).push(res_row);
-            }
-
-            if current_source == OnlineSource::LiveWallpapers4Free {
-                let search_input = widget::text_input::search_input(
-                    lang.explore_search_livewallpapers4free_placeholder(),
-                    &self.livewallpapers4free_search,
-                )
-                .on_input(Message::LiveWallpapers4FreeSearchChanged)
-                .on_submit(|_| Message::SubmitLiveWallpapers4FreeSearch)
-                .width(Length::Fill);
-
-                let mut search_row = widget::row::with_capacity(2)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(search_input);
-
-                if !self.livewallpapers4free_search.is_empty() {
-                    search_row = search_row.push(
-                        widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
-                            .on_press(Message::ClearLiveWallpapers4FreeSearch),
-                    );
-                }
-
-                let category_chips = livewallpapers4free::CATEGORIES
-                    .iter()
-                    .enumerate()
-                    .map(|(index, (slug, _))| {
-                        let label = lang.explore_livewallpapers4free_category(slug);
-                        let button = if self.livewallpapers4free_category == *slug {
-                            widget::button::suggested(label)
-                        } else {
-                            widget::button::standard(label)
-                        }
-                        .on_press(Message::LiveWallpapers4FreeCategoryChanged(index));
-                        Element::from(button)
-                    })
-                    .collect::<Vec<_>>();
-                let category_row = widget::flex_row(category_chips)
-                    .spacing(8)
-                    .align_items(Alignment::Center)
-                    .width(Length::Fill);
-
-                let resolution_chips = livewallpapers4free::RESOLUTIONS
-                    .iter()
-                    .enumerate()
-                    .map(|(index, (key, _))| {
-                        let label = lang.explore_livewallpapers4free_resolution_chip(key);
-                        let button = if self.livewallpapers4free_resolution == *key {
-                            widget::button::suggested(label)
-                        } else {
-                            widget::button::standard(label)
-                        }
-                        .on_press(Message::LiveWallpapers4FreeResolutionChanged(index));
-                        Element::from(button)
-                    })
-                    .collect::<Vec<_>>();
-                let resolution_row = widget::flex_row(
-                    std::iter::once(Element::from(widget::text::caption(
-                        lang.explore_resolution_label(),
-                    )))
-                    .chain(resolution_chips)
-                    .collect(),
-                )
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::Fill);
-
-                header_col = header_col
-                    .push(search_row)
-                    .push(category_row)
-                    .push(resolution_row);
-            }
-
-            if current_source == OnlineSource::Wallhaven {
-                let search_input = widget::text_input::search_input(
-                    lang.explore_search_placeholder(),
-                    wallhaven_search,
-                )
-                .on_input(Message::WallhavenSearchChanged)
-                .on_submit(|_| Message::SubmitWallhavenSearch)
-                .width(Length::Fill);
-
-                let mut search_row = widget::row::with_capacity(2)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(search_input);
-
-                if !wallhaven_search.is_empty() {
-                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
-                        .on_press(Message::ClearWallhavenSearch);
-                    search_row = search_row.push(clear_btn);
-                }
-
-                // Categories
-                let cat_all = if wallhaven_cat == "110" {
-                    widget::button::suggested(lang.explore_cat_all())
-                } else {
-                    widget::button::standard(lang.explore_cat_all())
-                }.on_press(Message::SelectWallhavenCategory("110".into()));
-
-                let cat_anime = if wallhaven_cat == "010" {
-                    widget::button::suggested(lang.explore_cat_anime())
-                } else {
-                    widget::button::standard(lang.explore_cat_anime())
-                }.on_press(Message::SelectWallhavenCategory("010".into()));
-
-                let cat_gen = if wallhaven_cat == "100" {
-                    widget::button::suggested(lang.explore_cat_general())
-                } else {
-                    widget::button::standard(lang.explore_cat_general())
-                }.on_press(Message::SelectWallhavenCategory("100".into()));
-
-                // Sorting
-                let sort_top = if wallhaven_sort == "toplist" {
-                    widget::button::suggested(lang.explore_sort_top())
-                } else {
-                    widget::button::standard(lang.explore_sort_top())
-                }.on_press(Message::SelectWallhavenSorting("toplist".into()));
-
-                let sort_hot = if wallhaven_sort == "hot" {
-                    widget::button::suggested(lang.explore_sort_hot())
-                } else {
-                    widget::button::standard(lang.explore_sort_hot())
-                }.on_press(Message::SelectWallhavenSorting("hot".into()));
-
-                let sort_rand = if wallhaven_sort == "random" {
-                    widget::button::suggested(lang.explore_sort_random())
-                } else {
-                    widget::button::standard(lang.explore_sort_random())
-                }.on_press(Message::SelectWallhavenSorting("random".into()));
-
-                let filters_row = widget::flex_row(vec![
-                    cat_all.into(),
-                    cat_anime.into(),
-                    cat_gen.into(),
-                    widget::text::caption("|").into(),
-                    sort_top.into(),
-                    sort_hot.into(),
-                    sort_rand.into(),
-                ])
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::Fill);
-
-                // Resolutions / Ratios
-                let wallhaven_res = &self.wallhaven_resolution;
-                let res_all = if wallhaven_res == "all" {
-                    widget::button::suggested(lang.explore_res_all())
-                } else {
-                    widget::button::standard(lang.explore_res_all())
-                }.on_press(Message::SelectWallhavenResolution("all".into()));
-
-                let res_4k = if wallhaven_res == "4k" {
-                    widget::button::suggested(lang.explore_res_4k())
-                } else {
-                    widget::button::standard(lang.explore_res_4k())
-                }.on_press(Message::SelectWallhavenResolution("4k".into()));
-
-                let res_2k = if wallhaven_res == "2k" {
-                    widget::button::suggested(lang.explore_res_2k())
-                } else {
-                    widget::button::standard(lang.explore_res_2k())
-                }.on_press(Message::SelectWallhavenResolution("2k".into()));
-
-                let res_uw = if wallhaven_res == "ultrawide" {
-                    widget::button::suggested(lang.explore_res_ultrawide())
-                } else {
-                    widget::button::standard(lang.explore_res_ultrawide())
-                }.on_press(Message::SelectWallhavenResolution("ultrawide".into()));
-
-                let res_row = widget::flex_row(vec![
-                    res_all.into(),
-                    res_4k.into(),
-                    res_2k.into(),
-                    res_uw.into(),
-                ])
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::Fill);
-
-                header_col = header_col.push(search_row).push(filters_row).push(res_row);
-            }
-
-            if current_source == OnlineSource::Minimalistic {
-                let search_input = widget::text_input::search_input(
-                    lang.explore_search_minimal_placeholder(),
-                    &self.minimalistic_search,
-                )
-                .on_input(Message::MinimalisticSearchChanged)
-                .width(Length::Fill);
-
-                let mut search_row = widget::row::with_capacity(2)
-                    .spacing(8)
-                    .align_y(Alignment::Center)
-                    .push(search_input);
-
-                if !self.minimalistic_search.is_empty() {
-                    let clear_btn = widget::button::icon(widget::icon::from_name("edit-clear-symbolic"))
-                        .on_press(Message::ClearMinimalisticSearch);
-                    search_row = search_row.push(clear_btn);
-                }
-
-                header_col = header_col.push(search_row);
-            }
-
-            header_col
-        };
-
         if self.explore_loading {
-            let loading_content = widget::column::with_capacity(3)
+            let loading_content = widget::column::with_capacity(2)
                 .spacing(14)
                 .align_x(Horizontal::Center)
                 .push(widget::text::title2(lang.explore_loading()))
-                .push(widget::text::caption(match current_source {
-                    OnlineSource::MotionBGS => "MotionBGS 4K & HD Live Wallpapers",
-                    OnlineSource::LiveWallpapers4Free => "LiveWallpapers4Free Live Wallpapers",
-                    OnlineSource::Bing => "Bing Daily Wallpaper UHD (4K)",
-                    OnlineSource::Wallhaven => "Wallhaven Anime & Nature 4K",
-                    OnlineSource::Minimalistic => "Minimalistic Flat Art & Nature Collection",
-                }));
+                .push(widget::text::caption(lang.explore_unified_subtitle()));
 
             let loading_view = widget::container(loading_content)
                 .width(Length::Fill)
@@ -435,20 +166,24 @@ impl AuraApp {
             return Element::from(
                 widget::column::with_capacity(2)
                     .spacing(14)
-                    .push(build_header())
-                    .push(loading_view)
+                    .push(self.explore_header())
+                    .push(loading_view),
             );
         }
 
         if let Some(err) = &self.explore_error {
-            let error_content = widget::column::with_capacity(3)
+            let error_content = widget::column::with_capacity(2)
                 .spacing(14)
                 .align_x(Horizontal::Center)
-                .push(widget::text::title3(format!("{} {}", lang.explore_error_prefix(), err)))
+                .push(widget::text::title3(format!(
+                    "{} {}",
+                    lang.explore_error_prefix(),
+                    err
+                )))
                 .push(
                     widget::button::suggested(lang.explore_btn_retry())
                         .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
-                        .on_press(Message::FetchOnlineWallpapers(current_source))
+                        .on_press(Message::FetchOnlineWallpapers(OnlineSource::Unified)),
                 );
 
             let error_view = widget::container(error_content)
@@ -460,28 +195,27 @@ impl AuraApp {
             return Element::from(
                 widget::column::with_capacity(2)
                     .spacing(14)
-                    .push(build_header())
-                    .push(error_view)
+                    .push(self.explore_header())
+                    .push(error_view),
             );
         }
 
-        let items: Vec<OnlineWallpaperItem> = match current_source {
-            OnlineSource::MotionBGS => self.motionbgs_wallpapers.clone(),
-            OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_wallpapers.clone(),
-            OnlineSource::Bing => self.bing_wallpapers.clone(),
-            OnlineSource::Wallhaven => self.wallhaven_wallpapers.clone(),
-            OnlineSource::Minimalistic => self.minimalistic_wallpapers.clone(),
-        };
+        let items: Vec<OnlineWallpaperItem> = self
+            .unified_wallpapers
+            .iter()
+            .take(self.unified_visible)
+            .cloned()
+            .collect();
 
         if items.is_empty() {
-            let empty_content = widget::column::with_capacity(3)
+            let empty_content = widget::column::with_capacity(2)
                 .spacing(14)
                 .align_x(Horizontal::Center)
                 .push(widget::text::title3(lang.explore_loading()))
                 .push(
                     widget::button::suggested(lang.explore_btn_retry())
                         .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
-                        .on_press(Message::FetchOnlineWallpapers(current_source))
+                        .on_press(Message::FetchOnlineWallpapers(OnlineSource::Unified)),
                 );
 
             let empty_view = widget::container(empty_content)
@@ -493,8 +227,8 @@ impl AuraApp {
             return Element::from(
                 widget::column::with_capacity(2)
                     .spacing(14)
-                    .push(build_header())
-                    .push(empty_view)
+                    .push(self.explore_header())
+                    .push(empty_view),
             );
         }
 
@@ -523,19 +257,24 @@ impl AuraApp {
                     let is_downloading = downloading_ids.contains(&item.id);
                     let downloaded_path = item.is_downloaded();
                     let is_active = if let Some(dp) = &downloaded_path {
-                        active_wallpapers.values().any(|p| p == &dp.to_string_lossy().to_string())
+                        active_wallpapers
+                            .values()
+                            .any(|p| p == &dp.to_string_lossy().to_string())
                     } else {
                         false
                     };
 
                     let thumb_path = online_thumbs.get(&item.id).cloned().or_else(|| {
                         let p = item.local_thumb_path();
-                        if p.exists() { Some(p) } else { None }
+                        if p.exists() {
+                            Some(p)
+                        } else {
+                            None
+                        }
                     });
 
                     let mut card_content = widget::column::with_capacity(6).spacing(8).padding(12);
 
-                    // Image preview button
                     if let Some(thumb) = &thumb_path {
                         let mut img_btn = widget::button::image(thumb.to_string_lossy().to_string())
                             .width(preview_w)
@@ -554,7 +293,12 @@ impl AuraApp {
                         }
                         card_content = card_content.push(img_btn);
                     } else {
-                        let placeholder = widget::container(widget::text::caption(lang.explore_loading()))
+                        let placeholder_text = if thumb_failures.contains(&item.id) {
+                            lang.explore_thumb_unavailable()
+                        } else {
+                            lang.explore_thumb_loading()
+                        };
+                        let placeholder = widget::container(widget::text::caption(placeholder_text))
                             .width(Length::Fixed(preview_w))
                             .height(Length::Fixed(preview_h))
                             .align_x(Horizontal::Center)
@@ -562,43 +306,59 @@ impl AuraApp {
                         card_content = card_content.push(placeholder);
                     }
 
-                    // Title
                     let title = widget::text::body(item.title.clone()).size(14);
                     card_content = card_content.push(title);
 
-                    // Metadata line: Resolution • Author/Date
-                    let meta_text = if current_source == OnlineSource::LiveWallpapers4Free {
-                        item.resolution.clone()
-                    } else if let Some(d) = &item.date {
-                        format!("{} • {}", item.resolution, d)
-                    } else if !item.author_or_copyright.is_empty() {
-                        format!("{} • {}", item.resolution, item.author_or_copyright)
+                    let kind = if item.is_live() {
+                        lang.explore_type_live()
                     } else {
-                        item.resolution.clone()
+                        lang.explore_type_static()
                     };
-                    let meta_lbl = widget::text::caption(meta_text);
-                    card_content = card_content.push(meta_lbl);
+                    let resolution = item.resolution.trim();
+                    let mut meta = format!("{} · {}", item.source.label(), kind);
+                    if !resolution.is_empty()
+                        && !resolution.eq_ignore_ascii_case("live")
+                        && !resolution.eq_ignore_ascii_case("video")
+                        && !resolution.eq_ignore_ascii_case("animated")
+                        && !resolution.eq_ignore_ascii_case(kind)
+                    {
+                        meta.push_str(&format!(" · {}", resolution));
+                    }
+                    card_content = card_content.push(widget::text::caption(meta));
 
-                    // Morphing Action Button with Native Symbolic Icons and Live Download Progress
                     let action_widget: Element<'_, Message> = if is_downloading {
                         let prog = download_progress.get(&item.id);
                         let (p_bar, prog_label) = if let Some(&(downloaded, total_opt, pct)) = prog {
                             let mb_down = downloaded as f64 / (1024.0 * 1024.0);
                             let bar: Element<'_, Message> = if pct > 0.0 {
-                                Element::from(widget::progress_bar::determinate_linear(pct).width(Length::Fill))
+                                Element::from(
+                                    widget::progress_bar::determinate_linear(pct)
+                                        .width(Length::Fill),
+                                )
                             } else {
-                                Element::from(widget::progress_bar::indeterminate_linear().width(Length::Fill))
+                                Element::from(
+                                    widget::progress_bar::indeterminate_linear()
+                                        .width(Length::Fill),
+                                )
                             };
                             let label = if let Some(total) = total_opt {
                                 let mb_tot = total as f64 / (1024.0 * 1024.0);
-                                format!("{:.0}% · {:.1} / {:.1} MB", pct * 100.0, mb_down, mb_tot)
+                                format!(
+                                    "{:.0}% · {:.1} / {:.1} MB",
+                                    pct * 100.0,
+                                    mb_down,
+                                    mb_tot
+                                )
                             } else {
                                 format!("{:.1} MB", mb_down)
                             };
                             (bar, label)
                         } else {
                             (
-                                Element::from(widget::progress_bar::indeterminate_linear().width(Length::Fill)),
+                                Element::from(
+                                    widget::progress_bar::indeterminate_linear()
+                                        .width(Length::Fill),
+                                ),
                                 lang.explore_btn_downloading().to_string(),
                             )
                         };
@@ -620,25 +380,25 @@ impl AuraApp {
                             .push(status_btn)
                             .push(cancel_btn);
 
-                        let dl_col = widget::column::with_capacity(2)
-                            .spacing(6)
-                            .width(Length::Fill)
-                            .push(p_bar)
-                            .push(btn_row);
-
-                        Element::from(dl_col)
+                        Element::from(
+                            widget::column::with_capacity(2)
+                                .spacing(6)
+                                .width(Length::Fill)
+                                .push(p_bar)
+                                .push(btn_row),
+                        )
                     } else if is_active {
                         Element::from(
                             widget::button::suggested(lang.explore_badge_active())
                                 .leading_icon(widget::icon::from_name("emblem-ok-symbolic"))
-                                .width(Length::Fill)
+                                .width(Length::Fill),
                         )
                     } else if let Some(dp) = downloaded_path {
                         Element::from(
                             widget::button::suggested(lang.explore_btn_apply())
                                 .leading_icon(widget::icon::from_name("view-fullscreen-symbolic"))
                                 .on_press(Message::ApplyDownloadedOnlineWallpaper(dp))
-                                .width(Length::Fill)
+                                .width(Length::Fill),
                         )
                     } else {
                         Element::from(
@@ -648,7 +408,7 @@ impl AuraApp {
                                     item: item.clone(),
                                     auto_apply: false,
                                 })
-                                .width(Length::Fill)
+                                .width(Length::Fill),
                         )
                     };
 
@@ -665,33 +425,12 @@ impl AuraApp {
             Element::from(cards_column)
         });
 
-        // Pagination "Load More" Button at Bottom
-        let has_more = match current_source {
-            OnlineSource::MotionBGS | OnlineSource::Bing | OnlineSource::Wallhaven => true,
-            OnlineSource::LiveWallpapers4Free => self.livewallpapers4free_has_more,
-            OnlineSource::Minimalistic => {
-                let total_matching = if self.minimalistic_search.trim().is_empty() {
-                    self.minimalistic_all_wallpapers.len()
-                } else {
-                    let q = self.minimalistic_search.trim().to_lowercase();
-                    self.minimalistic_all_wallpapers
-                        .iter()
-                        .filter(|item| {
-                            item.title.to_lowercase().contains(&q)
-                                || item.author_or_copyright.to_lowercase().contains(&q)
-                        })
-                        .count()
-                };
-                self.minimalistic_wallpapers.len() < total_matching
-            }
-        };
-
         let mut scroll_content = widget::column::with_capacity(2)
             .spacing(16)
             .width(Length::Fill)
             .push(grid);
 
-        if has_more {
+        if self.unified_visible < self.unified_wallpapers.len() || self.unified_has_more {
             let load_more_btn = if is_loading_more {
                 widget::button::standard(lang.explore_btn_loading_more())
                     .leading_icon(widget::icon::from_name("process-working-symbolic"))
@@ -701,12 +440,12 @@ impl AuraApp {
                     .on_press(Message::LoadMoreOnlineWallpapers)
             };
 
-            let load_more_row = widget::container(load_more_btn)
-                .width(Length::Fill)
-                .align_x(Horizontal::Center)
-                .padding(16);
-
-            scroll_content = scroll_content.push(load_more_row);
+            scroll_content = scroll_content.push(
+                widget::container(load_more_btn)
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .padding(16),
+            );
         }
 
         let scroll = widget::scrollable(scroll_content)
@@ -715,13 +454,9 @@ impl AuraApp {
 
         Element::from(
             widget::column::with_capacity(2)
-                .spacing(if current_source == OnlineSource::LiveWallpapers4Free {
-                    6
-                } else {
-                    14
-                })
-                .push(build_header())
-                .push(scroll)
+                .spacing(14)
+                .push(self.explore_header())
+                .push(scroll),
         )
     }
 }

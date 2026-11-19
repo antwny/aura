@@ -209,6 +209,18 @@ pub struct Config {
     /// canvas positions; this order drives the list and keyboard navigation.
     #[serde(default)]
     pub monitor_order: Vec<String>,
+    #[serde(default)]
+    pub parallax_enabled: bool,
+    #[serde(default = "default_parallax_strength")]
+    pub parallax_strength: f32,
+    #[serde(default)]
+    pub spectrum_enabled: bool,
+    #[serde(default = "default_spectrum_bars")]
+    pub spectrum_bars: u32,
+    #[serde(default = "default_spectrum_height")]
+    pub spectrum_height_pct: u32,
+    #[serde(default = "default_spectrum_alpha")]
+    pub spectrum_alpha: f32,
 }
 
 fn default_window_width() -> f32 {
@@ -221,6 +233,22 @@ fn default_window_height() -> f32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_parallax_strength() -> f32 {
+    0.55
+}
+
+fn default_spectrum_bars() -> u32 {
+    56
+}
+
+fn default_spectrum_height() -> u32 {
+    16
+}
+
+fn default_spectrum_alpha() -> f32 {
+    0.88
 }
 
 fn default_switcher_position() -> String {
@@ -428,6 +456,12 @@ impl Default for Config {
             window_y: None,
             dms_underlay_sync: true,
             monitor_order: Vec::new(),
+            parallax_enabled: false,
+            parallax_strength: default_parallax_strength(),
+            spectrum_enabled: false,
+            spectrum_bars: default_spectrum_bars(),
+            spectrum_height_pct: default_spectrum_height(),
+            spectrum_alpha: default_spectrum_alpha(),
         }
     }
 }
@@ -575,6 +609,19 @@ impl Config {
             cfg.interval = cfg.interval.clamp(1, 1440);
         }
         changed |= cfg.interval != old_interval;
+
+        let old_parallax_strength = cfg.parallax_strength;
+        cfg.parallax_strength = cfg.parallax_strength.clamp(0.1, 1.0);
+        changed |= cfg.parallax_strength != old_parallax_strength;
+        let old_spectrum_bars = cfg.spectrum_bars;
+        cfg.spectrum_bars = cfg.spectrum_bars.clamp(8, 64);
+        changed |= cfg.spectrum_bars != old_spectrum_bars;
+        let old_spectrum_height = cfg.spectrum_height_pct;
+        cfg.spectrum_height_pct = cfg.spectrum_height_pct.clamp(5, 40);
+        changed |= cfg.spectrum_height_pct != old_spectrum_height;
+        let old_spectrum_alpha = cfg.spectrum_alpha;
+        cfg.spectrum_alpha = cfg.spectrum_alpha.clamp(0.1, 1.0);
+        changed |= cfg.spectrum_alpha != old_spectrum_alpha;
 
         if changed {
             let _ = cfg.save();

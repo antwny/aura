@@ -556,6 +556,271 @@ impl Language {
         }
     }
 
+    pub fn settings_section_effects(&self) -> &'static str {
+        match self {
+            Language::Es => "Efectos",
+            Language::En => "Effects",
+            Language::Fr => "Effets",
+        }
+    }
+
+    pub fn settings_effects_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Paralaje de profundidad con deriva automática y espectro de audio estilo CAVA.",
+            Language::En => "Auto-drifting depth parallax and a CAVA-style audio spectrum.",
+            Language::Fr => "Parallaxe de profondeur à dérive automatique et spectre audio façon CAVA.",
+        }
+    }
+
+    pub fn settings_effects_parallax(&self) -> &'static str {
+        match self {
+            Language::Es => "Paralaje de profundidad",
+            Language::En => "Depth parallax",
+            Language::Fr => "Parallaxe de profondeur",
+        }
+    }
+
+    pub fn settings_effects_parallax_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Deriva suave sobre un mapa de profundidad local. Solo se aplica a fondos estáticos y no captura los clics del escritorio.",
+            Language::En => "Gentle drift over a local depth map. Only applies to still wallpapers and never captures desktop clicks.",
+            Language::Fr => "Dérive douce sur une carte de profondeur locale. S'applique uniquement aux fonds fixes et ne capture pas les clics du bureau.",
+        }
+    }
+
+    pub fn settings_effects_strength(&self) -> &'static str {
+        match self {
+            Language::Es => "Intensidad del paralaje",
+            Language::En => "Parallax strength",
+            Language::Fr => "Intensité de la parallaxe",
+        }
+    }
+
+    pub fn settings_effects_depth_status_label(&self) -> &'static str {
+        match self {
+            Language::Es => "Mapa de profundidad",
+            Language::En => "Depth map",
+            Language::Fr => "Carte de profondeur",
+        }
+    }
+
+    pub fn settings_effects_depth_status(
+        &self,
+        status: crate::app::EffectsDepthStatus,
+    ) -> &'static str {
+        match (self, status) {
+            (_, crate::app::EffectsDepthStatus::Idle) => match self {
+                Language::Es => "sin imagen estática activa",
+                Language::En => "no active still image",
+                Language::Fr => "aucune image fixe active",
+            },
+            (_, crate::app::EffectsDepthStatus::ModelMissing) => match self {
+                Language::Es => "falta el modelo",
+                Language::En => "model missing",
+                Language::Fr => "modèle manquant",
+            },
+            (_, crate::app::EffectsDepthStatus::Generating) => match self {
+                Language::Es => "generando…",
+                Language::En => "generating…",
+                Language::Fr => "génération…",
+            },
+            (_, crate::app::EffectsDepthStatus::Ready) => match self {
+                Language::Es => "listo",
+                Language::En => "ready",
+                Language::Fr => "prête",
+            },
+            (_, crate::app::EffectsDepthStatus::Failed) => match self {
+                Language::Es => "no disponible",
+                Language::En => "unavailable",
+                Language::Fr => "indisponible",
+            },
+        }
+    }
+
+    pub fn settings_effects_spectrum(&self) -> &'static str {
+        match self {
+            Language::Es => "Visualizador de audio estilo CAVA",
+            Language::En => "CAVA-style audio visualizer",
+            Language::Fr => "Visualiseur audio façon CAVA",
+        }
+    }
+
+    pub fn settings_effects_spectrum_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Barras reactivas al audio del sistema. Requiere CAVA instalado.",
+            Language::En => "Bars react to system audio. Requires CAVA to be installed.",
+            Language::Fr => "Les barres réagissent au son du système. CAVA doit être installé.",
+        }
+    }
+
+    pub fn settings_effects_bars(&self) -> &'static str {
+        match self {
+            Language::Es => "Barras",
+            Language::En => "Bars",
+            Language::Fr => "Barres",
+        }
+    }
+
+    pub fn settings_effects_height(&self) -> &'static str {
+        match self {
+            Language::Es => "Altura",
+            Language::En => "Height",
+            Language::Fr => "Hauteur",
+        }
+    }
+
+    pub fn settings_effects_opacity(&self) -> &'static str {
+        match self {
+            Language::Es => "Opacidad",
+            Language::En => "Opacity",
+            Language::Fr => "Opacité",
+        }
+    }
+
+    pub fn settings_effects_renderer_status(&self) -> &'static str {
+        match self {
+            Language::Es => "Renderizador de efectos",
+            Language::En => "Effects renderer",
+            Language::Fr => "Moteur d'effets",
+        }
+    }
+
+    pub fn settings_effects_renderer_running(&self) -> &'static str {
+        match self {
+            Language::Es => "activo",
+            Language::En => "running",
+            Language::Fr => "actif",
+        }
+    }
+
+    pub fn settings_effects_renderer_disabled(&self) -> &'static str {
+        match self {
+            Language::Es => "detenido",
+            Language::En => "stopped",
+            Language::Fr => "arrêté",
+        }
+    }
+
+    pub fn settings_effects_renderer_failed(&self) -> &'static str {
+        match self {
+            Language::Es => "error",
+            Language::En => "error",
+            Language::Fr => "erreur",
+        }
+    }
+
+    pub fn settings_effects_restart(&self) -> &'static str {
+        match self {
+            Language::Es => "Reiniciar efectos",
+            Language::En => "Restart effects",
+            Language::Fr => "Redémarrer les effets",
+        }
+    }
+
+    pub fn settings_effects_open_log(&self) -> &'static str {
+        match self {
+            Language::Es => "Abrir registro",
+            Language::En => "Open log",
+            Language::Fr => "Ouvrir le journal",
+        }
+    }
+
+    pub fn settings_effects_model_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Modelo de profundidad (IA)",
+            Language::En => "Depth model (AI)",
+            Language::Fr => "Modèle de profondeur (IA)",
+        }
+    }
+
+    pub fn settings_effects_model_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Descarga única de 27 MB necesaria para el paralaje. Se guarda en la caché de Aura.",
+            Language::En => "One-time 27 MB download required for parallax. Stored in Aura's cache.",
+            Language::Fr => "Téléchargement unique de 27 Mo requis pour la parallaxe. Stocké dans le cache d'Aura.",
+        }
+    }
+
+    pub fn settings_effects_model_absent(&self) -> &'static str {
+        match self {
+            Language::Es => "No descargado",
+            Language::En => "Not downloaded",
+            Language::Fr => "Non téléchargé",
+        }
+    }
+
+    pub fn settings_effects_model_downloading(&self) -> &'static str {
+        match self {
+            Language::Es => "Descargando",
+            Language::En => "Downloading",
+            Language::Fr => "Téléchargement",
+        }
+    }
+
+    pub fn settings_effects_model_ready(&self) -> &'static str {
+        match self {
+            Language::Es => "Listo",
+            Language::En => "Ready",
+            Language::Fr => "Prêt",
+        }
+    }
+
+    pub fn settings_effects_model_failed(&self) -> &'static str {
+        match self {
+            Language::Es => "Error",
+            Language::En => "Error",
+            Language::Fr => "Erreur",
+        }
+    }
+
+    pub fn settings_effects_model_download(&self) -> &'static str {
+        match self {
+            Language::Es => "Descargar modelo (27 MB)",
+            Language::En => "Download model (27 MB)",
+            Language::Fr => "Télécharger le modèle (27 Mo)",
+        }
+    }
+
+    pub fn settings_effects_model_cancel(&self) -> &'static str {
+        match self {
+            Language::Es => "Cancelar",
+            Language::En => "Cancel",
+            Language::Fr => "Annuler",
+        }
+    }
+
+    pub fn settings_effects_model_delete(&self) -> &'static str {
+        match self {
+            Language::Es => "Eliminar modelo",
+            Language::En => "Delete model",
+            Language::Fr => "Supprimer le modèle",
+        }
+    }
+
+    pub fn settings_effects_model_retry(&self) -> &'static str {
+        match self {
+            Language::Es => "Reintentar",
+            Language::En => "Retry",
+            Language::Fr => "Réessayer",
+        }
+    }
+
+    pub fn settings_effects_model_path(&self) -> &'static str {
+        match self {
+            Language::Es => "Ruta",
+            Language::En => "Path",
+            Language::Fr => "Chemin",
+        }
+    }
+
+    pub fn settings_effects_spectrum_cava_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "Sin audio se muestra una onda suave de espera. Si no ves barras con sonido, revisa el registro de efectos.",
+            Language::En => "A soft idle wave is shown without audio. If bars stay hidden with sound, check the effects log.",
+            Language::Fr => "Une onde douce s'affiche sans audio. Si les barres restent invisibles avec du son, consultez le journal.",
+        }
+    }
+
     pub fn settings_engine_desktop_lbl(&self) -> &'static str {
         match self {
             Language::Es => "Entorno detectado:",
@@ -1337,6 +1602,185 @@ impl Language {
         }
     }
 
+    pub fn explore_source_unified(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar en todo",
+            Language::En => "Search all",
+            Language::Fr => "Tout rechercher",
+        }
+    }
+
+    pub fn explore_source_lively(&self) -> &'static str {
+        "Lively"
+    }
+
+    pub fn explore_source_desktophut(&self) -> &'static str {
+        "DesktopHut"
+    }
+
+    pub fn explore_source_moewalls(&self) -> &'static str {
+        "MoeWalls"
+    }
+
+    pub fn explore_source_wallpaperwaifu(&self) -> &'static str {
+        "Waifu"
+    }
+
+    pub fn explore_unified_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Un solo buscador para todos los catálogos. Los resultados se combinan en tiempo real.",
+            Language::En => "One search for every catalogue. Results are combined in real time.",
+            Language::Fr => "Une recherche pour tous les catalogues. Les résultats sont combinés en temps réel.",
+        }
+    }
+
+    pub fn explore_unified_search_placeholder(&self) -> &'static str {
+        match self {
+            Language::Es => "Buscar en Lively, DesktopHut, MotionBGS, Wallhaven y más…",
+            Language::En => "Search Lively, DesktopHut, MotionBGS, Wallhaven and more…",
+            Language::Fr => "Rechercher dans Lively, DesktopHut, MotionBGS, Wallhaven et plus…",
+        }
+    }
+
+    pub fn explore_filter_all(&self) -> &'static str {
+        match self {
+            Language::Es => "Todas",
+            Language::En => "All",
+            Language::Fr => "Tous",
+        }
+    }
+
+    pub fn explore_filter_category(&self) -> &'static str {
+        match self {
+            Language::Es => "Categoría:",
+            Language::En => "Category:",
+            Language::Fr => "Catégorie :",
+        }
+    }
+
+    pub fn explore_filter_resolution(&self) -> &'static str {
+        match self {
+            Language::Es => "Resolución:",
+            Language::En => "Resolution:",
+            Language::Fr => "Résolution :",
+        }
+    }
+
+    pub fn explore_type_live(&self) -> &'static str {
+        match self {
+            Language::Es => "Animado",
+            Language::En => "Live",
+            Language::Fr => "Vidéo",
+        }
+    }
+
+    pub fn explore_type_static(&self) -> &'static str {
+        match self {
+            Language::Es => "Estático",
+            Language::En => "Static",
+            Language::Fr => "Statique",
+        }
+    }
+
+    pub fn explore_thumb_loading(&self) -> &'static str {
+        match self {
+            Language::Es => "Cargando miniatura…",
+            Language::En => "Loading thumbnail…",
+            Language::Fr => "Chargement de la miniature…",
+        }
+    }
+
+    pub fn explore_thumb_unavailable(&self) -> &'static str {
+        match self {
+            Language::Es => "Miniatura no disponible",
+            Language::En => "Thumbnail unavailable",
+            Language::Fr => "Miniature indisponible",
+        }
+    }
+
+    pub fn explore_filter_skipped(&self) -> &'static str {
+        match self {
+            Language::Es => "Filtro de categoría omitido en",
+            Language::En => "Category filter skipped in",
+            Language::Fr => "Filtre de catégorie ignoré dans",
+        }
+    }
+
+    pub fn explore_filter_errors(&self) -> &'static str {
+        match self {
+            Language::Es => "Algunos catálogos no respondieron:",
+            Language::En => "Some catalogues did not respond:",
+            Language::Fr => "Certains catalogues n'ont pas répondu :",
+        }
+    }
+
+    pub fn explore_category_label(
+        &self,
+        category: crate::online::filters::CategoryFilter,
+    ) -> &'static str {
+        use crate::online::filters::CategoryFilter;
+        match category {
+            CategoryFilter::Anime => self.explore_cat_anime(),
+            CategoryFilter::Games => self.explore_cat_games(),
+            CategoryFilter::Movies => self.explore_cat_movies(),
+            CategoryFilter::Nature => self.explore_cat_nature(),
+            CategoryFilter::Abstract => self.explore_cat_abstract(),
+            CategoryFilter::SciFi => self.explore_cat_scifi(),
+            CategoryFilter::Fantasy => self.explore_cat_fantasy(),
+            CategoryFilter::Space => self.explore_cat_space(),
+            CategoryFilter::Cars => self.explore_cat_cars(),
+            CategoryFilter::Superhero => self.explore_cat_superhero(),
+            CategoryFilter::Technology => self.explore_cat_technology(),
+            CategoryFilter::General => self.explore_cat_general(),
+        }
+    }
+
+    pub fn explore_resolution_chip_label(
+        &self,
+        resolution: crate::online::filters::ResolutionFilter,
+    ) -> &'static str {
+        use crate::online::filters::ResolutionFilter;
+        match resolution {
+            ResolutionFilter::Hd1080 => self.explore_res_1080p(),
+            ResolutionFilter::Qhd2K => self.explore_res_2k(),
+            ResolutionFilter::Uhd4K => self.explore_res_4k(),
+            ResolutionFilter::Uhd8K => self.explore_res_8k(),
+            ResolutionFilter::Ultrawide => self.explore_res_ultrawide(),
+        }
+    }
+
+    pub fn explore_lively_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Catálogo de Lively Wallpaper: bucles MP4 4K con descarga directa.",
+            Language::En => "Lively Wallpaper catalogue: 4K MP4 loops with direct download.",
+            Language::Fr => "Catalogue Lively Wallpaper : boucles MP4 4K avec téléchargement direct.",
+        }
+    }
+
+    pub fn explore_desktophut_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "Fondos animados 4K de DesktopHut con descarga directa en MP4.",
+            Language::En => "DesktopHut 4K animated wallpapers with direct MP4 download.",
+            Language::Fr => "Fonds animés 4K de DesktopHut avec téléchargement MP4 direct.",
+        }
+    }
+
+    pub fn explore_moewalls_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "MoeWalls: catálogo animado con descarga directa en MP4.",
+            Language::En => "MoeWalls: animated catalogue with direct MP4 download.",
+            Language::Fr => "MoeWalls : catalogue animé avec téléchargement MP4 direct.",
+        }
+    }
+
+    pub fn explore_wallpaperwaifu_subtitle(&self) -> &'static str {
+        match self {
+            Language::Es => "WallpaperWaifu: fondos animados de anime con descarga directa.",
+            Language::En => "WallpaperWaifu: anime live wallpapers with direct download.",
+            Language::Fr => "WallpaperWaifu : fonds animés anime avec téléchargement direct.",
+        }
+    }
+
     pub fn explore_motionbgs_subtitle(&self) -> &'static str {
         match self {
             Language::Es => "Catálogo de 9,400+ fondos animados en bucle 4K y HD de MotionBGS",
@@ -1684,9 +2128,33 @@ impl Language {
 
     pub fn explore_cat_space(&self) -> &'static str {
         match self {
-            Language::Es => "Espacio / Sci-Fi",
-            Language::En => "Space / Sci-Fi",
-            Language::Fr => "Espace / Science-fiction",
+            Language::Es => "Espacio",
+            Language::En => "Space",
+            Language::Fr => "Espace",
+        }
+    }
+
+    pub fn explore_cat_movies(&self) -> &'static str {
+        match self {
+            Language::Es => "Películas / TV",
+            Language::En => "Movies / TV",
+            Language::Fr => "Films / TV",
+        }
+    }
+
+    pub fn explore_cat_abstract(&self) -> &'static str {
+        match self {
+            Language::Es => "Abstracto / 3D",
+            Language::En => "Abstract / 3D",
+            Language::Fr => "Abstrait / 3D",
+        }
+    }
+
+    pub fn explore_cat_scifi(&self) -> &'static str {
+        match self {
+            Language::Es => "Sci-Fi",
+            Language::En => "Sci-Fi",
+            Language::Fr => "Science-fiction",
         }
     }
 
@@ -1768,6 +2236,10 @@ impl Language {
 
     pub fn explore_res_1080p(&self) -> &'static str {
         "1080p HD"
+    }
+
+    pub fn explore_res_8k(&self) -> &'static str {
+        "8K"
     }
 
     pub fn explore_resolution_label(&self) -> &'static str {

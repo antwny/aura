@@ -72,6 +72,7 @@ jobs:
           PKG_NAME="aura-v${VERSION}-x86_64-linux"
           mkdir -p "target/package/${PKG_NAME}"
           cp target/release/aura "target/package/${PKG_NAME}/"
+          cp target/release/aura-effects "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.desktop "target/package/${PKG_NAME}/"
           cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/${PKG_NAME}/"
           cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg "target/package/${PKG_NAME}/"
@@ -96,4 +97,4 @@ jobs:
           body: |
             Aura v${{ steps.get_version.outputs.VERSION }}.
 
-            The Linux archive includes the precompiled mpvpaper 1.9 binary and a SHA-256 checksum file used by the in-app updater.
+            The Linux archive includes Aura, the aura-effects renderer, the precompiled mpvpaper 1.9 binary and a SHA-256 checksum file used by the in-app updater.

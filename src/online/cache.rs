@@ -323,13 +323,14 @@ pub fn is_downloaded(prefix: &str, id: &str) -> Option<PathBuf> {
 
 #[allow(dead_code)]
 pub async fn download_to_file(client: &reqwest::Client, url: &str, destination: &Path) -> Result<PathBuf, String> {
-    download_to_file_with_progress(client, url, destination, None, |_, _, _| {}).await
+    download_to_file_with_progress(client, url, destination, None, None, |_, _, _| {}).await
 }
 
 pub async fn download_to_file_with_progress<F>(
     client: &reqwest::Client,
     url: &str,
     destination: &Path,
+    referer: Option<&str>,
     cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     mut progress_cb: F,
 ) -> Result<PathBuf, String>
@@ -355,9 +356,13 @@ where
     }
 
     // Connect with user agent; do not set a rigid total download timeout so slow/large downloads can finish.
-    let response = client
+    let mut request = client
         .get(url)
-        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
+        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")));
+    if let Some(referer) = referer {
+        request = request.header(reqwest::header::REFERER, referer);
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Network request failed: {}", e))?;
@@ -601,14 +606,31 @@ pub fn downscale_image_file_in_place(file_path: &Path, max_w: u32, max_h: u32) -
 /// Downloads and caches an online wallpaper thumbnail with concurrency control and multi-tier fallback.
 /// Tier 1: Fast CDN thumbnail (e.g. wsrv.nl or provider thumbnail).
 /// Tier 2: Direct source download with local downscaling.
+fn normalize_http_url(url: &str) -> String {
+    match url.strip_prefix("//") {
+        Some(rest) => format!("https://{rest}"),
+        None => url.to_string(),
+    }
+}
+
+fn looks_like_image_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]
+        .iter()
+        .any(|extension| lower.contains(extension))
+}
+
 pub async fn download_online_thumbnail(
     client: &reqwest::Client,
     thumb_url: &str,
     fallback_full_url: &str,
     destination: &Path,
 ) -> Result<PathBuf, String> {
+    let thumb_url = normalize_http_url(thumb_url);
+    let fallback_full_url = normalize_http_url(fallback_full_url);
+
     static THUMB_SEMAPHORE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
-    let sem = THUMB_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(4));
+    let sem = THUMB_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(12));
     let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
 
     if let Some(parent) = destination.parent() {
@@ -633,14 +655,24 @@ pub async fn download_online_thumbnail(
     }
 
     // Step 1: Fast CDN Web Thumbnail (timeout 6s)
-    let req_res = client
-        .get(thumb_url)
-        .timeout(Duration::from_secs(6))
-        .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
-        .send()
-        .await;
+    let req_res = if thumb_url.starts_with("http") {
+        let mut request = client
+            .get(&thumb_url)
+            .timeout(Duration::from_secs(6))
+            .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
+            .header(
+                "Accept",
+                "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            );
+        if fallback_full_url.starts_with("http") {
+            request = request.header(reqwest::header::REFERER, &fallback_full_url);
+        }
+        Some(request.send().await)
+    } else {
+        None
+    };
 
-    if let Ok(resp) = req_res {
+    if let Some(Ok(resp)) = req_res {
         if resp.status().is_success()
             && resp
                 .content_length()
@@ -670,12 +702,17 @@ pub async fn download_online_thumbnail(
         }
     }
 
-    // Step 2: Fallback to full_url and downscale locally
-    if !fallback_full_url.is_empty() && fallback_full_url != thumb_url {
+    // Step 2: Fallback to a full image URL and downscale locally. Detail pages
+    // and video URLs are skipped; they never contain an image.
+    if fallback_full_url.starts_with("http")
+        && fallback_full_url != thumb_url
+        && looks_like_image_url(&fallback_full_url)
+    {
         let full_resp = client
-            .get(fallback_full_url)
-            .timeout(Duration::from_secs(20))
+            .get(&fallback_full_url)
+            .timeout(Duration::from_secs(8))
             .header("User-Agent", concat!("Aura-LiveWallpaper-Client/", env!("CARGO_PKG_VERSION")))
+            .header("Accept", "image/*,*/*;q=0.8")
             .send()
             .await
             .map_err(|e| format!("Fallback download failed: {}", e))?;
@@ -800,7 +837,7 @@ mod tests {
             let client = reqwest::Client::new();
             let cancel = Arc::new(AtomicBool::new(true));
             let dest = std::env::temp_dir().join("test_cancel_dl.mp4");
-            let res = download_to_file_with_progress(&client, "http://127.0.0.1:9/dummy", &dest, Some(cancel), |_, _, _| {}).await;
+            let res = download_to_file_with_progress(&client, "http://127.0.0.1:9/dummy", &dest, None, Some(cancel), |_, _, _| {}).await;
             assert!(res.is_err());
             assert_eq!(res.unwrap_err(), "Download canceled by user");
             assert!(!dest.with_extension("tmp").exists());

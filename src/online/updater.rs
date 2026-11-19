@@ -162,6 +162,14 @@ pub async fn perform_update(
         }
     }
 
+    if let Some(new_effects) = find_archive_member(&extract_dir, "aura-effects") {
+        validate_linux_binary(&new_effects)?;
+        let target_effects = target_dir.join("aura-effects");
+        if let Err(e) = install_binary(&new_effects, &target_effects) {
+            eprintln!("[Aura Updater] Aura was updated, but aura-effects could not be replaced: {}", e);
+        }
+    }
+
     Ok(target_bin.to_string_lossy().to_string())
 }
 

@@ -3,6 +3,8 @@ mod autostart;
 mod cli;
 mod cli_text;
 mod config;
+mod depth;
+mod effects;
 mod engine;
 mod i18n;
 mod icon_fallback;

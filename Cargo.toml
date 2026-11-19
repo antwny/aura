@@ -27,6 +27,22 @@ libc = "0.2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 sha2 = "0.10"
 tempfile = "3"
+smithay-client-toolkit = { version = "0.20", features = ["calloop"] }
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+raw-window-handle = "0.6"
+wgpu = "28"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+ort = { version = "=2.0.0-rc.15", features = ["download-binaries"] }
+
+[[bin]]
+name = "aura"
+path = "src/main.rs"
+
+[[bin]]
+name = "aura-effects"
+path = "src/bin/aura_effects.rs"
 
 [profile.release]
 opt-level = 3

@@ -6,9 +6,69 @@ use crate::online::cache::{clean_filename, clean_title_filename, thumbs_online_c
 pub enum OnlineSource {
     MotionBGS,
     LiveWallpapers4Free,
+    Lively,
+    DesktopHut,
+    MoeWalls,
+    WallpaperWaifu,
     Bing,
     Wallhaven,
     Minimalistic,
+    /// Pseudo-source used by the Explore view to search every catalogue at once.
+    /// Never attached to an [`OnlineWallpaperItem`].
+    Unified,
+}
+
+impl OnlineSource {
+    /// Catalogues shown in the Explore source bar, in display order.
+    pub fn catalogs() -> &'static [OnlineSource] {
+        &[
+            OnlineSource::Lively,
+            OnlineSource::DesktopHut,
+            OnlineSource::MotionBGS,
+            OnlineSource::LiveWallpapers4Free,
+            OnlineSource::MoeWalls,
+            OnlineSource::WallpaperWaifu,
+            OnlineSource::Wallhaven,
+            OnlineSource::Bing,
+            OnlineSource::Minimalistic,
+        ]
+    }
+
+    /// Brand label used for tabs and result badges.
+    pub fn label(self) -> &'static str {
+        match self {
+            OnlineSource::MotionBGS => "MotionBGS",
+            OnlineSource::LiveWallpapers4Free => "LW4Free",
+            OnlineSource::Lively => "Lively",
+            OnlineSource::DesktopHut => "DesktopHut",
+            OnlineSource::MoeWalls => "MoeWalls",
+            OnlineSource::WallpaperWaifu => "Waifu",
+            OnlineSource::Bing => "Bing",
+            OnlineSource::Wallhaven => "Wallhaven",
+            OnlineSource::Minimalistic => "Minimalista",
+            OnlineSource::Unified => "Todo",
+        }
+    }
+
+    /// Whether the catalogue hides the media behind its detail page and needs
+    /// one extra request to resolve the direct download URL.
+    pub fn needs_resolution(self) -> bool {
+        matches!(
+            self,
+            OnlineSource::DesktopHut | OnlineSource::MoeWalls | OnlineSource::WallpaperWaifu
+        )
+    }
+
+    /// Catalogue path segment used by each site.
+    pub fn category_slug(self) -> &'static str {
+        match self {
+            OnlineSource::Lively => "all",
+            OnlineSource::DesktopHut => "all",
+            OnlineSource::MoeWalls => "all",
+            OnlineSource::WallpaperWaifu => "all",
+            _ => "all",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,29 +85,45 @@ pub struct OnlineWallpaperItem {
 
 impl OnlineWallpaperItem {
     pub fn extension(&self) -> &str {
-        if self.source == OnlineSource::MotionBGS
-            || self.source == OnlineSource::LiveWallpapers4Free
-            || self.full_url.contains(".mp4")
-            || self.full_url.contains("/dl/")
-            || self.full_url.contains("/download/")
-        {
-            "mp4"
-        } else if self.full_url.contains(".webm") {
-            "webm"
-        } else if self.full_url.ends_with(".png") {
-            "png"
-        } else if self.full_url.ends_with(".webp") {
-            "webp"
-        } else {
-            "jpg"
+        match self.source {
+            OnlineSource::Unified => unreachable!("Unified is a search view, not a wallpaper source"),
+            OnlineSource::Lively
+            | OnlineSource::DesktopHut
+            | OnlineSource::MoeWalls
+            | OnlineSource::WallpaperWaifu => "mp4",
+            _ if self.source == OnlineSource::MotionBGS
+                || self.source == OnlineSource::LiveWallpapers4Free
+                || self.full_url.contains(".mp4")
+                || self.full_url.contains("/dl/")
+                || self.full_url.contains("/download/") =>
+            {
+                "mp4"
+            }
+            _ if self.full_url.contains(".webm") => "webm",
+            _ if self.full_url.ends_with(".png") => "png",
+            _ if self.full_url.ends_with(".webp") => "webp",
+            _ => "jpg",
         }
+    }
+
+    pub fn is_live(&self) -> bool {
+        matches!(self.extension(), "mp4" | "webm" | "mkv" | "mov")
     }
 
     pub fn thumb_extension(&self) -> &str {
         match self.source {
+            OnlineSource::Unified => unreachable!("Unified is a search view, not a wallpaper source"),
             OnlineSource::Minimalistic => "jpg",
             OnlineSource::MotionBGS => "jpg",
             OnlineSource::LiveWallpapers4Free => "jpg",
+            OnlineSource::MoeWalls | OnlineSource::WallpaperWaifu => "jpg",
+            OnlineSource::Lively | OnlineSource::DesktopHut => {
+                if self.thumb_url.contains(".webp") {
+                    "webp"
+                } else {
+                    "jpg"
+                }
+            }
             _ => {
                 if self.thumb_url.contains(".png") {
                     "png"
@@ -64,9 +140,14 @@ impl OnlineWallpaperItem {
         match self.source {
             OnlineSource::MotionBGS => "motionbgs",
             OnlineSource::LiveWallpapers4Free => "livewallpapers4free",
+            OnlineSource::Lively => "lively",
+            OnlineSource::DesktopHut => "desktophut",
+            OnlineSource::MoeWalls => "moewalls",
+            OnlineSource::WallpaperWaifu => "wallpaperwaifu",
             OnlineSource::Bing => "bing",
             OnlineSource::Wallhaven => "wallhaven",
             OnlineSource::Minimalistic => "minimal",
+            OnlineSource::Unified => unreachable!("Unified is a search view, not a wallpaper source"),
         }
     }
 
@@ -115,6 +196,20 @@ impl OnlineWallpaperItem {
                     .unwrap_or("video")
                     .to_lowercase();
                 format!("{} - {}-{}.{}", clean, self.id, quality, self.extension())
+            }
+            OnlineSource::Lively
+            | OnlineSource::DesktopHut
+            | OnlineSource::MoeWalls
+            | OnlineSource::WallpaperWaifu => {
+                let clean = clean_title_filename(&self.title);
+                if clean.is_empty() {
+                    clean_filename(self.source_prefix(), &self.id, self.extension())
+                } else {
+                    format!("{} - {}.{}", clean, self.id, self.extension())
+                }
+            }
+            OnlineSource::Unified => {
+                unreachable!("Unified is a search view, not a wallpaper source")
             }
         }
     }

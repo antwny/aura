@@ -165,6 +165,7 @@ git clone https://github.com/antwny/aura.git
 cd aura
 cargo build --release
 install -m 755 target/release/aura ~/.local/bin/aura
+install -m 755 target/release/aura-effects ~/.local/bin/aura-effects
 ```
 
 ---
