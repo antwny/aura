@@ -356,9 +356,8 @@ mod tests {
 
     #[test]
     fn test_extract_accent_from_image() {
-        let temp_dir = std::env::temp_dir().join(format!("aura_test_accent_{}", std::process::id()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let path = temp_dir.join("accent.png");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("accent.png");
         let image = image::RgbImage::from_pixel(16, 16, image::Rgb([220, 30, 45]));
         image.save(&path).unwrap();
 
@@ -366,8 +365,6 @@ mod tests {
         assert!(accent.r > 0.8);
         assert!(accent.g < 0.2);
         assert!(accent.b < 0.25);
-
-        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]
@@ -418,9 +415,8 @@ mod tests {
 
     #[test]
     fn test_apply_theme_skips_system_accent_when_disabled() {
-        let temp_dir = std::env::temp_dir().join(format!("aura_test_no_accent_{}", std::process::id()));
-        std::fs::create_dir_all(&temp_dir).unwrap();
-        let path = temp_dir.join("accent.png");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().join("accent.png");
         image::RgbImage::from_pixel(8, 8, image::Rgb([40, 80, 200]))
             .save(&path)
             .unwrap();
@@ -439,16 +435,13 @@ mod tests {
             false,
         ));
         assert!(!accent_path.exists());
-
-        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]
     fn test_atomic_write() {
-        let temp_dir = std::env::temp_dir().join(format!("aura_test_theme_{}", std::process::id()));
-        let target = temp_dir.join("test_file");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("test_file");
         atomic_write(&target, "hello world");
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello world");
-        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }

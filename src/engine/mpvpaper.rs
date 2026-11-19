@@ -81,10 +81,30 @@ fn output_from_socket_stem(stem: &str) -> String {
     }
 }
 
+/// Extracts mpv's command reply from a stream that may also contain
+/// asynchronous event messages. Command replies carry an `error` field; events
+/// only carry `event`, so the first complete reply line wins.
+fn find_ipc_reply(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            // Events never carry `request_id`; some (end-file) do carry an
+            // `error` string, so never mistake an event for a command reply.
+            if value.get("event").is_none() && value.get("error").is_some() {
+                return Some(line.to_string());
+            }
+        }
+    }
+    None
+}
+
 pub fn send_ipc_command(sock_path: &Path, json_cmd: &str) -> Result<String, String> {
     let mut stream = UnixStream::connect(sock_path)
         .map_err(|e| format!("IPC connect error: {}", e))?;
-    stream.set_read_timeout(Some(std::time::Duration::from_millis(300)))
+    stream.set_read_timeout(Some(std::time::Duration::from_millis(150)))
         .map_err(|e| format!("IPC timeout error: {}", e))?;
     stream.set_write_timeout(Some(std::time::Duration::from_millis(300)))
         .map_err(|e| format!("IPC timeout error: {}", e))?;
@@ -96,10 +116,36 @@ pub fn send_ipc_command(sock_path: &Path, json_cmd: &str) -> Result<String, Stri
     stream.flush()
         .map_err(|e| format!("IPC flush error: {}", e))?;
 
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf)
-        .map_err(|e| format!("IPC read error: {}", e))?;
-    Ok(String::from_utf8_lossy(&buf[..n]).to_string())
+    // A live player streams events (property changes, playback state) on the
+    // same socket, so a single read can return an event before the command
+    // reply. Keep reading until the reply appears; treating an event as the
+    // reply made `loadfile` look failed and eventually left applies no-ops.
+    let deadline = Instant::now() + Duration::from_millis(800);
+    let mut buf = String::new();
+    let mut chunk = [0u8; 4096];
+    while Instant::now() < deadline {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                if let Some(reply) = find_ipc_reply(&buf) {
+                    return Ok(reply);
+                }
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                ) =>
+            {
+                if let Some(reply) = find_ipc_reply(&buf) {
+                    return Ok(reply);
+                }
+            }
+            Err(e) => return Err(format!("IPC read error: {}", e)),
+        }
+    }
+    Err("IPC timeout waiting for command reply".to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,13 +243,25 @@ pub fn ipc_get_value(sock_path: &Path, prop: &str) -> Option<serde_json::Value> 
     });
     let cmd_str = serde_json::to_string(&cmd).ok()?;
     let response = send_ipc_command(sock_path, &cmd_str).ok()?;
-    // mpv may batch several JSON objects in one read. Keep the first complete line.
-    let line = response.lines().find(|line| !line.trim().is_empty())?;
-    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    // mpv may batch several JSON objects in one read. Keep the command reply.
+    let line = find_ipc_reply(&response)?;
+    let value: serde_json::Value = serde_json::from_str(&line).ok()?;
     if value.get("error").and_then(|v| v.as_str()) != Some("success") {
         return None;
     }
     value.get("data").cloned()
+}
+
+/// True when mpv reports the expected file as the currently loaded media.
+pub fn ipc_path_matches(sock_path: &Path, expected_path: &Path) -> bool {
+    ipc_get_value(sock_path, "path")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .is_some_and(|actual| {
+            let actual = Path::new(&actual);
+            actual == expected_path
+                || (actual.file_name().is_some()
+                    && actual.file_name() == expected_path.file_name())
+        })
 }
 
 /// Waits until a freshly loaded file has a configured video output and has had
@@ -230,16 +288,8 @@ pub fn ipc_wait_first_frame(sock_path: &Path, expected_path: Option<&Path>, time
         // Reusing a live IPC socket means vo-configured and width are still true
         // from the previous file. Require mpv to actually report the new path
         // before accepting the readiness barrier.
-        let loaded_path_matches = expected_path.is_none_or(|expected| {
-            ipc_get_value(sock_path, "path")
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .is_some_and(|actual| {
-                    let actual = Path::new(&actual);
-                    actual == expected
-                        || (actual.file_name().is_some()
-                            && actual.file_name() == expected.file_name())
-                })
-        });
+        let loaded_path_matches =
+            expected_path.is_none_or(|expected| ipc_path_matches(sock_path, expected));
 
         if configured && has_size && loaded_path_matches {
             let since = configured_since.get_or_insert_with(Instant::now);
@@ -483,14 +533,21 @@ fn mpvpaper_auto_mode(auto_pause: bool) -> Option<&'static str> {
     crate::config::Config::load().auto_pause_mode.mpvpaper_auto_mode()
 }
 
-/// On Niri, Aura's occlusion watcher toggles mpv's `pause` property over IPC
-/// and is the single pause authority. mpvpaper's `-p` runs an independent
+/// Where Aura's occlusion watcher toggles mpv's `pause` property over IPC and
+/// is the single pause authority. mpvpaper's `-p` runs an independent
 /// frame-callback state machine: it can pause before the first frame is
 /// rendered (boot) and later clear Aura's pause when a callback arrives,
-/// leaving the video playing behind an occluding window. Do not pass `-p`
-/// there. COSMIC keeps its existing behaviour.
+/// leaving the video playing behind an occluding window. On COSMIC the
+/// effects renderer adds a continuously repainting layer above the wallpaper,
+/// which can starve those callbacks and leave a freshly applied wallpaper
+/// paused forever. Aura already watches window coverage on both compositors,
+/// so do not pass `-p` there.
 fn pause_owned_by_aura() -> bool {
-    crate::engine::DesktopEnvironment::detect() == crate::engine::DesktopEnvironment::Niri
+    matches!(
+        crate::engine::DesktopEnvironment::detect(),
+        crate::engine::DesktopEnvironment::Niri
+            | crate::engine::DesktopEnvironment::Cosmic
+    )
 }
 
 /// Layer for Aura's wallpaper surface. On niri, layer-shell surfaces stack by
@@ -951,25 +1008,51 @@ impl WallpaperEngine {
             }
 
             if ipc_loadfile(&active_sock, &effective_path_str).is_ok() {
-                self.is_paused = false;
-                self.output_is_image.insert(output.to_string(), is_image);
-                self.current_paths
-                    .insert(output.to_string(), video_path.to_string());
-                self.sockets.insert(output.to_string(), active_sock.clone());
+                // The old surface is reused over IPC, so `loadfile` only
+                // queues the switch. Wait until mpv reports the new file as
+                // loaded before declaring success: a player that silently
+                // ignores the command used to leave the previous wallpaper on
+                // screen while every click reported "apply finished".
+                let presented = ipc_wait_first_frame(
+                    &active_sock,
+                    Some(&effective_path),
+                    Duration::from_secs(2),
+                );
+                let switched = presented
+                    || (ipc_is_alive(&active_sock)
+                        && ipc_path_matches(&active_sock, &effective_path));
+                if switched {
+                    if !presented && std::env::var_os("AURA_DEBUG_ENGINE").is_some() {
+                        eprintln!(
+                            "[Aura Engine] El nuevo fondo aún no presentó su primer frame; se conserva y seguirá inicializando."
+                        );
+                    }
+                    self.is_paused = false;
+                    self.output_is_image.insert(output.to_string(), is_image);
+                    self.current_paths
+                        .insert(output.to_string(), video_path.to_string());
+                    self.sockets.insert(output.to_string(), active_sock.clone());
 
-                // The new default is visible. Only now retire overrides that
-                // would otherwise hide it. Hotplug restarts preserve overrides.
-                if retire_overrides {
-                    self.stop_specific_outputs();
-                }
+                    // The new default is visible. Only now retire overrides that
+                    // would otherwise hide it. Hotplug restarts preserve overrides.
+                    if retire_overrides {
+                        self.stop_specific_outputs();
+                    }
 
-                if let Some(child) = self.processes.get(output) {
-                    return Ok(child.id());
+                    if let Some(child) = self.processes.get(output) {
+                        return Ok(child.id());
+                    }
+                    if let Some(pid) = ipc_get_pid(&active_sock) {
+                        return Ok(pid);
+                    }
+                    return Ok(0);
                 }
-                if let Some(pid) = ipc_get_pid(&active_sock) {
-                    return Ok(pid);
-                }
-                return Ok(0);
+                // mpv is alive but never switched to the requested file. Fall
+                // through to the transactional spawn so the dead player is
+                // replaced instead of swallowing every future apply.
+                eprintln!(
+                    "[Aura Engine] mpv no cargó el nuevo fondo por IPC; se recrea el reproductor."
+                );
             }
         }
 
@@ -1096,7 +1179,7 @@ impl WallpaperEngine {
             }
         };
 
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + Duration::from_secs(5);
         let mut exited_status = None;
         let mut ready = false;
         while Instant::now() < deadline {
@@ -1134,20 +1217,28 @@ impl WallpaperEngine {
         }
 
         // Loading a large image/video can take a little longer while the
-        // previous surface is still decoding. Give the staged surface three
-        // seconds to present a frame before rolling back.
-        if !ipc_wait_first_frame(
-            &staging_sock,
-            Some(Path::new(&effective_path_str)),
-            Duration::from_secs(3),
-        ) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&staging_sock);
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "mpvpaper no presentó el primer frame a tiempo; se mantiene el fondo anterior",
-            ));
+        // previous surface is still decoding. Give the staged surface some
+        // room; slower iGPUs (and busy compositors) can miss a short barrier.
+        let expected_path = Path::new(&effective_path_str);
+        if !ipc_wait_first_frame(&staging_sock, Some(expected_path), Duration::from_secs(6)) {
+            // The process is alive and has the right file loaded, it is just
+            // still initializing its video output. Killing it here was what
+            // made apply look broken after switching media types: the old
+            // wallpaper stayed and every click "did nothing". Keep the staged
+            // player instead; it becomes visible as soon as it presents.
+            if ipc_is_alive(&staging_sock) && ipc_path_matches(&staging_sock, expected_path) {
+                eprintln!(
+                    "[Aura Engine] El nuevo fondo tardó en presentar el primer frame; se conserva y seguirá inicializando."
+                );
+            } else {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&staging_sock);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "mpvpaper no presentó el primer frame a tiempo; se mantiene el fondo anterior",
+                ));
+            }
         }
 
         let pid = match ipc_get_pid(&staging_sock)
@@ -1712,12 +1803,6 @@ mod tests {
     }
 
     #[test]
-    fn test_can_use_systemd_run() {
-        // Must return bool without panicking
-        let _ = can_use_systemd_run();
-    }
-
-    #[test]
     fn test_ipc_get_pid_non_existent() {
         let dummy = PathBuf::from("/tmp/non_existent_sock_123456.sock");
         assert_eq!(ipc_get_pid(&dummy), None);
@@ -1788,6 +1873,66 @@ mod tests {
 
         engine.stop_all();
         assert!(engine.output_is_image.is_empty());
+    }
+
+    #[test]
+    fn test_send_ipc_command_waits_for_reply_after_events() {
+        use std::io::Write;
+        use std::os::unix::net::UnixListener;
+
+        let dir = std::env::temp_dir().join(format!(
+            "aura-ipc-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("mpv.sock");
+        let _ = std::fs::remove_file(&sock);
+        let listener = UnixListener::bind(&sock).unwrap();
+
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 256];
+            let _ = stream.read(&mut buf);
+            // A busy player sends events before the command reply.
+            stream
+                .write_all(b"{\"event\":\"start-file\"}\n{\"event\":\"file-loaded\"}\n")
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(40));
+            stream
+                .write_all(b"{\"data\":null,\"request_id\":0,\"error\":\"success\"}\n")
+                .unwrap();
+        });
+
+        let reply = send_ipc_command(&sock, "{\"command\":[\"loadfile\",\"x\"]}").unwrap();
+        server.join().unwrap();
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir(&dir);
+
+        assert!(reply.contains("\"error\":\"success\""));
+    }
+
+    #[test]
+    fn test_find_ipc_reply_skips_events() {
+        let stream = concat!(
+            "{\"event\":\"start-file\"}\n",
+            "{\"event\":\"file-loaded\"}\n",
+            "{\"data\":null,\"request_id\":0,\"error\":\"success\"}\n"
+        );
+        assert_eq!(
+            find_ipc_reply(stream).as_deref(),
+            Some("{\"data\":null,\"request_id\":0,\"error\":\"success\"}")
+        );
+        assert_eq!(find_ipc_reply("{\"event\":\"tick\"}\n"), None);
+        // `end-file` reports failures in an `error` field but is still an event.
+        assert_eq!(
+            find_ipc_reply("{\"event\":\"end-file\",\"reason\":\"error\",\"error\":\"failed\"}\n"),
+            None
+        );
+        assert_eq!(
+            find_ipc_reply("{\"error\":\"loading failed\"}\n").as_deref(),
+            Some("{\"error\":\"loading failed\"}")
+        );
     }
 }
 

@@ -84,6 +84,9 @@ fi
 install -m 644 io.github.antwny.aura.svg "${ICONS_DIR}/io.github.antwny.aura.svg"
 install -m 644 navbar-open-symbolic.svg "${ACTION_ICONS_DIR}/navbar-open-symbolic.svg"
 install -m 644 navbar-closed-symbolic.svg "${ACTION_ICONS_DIR}/navbar-closed-symbolic.svg"
+if [ -f "fire-symbolic.svg" ]; then
+    install -m 644 fire-symbolic.svg "${ACTION_ICONS_DIR}/fire-symbolic.svg"
+fi
 install -m 644 io.github.antwny.aura.metainfo.xml "${META_DIR}/io.github.antwny.aura.metainfo.xml"
 rm -f "${DATA_DIR}/icons/hicolor"/*/apps/io.github.antwny.aura.png 2>/dev/null || true
 

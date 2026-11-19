@@ -19,9 +19,14 @@ build-debug:
 check:
     cargo check
 
-# Run automated tests
+# Run the fast, offline test suite (unit + local integration tests)
 test:
     cargo test
+
+# Run network probes against the real wallpaper catalogs (slow, may fail
+# when a third-party site changes; never part of the default suite)
+test-live:
+    cargo test -- --ignored --test-threads=1
 
 # Validate desktop entry and AppStream metainfo
 validate:
@@ -44,6 +49,7 @@ clean:
 install: build
     install -d "${HOME}/.local/bin"
     install -m 755 target/release/aura "${HOME}/.local/bin/aura"
+    install -m 755 target/release/aura-effects "${HOME}/.local/bin/aura-effects"
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "${HOME}/.local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "${HOME}/.local/bin/mpvpaper"; fi
     install -d "${HOME}/.local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
@@ -57,6 +63,7 @@ install: build
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "${HOME}/.local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
     install -m 644 resources/icons/navbar-open-symbolic.svg "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg"
     install -m 644 resources/icons/navbar-closed-symbolic.svg "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg"
+    install -m 644 resources/icons/fire-symbolic.svg "${HOME}/.local/share/icons/hicolor/scalable/actions/fire-symbolic.svg"
     rm -f "${HOME}/.local/share/icons/hicolor/*/apps/io.github.antwny.aura.png"
     @command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
     @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
@@ -68,6 +75,7 @@ install: build
 install-system: build
     install -d "/usr/local/bin"
     install -m 755 target/release/aura "/usr/local/bin/aura"
+    install -m 755 target/release/aura-effects "/usr/local/bin/aura-effects"
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "/usr/local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "/usr/local/bin/mpvpaper"; fi
     install -d "/usr/local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "/usr/local/share/applications/io.github.antwny.aura.desktop"
@@ -77,6 +85,7 @@ install-system: build
     install -m 644 resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "/usr/local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
     install -m 644 resources/icons/navbar-open-symbolic.svg "/usr/local/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg"
     install -m 644 resources/icons/navbar-closed-symbolic.svg "/usr/local/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg"
+    install -m 644 resources/icons/fire-symbolic.svg "/usr/local/share/icons/hicolor/scalable/actions/fire-symbolic.svg"
     rm -f "/usr/local/share/icons/hicolor/*/apps/io.github.antwny.aura.png"
     @command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "/usr/local/share/applications" 2>/dev/null || true
     @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "/usr/local/share/icons/hicolor" 2>/dev/null || true
@@ -87,11 +96,12 @@ install-system: build
 # Uninstall user installation
 uninstall:
     rm -f "${HOME}/.local/bin/aura"
+    rm -f "${HOME}/.local/bin/aura-effects"
     rm -f "${HOME}/.local/bin/mpvpaper"
     rm -f "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
     rm -f "${HOME}/.config/environment.d/50-aura.conf"
     rm -f "${HOME}/.local/share/icons/hicolor/scalable/apps/io.github.antwny.aura.svg"
-    rm -f "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg" "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg"
+    rm -f "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-open-symbolic.svg" "${HOME}/.local/share/icons/hicolor/scalable/actions/navbar-closed-symbolic.svg" "${HOME}/.local/share/icons/hicolor/scalable/actions/fire-symbolic.svg"
     rm -f "${HOME}/.local/share/metainfo/io.github.antwny.aura.metainfo.xml"
     @command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
     @command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
@@ -102,9 +112,10 @@ package version="1.10.0": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"
+    cp target/release/aura-effects "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/io.github.antwny.aura.desktop "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/aura-v{{version}}-x86_64-linux/"
-    cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg "target/package/aura-v{{version}}-x86_64-linux/"
+    cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg resources/icons/fire-symbolic.svg "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/io.github.antwny.aura.metainfo.xml "target/package/aura-v{{version}}-x86_64-linux/"
     cp LICENSE "target/package/aura-v{{version}}-x86_64-linux/"
     @if [ -f "packaging/mpvpaper" ]; then cp packaging/mpvpaper "target/package/aura-v{{version}}-x86_64-linux/"; elif [ -f "/usr/bin/mpvpaper" ]; then cp /usr/bin/mpvpaper "target/package/aura-v{{version}}-x86_64-linux/"; fi

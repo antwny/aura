@@ -2,6 +2,7 @@ pub mod library;
 pub mod explore;
 pub mod monitors;
 pub mod settings;
+pub mod effects;
 pub mod bar;
 pub mod about;
 pub mod switcher;

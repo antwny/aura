@@ -278,6 +278,23 @@ fn is_plasmashell_responsive() -> bool {
     false
 }
 
+/// Polls `probe` after each backoff until the deadline. Returns whether the
+/// service became ready in time. Split from `wait_for_plasmashell` so tests
+/// can verify the bounded-wait contract without spawning D-Bus clients.
+fn poll_plasmashell_ready(
+    deadline: Instant,
+    mut probe: impl FnMut() -> bool,
+    mut wait: impl FnMut(Duration),
+) -> bool {
+    while Instant::now() < deadline {
+        wait(Duration::from_millis(250));
+        if probe() {
+            return true;
+        }
+    }
+    false
+}
+
 /// Autostart can launch Aura before plasmashell has finished creating its
 /// desktop containments. Wait briefly (once) for /PlasmaShell to be responsive.
 fn wait_for_plasmashell() {
@@ -294,14 +311,9 @@ fn wait_for_plasmashell() {
 
     // Slow path (only during early session autostart before plasmashell starts):
     let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(250));
-        if is_plasmashell_responsive() {
-            // Desktops are created shortly after the service appears.
-            std::thread::sleep(Duration::from_millis(300));
-            READY.store(true, Ordering::Relaxed);
-            return;
-        }
+    if poll_plasmashell_ready(deadline, is_plasmashell_responsive, std::thread::sleep) {
+        // Desktops are created shortly after the service appears.
+        std::thread::sleep(Duration::from_millis(300));
     }
 
     // Mark ready so subsequent manual user clicks do not block repeatedly
@@ -449,10 +461,39 @@ mod tests {
     }
 
     #[test]
-    fn wait_for_plasmashell_terminates_promptly() {
-        // Must never hang or loop infinitely even when plasmashell is not present
-        let start = std::time::Instant::now();
-        wait_for_plasmashell();
-        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    fn wait_for_plasmashell_stops_at_deadline() {
+        let start = Instant::now();
+        let mut probes = 0;
+        let ready = poll_plasmashell_ready(
+            start + Duration::from_millis(5),
+            || {
+                probes += 1;
+                false
+            },
+            |_| {},
+        );
+
+        assert!(!ready);
+        assert!(probes >= 1, "must probe before giving up");
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "must stop polling at the deadline"
+        );
+    }
+
+    #[test]
+    fn wait_for_plasmashell_returns_as_soon_as_ready() {
+        let mut probes = 0;
+        let ready = poll_plasmashell_ready(
+            Instant::now() + Duration::from_secs(1),
+            || {
+                probes += 1;
+                probes == 3
+            },
+            |_| {},
+        );
+
+        assert!(ready);
+        assert_eq!(probes, 3, "must stop probing once the service responds");
     }
 }

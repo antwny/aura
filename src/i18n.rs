@@ -116,6 +116,14 @@ impl Language {
         }
     }
 
+    pub fn nav_effects(&self) -> &'static str {
+        match self {
+            Language::Es => "Efectos",
+            Language::En => "Effects",
+            Language::Fr => "Effets",
+        }
+    }
+
     pub fn nav_about(&self) -> &'static str {
         match self {
             Language::Es => "Acerca de",
@@ -566,9 +574,9 @@ impl Language {
 
     pub fn settings_effects_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Paralaje de profundidad con deriva automática y espectro de audio estilo CAVA.",
-            Language::En => "Auto-drifting depth parallax and a CAVA-style audio spectrum.",
-            Language::Fr => "Parallaxe de profondeur à dérive automatique et spectre audio façon CAVA.",
+            Language::Es => "Fondos con profundidad 3D que siguen el mouse y espectro de audio estilo CAVA.",
+            Language::En => "Mouse-following 3D depth wallpapers and a CAVA-style audio spectrum.",
+            Language::Fr => "Fonds à profondeur 3D qui suivent la souris et spectre audio façon CAVA.",
         }
     }
 
@@ -582,9 +590,9 @@ impl Language {
 
     pub fn settings_effects_parallax_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Deriva suave sobre un mapa de profundidad local. Solo se aplica a fondos estáticos y no captura los clics del escritorio.",
-            Language::En => "Gentle drift over a local depth map. Only applies to still wallpapers and never captures desktop clicks.",
-            Language::Fr => "Dérive douce sur une carte de profondeur locale. S'applique uniquement aux fonds fixes et ne capture pas les clics du bureau.",
+            Language::Es => "Convierte imágenes estáticas en fondos con profundidad que siguen el mouse suavemente. Requiere un compositor compatible con metadatos del cursor, como Niri, y no captura los clics del escritorio.",
+            Language::En => "Turn still images into depth wallpapers that smoothly follow the mouse. Requires a compositor with cursor metadata support, such as Niri, and never captures desktop clicks.",
+            Language::Fr => "Transforme les images fixes en fonds avec profondeur qui suivent doucement la souris. Nécessite un compositeur compatible avec les métadonnées du curseur, comme Niri, sans capturer les clics du bureau.",
         }
     }
 
@@ -677,6 +685,214 @@ impl Language {
         }
     }
 
+    pub fn settings_effects_color_mode(&self) -> &'static str {
+        match self {
+            Language::Es => "Color de las barras",
+            Language::En => "Bar colors",
+            Language::Fr => "Couleur des barres",
+        }
+    }
+
+    pub fn settings_effects_color_auto(&self) -> &'static str {
+        match self {
+            Language::Es => "Automático",
+            Language::En => "Automatic",
+            Language::Fr => "Automatique",
+        }
+    }
+
+    pub fn settings_effects_color_manual(&self) -> &'static str {
+        match self {
+            Language::Es => "Manual",
+            Language::En => "Manual",
+            Language::Fr => "Manuel",
+        }
+    }
+
+    pub fn settings_effects_color_auto_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Toma el tono de la zona inferior del fondo activo y lo ajusta para que las barras mantengan buen contraste. Si el fondo es claro usa barras oscuras y viceversa.",
+            Language::En => "Samples the lower area of the active wallpaper and adjusts it so the bars keep good contrast. Light wallpapers get darker bars and vice versa.",
+            Language::Fr => "Échantillonne le bas du fond actif et l'ajuste pour que les barres gardent un bon contraste. Les fonds clairs reçoivent des barres sombres et inversement.",
+        }
+    }
+
+    pub fn settings_effects_color_manual_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Elige los dos extremos del degradado. El halo de contraste se calcula automáticamente a partir de su luminosidad.",
+            Language::En => "Pick both ends of the gradient. The contrast halo is derived automatically from their brightness.",
+            Language::Fr => "Choisissez les deux extrémités du dégradé. Le halo de contraste est calculé automatiquement selon leur luminosité.",
+        }
+    }
+
+    pub fn settings_effects_color1(&self) -> &'static str {
+        match self {
+            Language::Es => "Color inicial (base)",
+            Language::En => "Start color (base)",
+            Language::Fr => "Couleur de départ (base)",
+        }
+    }
+
+    pub fn settings_effects_color2(&self) -> &'static str {
+        match self {
+            Language::Es => "Color final (punta)",
+            Language::En => "End color (tip)",
+            Language::Fr => "Couleur de fin (pointe)",
+        }
+    }
+
+    pub fn settings_effects_position(&self) -> &'static str {
+        match self {
+            Language::Es => "Posición",
+            Language::En => "Position",
+            Language::Fr => "Position",
+        }
+    }
+
+    pub fn settings_effects_style(&self) -> &'static str {
+        match self {
+            Language::Es => "Estilo",
+            Language::En => "Style",
+            Language::Fr => "Style",
+        }
+    }
+
+    pub fn settings_effects_style_bars(&self) -> &'static str {
+        match self {
+            Language::Es => "Barras",
+            Language::En => "Bars",
+            Language::Fr => "Barres",
+        }
+    }
+
+    pub fn settings_effects_style_wave(&self) -> &'static str {
+        match self {
+            Language::Es => "Onda",
+            Language::En => "Wave",
+            Language::Fr => "Onde",
+        }
+    }
+
+    pub fn settings_effects_style_dots(&self) -> &'static str {
+        match self {
+            Language::Es => "Puntos",
+            Language::En => "Dots",
+            Language::Fr => "Points",
+        }
+    }
+
+    pub fn settings_effects_style_mirror(&self) -> &'static str {
+        match self {
+            Language::Es => "Espejo",
+            Language::En => "Mirror",
+            Language::Fr => "Miroir",
+        }
+    }
+
+    pub fn settings_effects_bands(&self) -> &'static str {
+        match self {
+            Language::Es => "Bandas",
+            Language::En => "Bands",
+            Language::Fr => "Bandes",
+        }
+    }
+
+    pub fn settings_effects_cava_ready(&self) -> &'static str {
+        match self {
+            Language::Es => "CAVA detectado: las barras reaccionan al audio del sistema.",
+            Language::En => "CAVA detected: the bars react to system audio.",
+            Language::Fr => "CAVA détecté : les barres réagissent au son du système.",
+        }
+    }
+
+    pub fn settings_effects_cava_missing(&self) -> &'static str {
+        match self {
+            Language::Es => "CAVA no está instalado: solo verás la animación de reposo. Instálalo con el gestor de paquetes de tu distribución para que reaccione al audio.",
+            Language::En => "CAVA is not installed: only the idle animation will play. Install it with your distribution's package manager to react to audio.",
+            Language::Fr => "CAVA n'est pas installé : seule l'animation de repos sera visible. Installez-le via le gestionnaire de paquets de votre distribution pour réagir au son.",
+        }
+    }
+
+    pub fn settings_effects_position_bottom(&self) -> &'static str {
+        match self {
+            Language::Es => "Abajo",
+            Language::En => "Bottom",
+            Language::Fr => "Bas",
+        }
+    }
+
+    pub fn settings_effects_position_top(&self) -> &'static str {
+        match self {
+            Language::Es => "Arriba",
+            Language::En => "Top",
+            Language::Fr => "Haut",
+        }
+    }
+
+    pub fn settings_effects_bar_width(&self) -> &'static str {
+        match self {
+            Language::Es => "Grosor de las barras",
+            Language::En => "Bar width",
+            Language::Fr => "Largeur des barres",
+        }
+    }
+
+    pub fn settings_effects_glow(&self) -> &'static str {
+        match self {
+            Language::Es => "Halo de contraste",
+            Language::En => "Contrast halo",
+            Language::Fr => "Halo de contraste",
+        }
+    }
+
+    pub fn settings_effects_glow_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Añade un contorno suave que separa las barras del fondo, útil con fondos claros o muy detallados.",
+            Language::En => "Adds a soft outline that separates the bars from the wallpaper. Useful on bright or busy backgrounds.",
+            Language::Fr => "Ajoute un contour doux qui sépare les barres du fond. Utile sur les fonds clairs ou chargés.",
+        }
+    }
+
+    pub fn settings_effects_height_compact(&self) -> &'static str {
+        match self {
+            Language::Es => "Compacta",
+            Language::En => "Compact",
+            Language::Fr => "Compacte",
+        }
+    }
+
+    pub fn settings_effects_height_normal(&self) -> &'static str {
+        match self {
+            Language::Es => "Normal",
+            Language::En => "Normal",
+            Language::Fr => "Normale",
+        }
+    }
+
+    pub fn settings_effects_height_large(&self) -> &'static str {
+        match self {
+            Language::Es => "Grande",
+            Language::En => "Large",
+            Language::Fr => "Grande",
+        }
+    }
+
+    pub fn settings_effects_height_huge(&self) -> &'static str {
+        match self {
+            Language::Es => "Enorme",
+            Language::En => "Huge",
+            Language::Fr => "Énorme",
+        }
+    }
+
+    pub fn settings_effects_height_hint(&self) -> &'static str {
+        match self {
+            Language::Es => "El porcentaje se mide sobre la altura de cada pantalla, así que se adapta a cualquier resolución.",
+            Language::En => "The percentage is relative to each display's height, so it adapts to any resolution.",
+            Language::Fr => "Le pourcentage est relatif à la hauteur de chaque écran, il s'adapte donc à toute résolution.",
+        }
+    }
+
     pub fn settings_effects_renderer_status(&self) -> &'static str {
         match self {
             Language::Es => "Renderizador de efectos",
@@ -690,6 +906,14 @@ impl Language {
             Language::Es => "activo",
             Language::En => "running",
             Language::Fr => "actif",
+        }
+    }
+
+    pub fn settings_effects_unsupported(&self) -> &'static str {
+        match self {
+            Language::Es => "Este escritorio no expone layer-shell en Wayland. Los efectos solo pueden dibujarse en compositores compatibles (COSMIC, KDE Plasma, niri, Sway, Hyprland, etc.). Puedes probarlos de todos modos con AURA_EFFECTS_FORCE=1.",
+            Language::En => "This desktop does not expose layer-shell over Wayland. Effects can only be drawn on compatible compositors (COSMIC, KDE Plasma, niri, Sway, Hyprland, etc.). You can still experiment with AURA_EFFECTS_FORCE=1.",
+            Language::Fr => "Ce bureau n'expose pas layer-shell sous Wayland. Les effets ne peuvent être dessinés que sur des compositeurs compatibles (COSMIC, KDE Plasma, niri, Sway, Hyprland, etc.). Vous pouvez tout de même essayer avec AURA_EFFECTS_FORCE=1.",
         }
     }
 
@@ -1706,14 +1930,6 @@ impl Language {
         }
     }
 
-    pub fn explore_filter_errors(&self) -> &'static str {
-        match self {
-            Language::Es => "Algunos catálogos no respondieron:",
-            Language::En => "Some catalogues did not respond:",
-            Language::Fr => "Certains catalogues n'ont pas répondu :",
-        }
-    }
-
     pub fn explore_category_label(
         &self,
         category: crate::online::filters::CategoryFilter,
@@ -1959,6 +2175,109 @@ impl Language {
             Language::Es => "No se pudo conectar con el catálogo en línea:",
             Language::En => "Could not connect to online catalog:",
             Language::Fr => "Impossible de se connecter au catalogue en ligne :",
+        }
+    }
+
+    pub fn explore_error_title(&self) -> &'static str {
+        match self {
+            Language::Es => "No se pudo cargar el catálogo",
+            Language::En => "Could not load the catalogue",
+            Language::Fr => "Impossible de charger le catalogue",
+        }
+    }
+
+    pub fn explore_error_offline(&self) -> &'static str {
+        match self {
+            Language::Es => "Parece que no hay conexión a Internet. Revisa tu red e inténtalo de nuevo.",
+            Language::En => "It looks like there is no Internet connection. Check your network and try again.",
+            Language::Fr => "Il semble qu'il n'y ait pas de connexion Internet. Vérifiez votre réseau et réessayez.",
+        }
+    }
+
+    pub fn explore_error_timeout(&self) -> &'static str {
+        match self {
+            Language::Es => "Los catálogos tardaron demasiado en responder. Inténtalo de nuevo en unos segundos.",
+            Language::En => "The catalogues took too long to respond. Try again in a few seconds.",
+            Language::Fr => "Les catalogues ont mis trop de temps à répondre. Réessayez dans quelques secondes.",
+        }
+    }
+
+    pub fn explore_error_rate_limited(&self) -> &'static str {
+        match self {
+            Language::Es => "Una fuente limitó las solicitudes temporalmente. Espera un momento y reintenta.",
+            Language::En => "A source is rate-limiting requests. Wait a moment and try again.",
+            Language::Fr => "Une source limite temporairement les requêtes. Patientez un instant et réessayez.",
+        }
+    }
+
+    pub fn explore_error_unavailable(&self) -> &'static str {
+        match self {
+            Language::Es => "Una fuente no está disponible ahora mismo. Inténtalo de nuevo más tarde.",
+            Language::En => "A source is currently unavailable. Try again later.",
+            Language::Fr => "Une source est indisponible pour le moment. Réessayez plus tard.",
+        }
+    }
+
+    pub fn explore_error_generic(&self) -> &'static str {
+        match self {
+            Language::Es => "Algo salió mal al consultar las fuentes en línea. Inténtalo de nuevo.",
+            Language::En => "Something went wrong while querying the online sources. Try again.",
+            Language::Fr => "Une erreur est survenue lors de la requête aux sources en ligne. Réessayez.",
+        }
+    }
+
+    pub fn explore_sources_failed(&self, count: usize) -> String {
+        match self {
+            Language::Es => match count {
+                1 => "1 catálogo no respondió".into(),
+                _ => format!("{} catálogos no respondieron", count),
+            },
+            Language::En => match count {
+                1 => "1 catalogue did not respond".into(),
+                _ => format!("{} catalogues did not respond", count),
+            },
+            Language::Fr => match count {
+                1 => "1 catalogue n'a pas répondu".into(),
+                _ => format!("{} catalogues n'ont pas répondu", count),
+            },
+        }
+    }
+
+    pub fn explore_no_results_title(&self) -> &'static str {
+        match self {
+            Language::Es => "Sin resultados",
+            Language::En => "No results",
+            Language::Fr => "Aucun résultat",
+        }
+    }
+
+    pub fn explore_no_results_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Prueba a cambiar los filtros o actualiza el catálogo.",
+            Language::En => "Try changing the filters or refreshing the catalogue.",
+            Language::Fr => "Essayez de modifier les filtres ou d'actualiser le catalogue.",
+        }
+    }
+
+    pub fn explore_no_results_search(&self, query: &str) -> String {
+        match self {
+            Language::Es => format!(
+                "No encontramos fondos para «{query}». Prueba con otra búsqueda o cambia los filtros."
+            ),
+            Language::En => format!(
+                "We could not find wallpapers for “{query}”. Try another search or change the filters."
+            ),
+            Language::Fr => format!(
+                "Aucun fond trouvé pour « {query} ». Essayez une autre recherche ou modifiez les filtres."
+            ),
+        }
+    }
+
+    pub fn explore_btn_clear_search(&self) -> &'static str {
+        match self {
+            Language::Es => "Limpiar búsqueda",
+            Language::En => "Clear search",
+            Language::Fr => "Effacer la recherche",
         }
     }
 
@@ -3346,17 +3665,17 @@ impl Language {
 
     pub fn settings_switcher_shortcut_title(&self) -> &'static str {
         match self {
-            Language::Es => "Atajo global en GNOME o COSMIC",
-            Language::En => "Global shortcut in GNOME or COSMIC",
-            Language::Fr => "Raccourci global dans GNOME ou COSMIC",
+            Language::Es => "Atajo global de teclado",
+            Language::En => "Global keyboard shortcut",
+            Language::Fr => "Raccourci clavier global",
         }
     }
 
     pub fn settings_switcher_shortcut_desc(&self) -> &'static str {
         match self {
-            Language::Es => "Abre el HUD con una combinación de teclas: añade el comando en Atajos personalizados del teclado en los ajustes de GNOME o COSMIC:",
-            Language::En => "Open the HUD with a key combo by adding this command under Custom Keyboard Shortcuts in GNOME or COSMIC Settings:",
-            Language::Fr => "Ouvrez le HUD avec un raccourci clavier en ajoutant cette commande aux raccourcis clavier personnalisés de GNOME ou COSMIC :",
+            Language::Es => "Abre el HUD con una combinación de teclas. Añade el comando al sistema de atajos de tu escritorio: GNOME/COSMIC (Atajos personalizados), KDE (Atajos de teclado) o los binds del compositor (por ejemplo Niri, Sway o Hyprland):",
+            Language::En => "Open the HUD with a key combination. Add the command to your desktop's shortcut system: GNOME/COSMIC (Custom Shortcuts), KDE (Keyboard Shortcuts) or your compositor's binds (e.g. Niri, Sway or Hyprland):",
+            Language::Fr => "Ouvrez le HUD avec une combinaison de touches. Ajoutez la commande au système de raccourcis de votre bureau : GNOME/COSMIC (raccourcis personnalisés), KDE (raccourcis clavier) ou les binds du compositeur (par ex. Niri, Sway ou Hyprland) :",
         }
     }
 

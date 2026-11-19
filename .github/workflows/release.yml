@@ -22,6 +22,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev \
             libwayland-dev \
+            libpipewire-0.3-dev \
+            libclang-dev \
             desktop-file-utils \
             appstream \
             libmpv-dev \
@@ -75,7 +77,7 @@ jobs:
           cp target/release/aura-effects "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.desktop "target/package/${PKG_NAME}/"
           cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/${PKG_NAME}/"
-          cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg "target/package/${PKG_NAME}/"
+          cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg resources/icons/fire-symbolic.svg "target/package/${PKG_NAME}/"
           cp resources/io.github.antwny.aura.metainfo.xml "target/package/${PKG_NAME}/"
           cp LICENSE "target/package/${PKG_NAME}/"
           test -x packaging/mpvpaper

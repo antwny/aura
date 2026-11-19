@@ -13,11 +13,11 @@ Ensure you have the required system and build dependencies installed:
 
 ```bash
 # Arch Linux / CachyOS
-sudo pacman -S mpv ffmpeg pkgconf wayland libxkbcommon just
+sudo pacman -S mpv ffmpeg pkgconf wayland libxkbcommon pipewire clang just
 
 # Pop!_OS 24.04 LTS / Ubuntu-based systems
 sudo apt update
-sudo apt install mpvpaper ffmpeg pkg-config libwayland-dev libxkbcommon-dev just
+sudo apt install mpvpaper ffmpeg pkg-config libwayland-dev libxkbcommon-dev libpipewire-0.3-dev libclang-dev just
 ```
 
 Ensure the Rust toolchain (1.80+) is installed:
@@ -57,6 +57,22 @@ just build
    cargo fmt --check
    cargo check
    ```
+
+### Testing
+
+```bash
+# Fast, offline suite (what CI runs on every push/PR)
+just test
+
+# Network smoke probes against the real wallpaper catalogs. These are
+# #[ignore]d because they depend on third-party sites; run them manually
+# before touching a catalog parser or downloader.
+just test-live
+```
+
+Tests isolate `HOME`/XDG paths through `src/test_support.rs`, so they never
+touch your real configuration, cache, or wallpaper folders. Filesystem tests
+use `tempfile` directories and must not share fixed paths between tests.
 
 ---
 

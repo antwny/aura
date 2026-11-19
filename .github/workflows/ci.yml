@@ -8,11 +8,14 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # CI checkouts are cold; incremental artifacts only add I/O and cache size.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,6 +26,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev \
             libwayland-dev \
+            libpipewire-0.3-dev \
+            libclang-dev \
             desktop-file-utils \
             appstream
 
@@ -38,10 +43,10 @@ jobs:
           appstreamcli validate --pedantic resources/io.github.antwny.aura.metainfo.xml
 
       - name: Cargo Check
-        run: cargo check --verbose
+        run: cargo check --locked --verbose
 
-      - name: Run Unit & Integration Tests
-        run: cargo test --verbose
+      - name: Run unit & offline integration tests
+        run: cargo test --locked --verbose
 
       - name: Build Release Binary
-        run: cargo build --release --verbose
+        run: cargo build --release --locked --verbose

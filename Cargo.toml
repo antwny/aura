@@ -33,6 +33,7 @@ wayland-backend = { version = "0.3", features = ["client_system"] }
 raw-window-handle = "0.6"
 wgpu = "28"
 pollster = "0.4"
+pipewire = { version = "0.9", features = ["v0_3_65"] }
 bytemuck = { version = "1", features = ["derive"] }
 ort = { version = "=2.0.0-rc.15", features = ["download-binaries"] }
 
@@ -43,6 +44,15 @@ path = "src/main.rs"
 [[bin]]
 name = "aura-effects"
 path = "src/bin/aura_effects.rs"
+
+# Thumbnail tests spend most of their time inside the image/png encoder.
+# Optimizing only these two packages keeps dependency build cost low while
+# removing the dominant remaining cost from the test suite.
+[profile.test.package.image]
+opt-level = 3
+
+[profile.test.package.png]
+opt-level = 3
 
 [profile.release]
 opt-level = 3

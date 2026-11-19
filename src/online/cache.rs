@@ -6,6 +6,14 @@ const MAX_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_THUMBNAIL_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
 
+/// Download progress as a fraction. Unknown or zero-length responses report 0.
+fn progress_fraction(downloaded: u64, total: Option<u64>) -> f32 {
+    total
+        .filter(|total| *total > 0)
+        .map(|total| (downloaded as f32 / total as f32).clamp(0.0, 1.0))
+        .unwrap_or(0.0)
+}
+
 fn unique_destination(path: &Path) -> PathBuf {
     if !path.exists() {
         return path.to_path_buf();
@@ -474,11 +482,7 @@ where
 
         // Throttle updates to at most once every 100ms
         if last_progress_time.elapsed() >= Duration::from_millis(100) {
-            let pct = if let Some(tot) = total_len {
-                if tot > 0 { (total_bytes as f32 / tot as f32).clamp(0.0, 1.0) } else { 0.0 }
-            } else {
-                0.0
-            };
+            let pct = progress_fraction(total_bytes, total_len);
             progress_cb(total_bytes, total_len, pct);
             last_progress_time = std::time::Instant::now();
         }
@@ -818,30 +822,34 @@ mod tests {
 
     #[test]
     fn test_progress_calculation() {
-        let total: Option<u64> = Some(10_000_000);
-        let downloaded: u64 = 4_500_000;
-        let pct = if let Some(tot) = total {
-            (downloaded as f32 / tot as f32).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        assert!((pct - 0.45).abs() < 0.001);
+        assert!((progress_fraction(4_500_000, Some(10_000_000)) - 0.45).abs() < 0.001);
+        assert_eq!(progress_fraction(1_000, None), 0.0);
+        assert_eq!(progress_fraction(1_000, Some(0)), 0.0);
+        assert_eq!(progress_fraction(20_000, Some(10_000)), 1.0);
     }
 
-    #[test]
-    fn test_download_cancellation_pre_check() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            use std::sync::atomic::AtomicBool;
-            use std::sync::Arc;
-            let client = reqwest::Client::new();
-            let cancel = Arc::new(AtomicBool::new(true));
-            let dest = std::env::temp_dir().join("test_cancel_dl.mp4");
-            let res = download_to_file_with_progress(&client, "http://127.0.0.1:9/dummy", &dest, None, Some(cancel), |_, _, _| {}).await;
-            assert!(res.is_err());
-            assert_eq!(res.unwrap_err(), "Download canceled by user");
-            assert!(!dest.with_extension("tmp").exists());
-        });
+    #[tokio::test]
+    async fn test_download_cancellation_pre_check() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("cancel.mp4");
+        let client = reqwest::Client::new();
+        let cancel = Arc::new(AtomicBool::new(true));
+
+        let res = download_to_file_with_progress(
+            &client,
+            "http://127.0.0.1:9/dummy",
+            &dest,
+            None,
+            Some(cancel),
+            |_, _, _| {},
+        )
+        .await;
+
+        assert_eq!(res.unwrap_err(), "Download canceled by user");
+        assert!(!dest.exists());
     }
 }
 

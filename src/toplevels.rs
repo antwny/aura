@@ -53,6 +53,11 @@ pub struct OcclusionSnapshot {
     pub available: bool,
     /// Covered fraction (0.0..=1.0) keyed by output name.
     pub coverage: HashMap<String, f32>,
+    /// Outputs that currently show a maximized or fullscreen window. COSMIC
+    /// reports the real state, so `Maximized` auto-pause no longer mistakes a
+    /// merely large window (a tiled browser leaving the panel visible) for a
+    /// maximized one. Other backends fill this from their coverage heuristic.
+    pub maximized: HashSet<String>,
     /// Increments whenever the compositor publishes new window state. The UI
     /// uses it to keep manual resume overrides scoped to one window layout.
     pub revision: u64,
@@ -61,6 +66,19 @@ pub struct OcclusionSnapshot {
 impl OcclusionSnapshot {
     pub fn coverage_for(&self, output: &str) -> f32 {
         self.coverage.get(output).copied().unwrap_or(0.0)
+    }
+
+    /// Whether this output should pause under `mode`.
+    ///
+    /// `Maximized` uses the compositor-reported state instead of raw coverage:
+    /// on COSMIC a normal maximized window covers ~92% of the output (the
+    /// panel and gaps stay visible), which is indistinguishable from a large
+    /// non-maximized window by area alone.
+    pub fn should_pause(&self, mode: crate::config::AutoPauseMode, output: &str) -> bool {
+        match mode {
+            crate::config::AutoPauseMode::Maximized => self.maximized.contains(output),
+            mode => mode.should_pause(self.coverage_for(output)),
+        }
     }
 }
 
@@ -520,9 +538,20 @@ impl NiriState {
             eprintln!("[occlusion] niri coverage={coverage:?}");
         }
 
+        // niri does not publish a maximized flag, so keep the coverage
+        // heuristic it has always used.
+        let maximized = coverage
+            .iter()
+            .filter(|(_, fraction)| {
+                crate::config::AutoPauseMode::Maximized.should_pause(**fraction)
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+
         publish(OcclusionSnapshot {
             available: true,
             coverage,
+            maximized,
             revision: 0,
         });
     }
@@ -721,6 +750,7 @@ impl Watcher {
         // Collect every visible toplevel; overlapping windows must be unioned,
         // not summed, or two stacked windows would report 200% coverage.
         let mut rects: HashMap<String, Vec<(f32, f32, f32, f32)>> = HashMap::new();
+        let mut maximized: HashSet<String> = HashSet::new();
         for toplevel in self.toplevel_info.toplevels() {
             if toplevel.state.contains(&ToplevelState::Minimized) {
                 continue;
@@ -752,6 +782,7 @@ impl Watcher {
                     continue;
                 };
                 if fully_covered {
+                    maximized.insert(name.clone());
                     coverage.insert(name, 1.0);
                     continue;
                 }
@@ -790,8 +821,8 @@ impl Watcher {
 
         if std::env::var_os("AURA_DEBUG_OCCLUSION").is_some() {
             eprintln!(
-                "[occlusion] active_workspaces={:?} coverage={:?}",
-                active_workspaces, coverage
+                "[occlusion] active_workspaces={:?} coverage={:?} maximized={:?}",
+                active_workspaces, coverage, maximized
             );
         }
 
@@ -804,6 +835,7 @@ impl Watcher {
         publish(OcclusionSnapshot {
             available: true,
             coverage,
+            maximized,
             revision: 0,
         });
     }
@@ -1178,10 +1210,34 @@ mod tests {
         let mut snapshot = OcclusionSnapshot {
             available: true,
             coverage: HashMap::new(),
+            maximized: HashSet::new(),
             revision: 0,
         };
         snapshot.coverage.insert("eDP-1".into(), 0.75);
         assert_eq!(snapshot.coverage_for("eDP-1"), 0.75);
         assert_eq!(snapshot.coverage_for("HDMI-A-1"), 0.0);
+    }
+
+    #[test]
+    fn maximized_mode_uses_reported_state_not_coverage() {
+        use crate::config::AutoPauseMode;
+
+        let mut snapshot = OcclusionSnapshot {
+            available: true,
+            coverage: HashMap::new(),
+            maximized: HashSet::new(),
+            revision: 0,
+        };
+        // A large but restored window: COSMIC reports ~92% coverage but no
+        // maximized state. It must not pause in "maximized" mode.
+        snapshot.coverage.insert("eDP-1".into(), 0.9265);
+        assert!(!snapshot.should_pause(AutoPauseMode::Maximized, "eDP-1"));
+        assert!(snapshot.should_pause(AutoPauseMode::Partial, "eDP-1"));
+
+        // An actual maximized/fullscreen toplevel is reported explicitly.
+        snapshot.maximized.insert("eDP-1".into());
+        snapshot.coverage.insert("eDP-1".into(), 1.0);
+        assert!(snapshot.should_pause(AutoPauseMode::Maximized, "eDP-1"));
+        assert!(snapshot.should_pause(AutoPauseMode::Full, "eDP-1"));
     }
 }

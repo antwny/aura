@@ -17,6 +17,10 @@ Context=Actions\n";
 
 const ICONS: &[(&str, &[u8])] = &[
     (
+        "fire-symbolic.svg",
+        include_bytes!("../resources/icons/fire-symbolic.svg"),
+    ),
+    (
         "navbar-closed-symbolic.svg",
         include_bytes!("../resources/icons/navbar-closed-symbolic.svg"),
     ),

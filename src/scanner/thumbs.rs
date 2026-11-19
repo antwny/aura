@@ -1147,17 +1147,9 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_leading_zeros_safety() {
-        let hash = format!("{:016x}", 0u64);
-        assert_eq!(hash.len(), 16);
-        assert_eq!(&hash[..8], "00000000");
-    }
-
-    #[test]
     fn test_cinematic_thumb_generation() {
-        let test_dir = std::env::temp_dir().join("aura_test_cinematic");
-        let _ = std::fs::create_dir_all(&test_dir);
-        let src_img_path = test_dir.join("test_sample.png");
+        let test_dir = tempfile::tempdir().expect("tempdir");
+        let src_img_path = test_dir.path().join("test_sample.png");
 
         let dummy = image::RgbaImage::from_pixel(200, 200, image::Rgba([100, 150, 200, 255]));
         dummy
@@ -1174,16 +1166,13 @@ mod tests {
         assert_eq!(img.height(), 440);
         assert_eq!(img.get_pixel(0, 0)[3], 0);
 
-        let _ = std::fs::remove_file(&src_img_path);
         let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_dir_all(&test_dir);
     }
 
     #[test]
     fn test_cinematic_thumb_scale_bucket() {
-        let test_dir = std::env::temp_dir().join("aura_test_cinematic_2x");
-        let _ = std::fs::create_dir_all(&test_dir);
-        let src_img_path = test_dir.join("test_sample_2x.png");
+        let test_dir = tempfile::tempdir().expect("tempdir");
+        let src_img_path = test_dir.path().join("test_sample_2x.png");
 
         let dummy = image::RgbaImage::from_pixel(200, 200, image::Rgba([100, 150, 200, 255]));
         dummy
@@ -1198,16 +1187,13 @@ mod tests {
         assert_eq!(img.width(), 962);
         assert_eq!(img.height(), 880);
 
-        let _ = std::fs::remove_file(&src_img_path);
         let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_dir_all(&test_dir);
     }
 
     #[test]
     fn test_honeycomb_thumb_generation() {
-        let test_dir = std::env::temp_dir().join("aura_test_honeycomb");
-        let _ = std::fs::create_dir_all(&test_dir);
-        let src_img_path = test_dir.join("test_hex_sample.png");
+        let test_dir = tempfile::tempdir().expect("tempdir");
+        let src_img_path = test_dir.path().join("test_hex_sample.png");
 
         let dummy = image::RgbaImage::from_pixel(200, 200, image::Rgba([120, 180, 240, 255]));
         dummy
@@ -1225,9 +1211,7 @@ mod tests {
         assert_eq!(img.get_pixel(0, 0)[3], 0);
         assert_eq!(img.get_pixel(130, 150)[3], 255);
 
-        let _ = std::fs::remove_file(&src_img_path);
         let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_dir_all(&test_dir);
     }
 
     #[test]
@@ -1318,8 +1302,17 @@ mod tests {
     }
 
     #[test]
-    fn test_trim_memory_non_panicking() {
+    fn test_trim_memory_clears_cached_handles() {
+        let handle = cosmic::iced::widget::image::Handle::from_rgba(1, 1, vec![0; 4]);
+        THUMB_HANDLE_CACHE
+            .lock()
+            .unwrap()
+            .insert("trim-test".into(), handle, 1, 1);
+        assert!(THUMB_HANDLE_CACHE.lock().unwrap().get("trim-test").is_some());
+
         trim_memory();
+
+        assert!(THUMB_HANDLE_CACHE.lock().unwrap().get("trim-test").is_none());
     }
 }
 

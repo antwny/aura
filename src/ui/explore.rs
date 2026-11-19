@@ -41,6 +41,54 @@ const RESOLUTION_CHIPS: [Option<ResolutionFilter>; 5] = [
     Some(ResolutionFilter::Ultrawide),
 ];
 
+#[derive(Clone, Copy)]
+enum OnlineErrorKind {
+    Offline,
+    Timeout,
+    RateLimited,
+    Unavailable,
+    Generic,
+}
+
+/// Classifies a raw source error without exposing stack-trace-like details in
+/// the UI. The full text still goes to the effects/console logs.
+fn classify_online_error(raw: &str) -> OnlineErrorKind {
+    let lower = raw.to_lowercase();
+    if lower.contains("timed out") || lower.contains("timeout") {
+        OnlineErrorKind::Timeout
+    } else if lower.contains("429") || lower.contains("too many requests") {
+        OnlineErrorKind::RateLimited
+    } else if lower.contains("dns")
+        || lower.contains("lookup")
+        || lower.contains("connection refused")
+        || lower.contains("failed to connect")
+        || lower.contains("connect error")
+        || lower.contains("network")
+        || lower.contains("unreachable")
+        || lower.contains("os error 101")
+        || lower.contains("os error 111")
+    {
+        OnlineErrorKind::Offline
+    } else if lower.contains(" 500")
+        || lower.contains(" 502")
+        || lower.contains(" 503")
+        || lower.contains(" 504")
+        || lower.contains("bad gateway")
+        || lower.contains("service unavailable")
+        || lower.contains("internal server error")
+    {
+        OnlineErrorKind::Unavailable
+    } else {
+        OnlineErrorKind::Generic
+    }
+}
+
+/// Unified errors are formatted as `Source: detail`. Only the source name is
+/// shown inline; the detail is intentionally dropped from the UI.
+fn error_source_label(error: &str) -> &str {
+    error.split(':').next().unwrap_or(error).trim()
+}
+
 impl AuraApp {
     fn explore_header(&self) -> Element<'_, Message> {
         let lang = self.language;
@@ -117,25 +165,44 @@ impl AuraApp {
         if self.unified_skipped.is_empty() {
             header = header.push(widget::text::caption(lang.explore_unified_subtitle()));
         } else {
-            let skipped = self
+            let labels: Vec<&str> = self
                 .unified_skipped
                 .iter()
                 .map(|source| source.label())
-                .collect::<Vec<_>>()
-                .join(", ");
+                .collect();
+            let mut summary = labels.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+            if labels.len() > 3 {
+                summary.push_str(&format!(" (+{})", labels.len() - 3));
+            }
             header = header.push(widget::text::caption(format!(
                 "{}: {}",
                 lang.explore_filter_skipped(),
-                skipped
+                summary
             )));
         }
 
         if !self.unified_errors.is_empty() {
-            header = header.push(widget::text::caption(format!(
-                "{} {}",
-                lang.explore_filter_errors(),
-                self.unified_errors.join(" · ")
-            )));
+            let labels: Vec<&str> = self
+                .unified_errors
+                .iter()
+                .map(|error| error_source_label(error))
+                .collect();
+            let mut summary = labels.iter().take(2).copied().collect::<Vec<_>>().join(", ");
+            if labels.len() > 2 {
+                summary.push_str(&format!(" (+{})", labels.len() - 2));
+            }
+            let text = if summary.is_empty() {
+                lang.explore_sources_failed(labels.len())
+            } else {
+                format!("{}: {}", lang.explore_sources_failed(labels.len()), summary)
+            };
+            header = header.push(
+                widget::row::with_capacity(2)
+                    .spacing(6)
+                    .align_y(Alignment::Center)
+                    .push(widget::icon::from_name("dialog-warning-symbolic").size(14))
+                    .push(widget::text::caption(text)),
+            );
         }
 
         header.into()
@@ -172,14 +239,27 @@ impl AuraApp {
         }
 
         if let Some(err) = &self.explore_error {
-            let error_content = widget::column::with_capacity(2)
-                .spacing(14)
+            let detail = match classify_online_error(err) {
+                OnlineErrorKind::Offline => lang.explore_error_offline(),
+                OnlineErrorKind::Timeout => lang.explore_error_timeout(),
+                OnlineErrorKind::RateLimited => lang.explore_error_rate_limited(),
+                OnlineErrorKind::Unavailable => lang.explore_error_unavailable(),
+                OnlineErrorKind::Generic => lang.explore_error_generic(),
+            };
+            let error_content = widget::column::with_capacity(3)
+                .spacing(10)
                 .align_x(Horizontal::Center)
-                .push(widget::text::title3(format!(
-                    "{} {}",
-                    lang.explore_error_prefix(),
-                    err
-                )))
+                .push(
+                    widget::row::with_capacity(2)
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(widget::icon::from_name("dialog-warning-symbolic").size(28))
+                        .push(widget::text::title3(lang.explore_error_title())),
+                )
+                .push(
+                    widget::container(widget::text::caption(detail).width(Length::Fill))
+                        .max_width(520.0),
+                )
                 .push(
                     widget::button::suggested(lang.explore_btn_retry())
                         .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
@@ -208,15 +288,36 @@ impl AuraApp {
             .collect();
 
         if items.is_empty() {
-            let empty_content = widget::column::with_capacity(2)
-                .spacing(14)
-                .align_x(Horizontal::Center)
-                .push(widget::text::title3(lang.explore_loading()))
+            let query = self.unified_search.trim();
+            let description = if query.is_empty() {
+                lang.explore_no_results_desc().to_string()
+            } else {
+                lang.explore_no_results_search(query)
+            };
+            let mut actions = widget::row::with_capacity(2)
+                .spacing(8)
+                .align_y(Alignment::Center)
                 .push(
                     widget::button::suggested(lang.explore_btn_retry())
                         .leading_icon(widget::icon::from_name("view-refresh-symbolic"))
                         .on_press(Message::FetchOnlineWallpapers(OnlineSource::Unified)),
                 );
+            if !query.is_empty() {
+                actions = actions.push(
+                    widget::button::standard(lang.explore_btn_clear_search())
+                        .leading_icon(widget::icon::from_name("edit-clear-symbolic"))
+                        .on_press(Message::ClearUnifiedSearch),
+                );
+            }
+            let empty_content = widget::column::with_capacity(3)
+                .spacing(10)
+                .align_x(Horizontal::Center)
+                .push(widget::text::title3(lang.explore_no_results_title()))
+                .push(
+                    widget::container(widget::text::caption(description).width(Length::Fill))
+                        .max_width(520.0),
+                )
+                .push(actions);
 
             let empty_view = widget::container(empty_content)
                 .width(Length::Fill)

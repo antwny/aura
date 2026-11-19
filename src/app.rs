@@ -29,6 +29,58 @@ use std::time::{Duration, Instant};
 /// the fetched page is revealed locally before another network request.
 const UNIFIED_INITIAL_VISIBLE: usize = 72;
 
+const SWITCHER_SCROLL_THRESHOLD: f32 = 60.0;
+
+/// Keeps only digits (at most five) so the interval field cannot overflow.
+fn sanitize_interval_input(text: &str) -> String {
+    text.chars().filter(|c| c.is_ascii_digit()).take(5).collect()
+}
+
+/// Parses a rotation interval in minutes, bounded to one day.
+fn parse_custom_interval(input: &str) -> Option<u64> {
+    input
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|minutes| (1..=1440).contains(minutes))
+}
+
+/// Adds a scroll delta, discarding inertia from the opposite direction.
+fn accumulate_switcher_scroll(accum: f32, increment: f32) -> f32 {
+    let reversed = (increment > 0.0 && accum < 0.0) || (increment < 0.0 && accum > 0.0);
+    if reversed {
+        increment
+    } else {
+        accum + increment
+    }
+}
+
+/// Returns the column step once the accumulated scroll reaches the threshold.
+fn switcher_scroll_step(accum: f32) -> i8 {
+    if accum >= SWITCHER_SCROLL_THRESHOLD {
+        1
+    } else if accum <= -SWITCHER_SCROLL_THRESHOLD {
+        -1
+    } else {
+        0
+    }
+}
+
+fn switcher_edge_margin(width: f32) -> f32 {
+    (width * 0.08).clamp(70.0, 130.0)
+}
+
+fn switcher_edge_direction(width: f32, x: f32) -> i8 {
+    let margin = switcher_edge_margin(width);
+    if x < margin {
+        -1
+    } else if x > width - margin {
+        1
+    } else {
+        0
+    }
+}
+
 /// True when every connected output has its own valid wallpaper. In that case
 /// a wildcard player would only render a fully occluded surface underneath the
 /// per-output players, duplicating decoding and GPU work.
@@ -60,11 +112,31 @@ fn is_static_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn spectrum_color_picker(
+    hex: &str,
+    fallback: [u8; 3],
+) -> cosmic::widget::color_picker::ColorPickerModel {
+    let rgb = crate::config::parse_hex_color(hex).unwrap_or(fallback);
+    let color = cosmic::iced::Color::from_rgb8(rgb[0], rgb[1], rgb[2]);
+    cosmic::widget::color_picker::ColorPickerModel::new(
+        "Hex",
+        "RGB",
+        Some(color),
+        Some(color),
+    )
+}
+
+pub(crate) fn iced_color_to_hex(color: cosmic::iced::Color) -> String {
+    let [red, green, blue, _] = color.into_rgba8();
+    format!("#{red:02X}{green:02X}{blue:02X}")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Library,
     Explore,
     Monitors,
+    Effects,
     Settings,
     About,
 }
@@ -77,17 +149,15 @@ pub enum SettingsCategory {
     Hud,
     Rotation,
     Appearance,
-    Effects,
 }
 
 impl SettingsCategory {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::General,
         Self::Engine,
         Self::Hud,
         Self::Rotation,
         Self::Appearance,
-        Self::Effects,
     ];
 }
 
@@ -172,6 +242,14 @@ pub enum Message {
     SetSpectrumBars(u32),
     SetSpectrumHeight(u32),
     SetSpectrumAlpha(f32),
+    SetSpectrumColorMode(crate::config::SpectrumColorMode),
+    SetSpectrumPosition(crate::config::SpectrumPosition),
+    SetSpectrumStyle(crate::config::SpectrumStyle),
+    SetSpectrumBarWidth(u32),
+    ToggleSpectrumGlow(bool),
+    SpectrumColor1Update(cosmic::widget::color_picker::ColorPickerUpdate),
+    SpectrumColor2Update(cosmic::widget::color_picker::ColorPickerUpdate),
+    EffectsSyncDue(u64),
     DepthMapGenerated {
         source: PathBuf,
         result: Result<PathBuf, String>,
@@ -498,6 +576,9 @@ pub struct AuraApp {
     pub(crate) effects_depth_status: EffectsDepthStatus,
     pub(crate) effects_model_status: EffectsModelStatus,
     pub(crate) effects_renderer_status: crate::effects::EffectsStatus,
+    pub(crate) spectrum_color1_picker: cosmic::widget::color_picker::ColorPickerModel,
+    pub(crate) spectrum_color2_picker: cosmic::widget::color_picker::ColorPickerModel,
+    effects_sync_token: u64,
     depth_model_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     depth_generation_pending: std::collections::HashSet<PathBuf>,
     depth_generation_failed: std::collections::HashSet<PathBuf>,
@@ -742,18 +823,19 @@ impl AuraApp {
         }
     }
 
-    fn nav_entries(&self) -> [(&'static str, &'static str, Page); 5] {
+    fn nav_entries(&self) -> [(&'static str, &'static str, Page); 6] {
         [
             ("video-x-generic-symbolic", self.language.nav_library(), Page::Library),
             ("web-browser-symbolic", self.language.nav_explore(), Page::Explore),
             ("video-display-symbolic", self.language.nav_monitors(), Page::Monitors),
+            ("fire-symbolic", self.language.nav_effects(), Page::Effects),
             ("preferences-system-symbolic", self.language.nav_settings(), Page::Settings),
             ("help-about-symbolic", self.language.nav_about(), Page::About),
         ]
     }
 
     fn view_nav_rail(&self) -> Element<'_, Message> {
-        let mut rail = widget::column::with_capacity(6)
+        let mut rail = widget::column::with_capacity(7)
             .spacing(6)
             .padding(4)
             .align_x(Alignment::Center)
@@ -780,9 +862,9 @@ impl AuraApp {
 
     fn view_nav_tabs(&self) -> Element<'_, Message> {
         // Full labels need roughly 530 px after paddings. Below that, icons
-        // keep five destinations within a 360 px window without clipping.
-        let show_labels = self.window_width >= 600.0;
-        let mut tabs = widget::row::with_capacity(5).spacing(3).width(Length::Fill);
+        // keep six destinations within a 360 px window without clipping.
+        let show_labels = self.window_width >= 700.0;
+        let mut tabs = widget::row::with_capacity(6).spacing(3).width(Length::Fill);
         for (icon, label, page) in self.nav_entries() {
             let selected = self.active_page == page;
             if show_labels {
@@ -817,6 +899,23 @@ impl AuraApp {
         self.engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Non-blocking variant for UI-thread checks. A wallpaper apply keeps the
+    /// engine locked while mpvpaper starts and presents its first frame, so
+    /// waiting here would freeze the window for seconds. `None` means "unknown
+    /// right now"; callers should assume the conservative answer.
+    fn engine_try_guard(&self) -> Option<std::sync::MutexGuard<'_, WallpaperEngine>> {
+        match self.engine.try_lock() {
+            Ok(guard) => Some(guard),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        }
+    }
+
+    fn output_is_running_now(&self, output: &str) -> Option<bool> {
+        self.engine_try_guard()
+            .map(|mut engine| engine.is_output_running(output))
     }
 
     /// Shows a single routine notice. Any previous routine notice is replaced
@@ -1024,6 +1123,55 @@ impl AuraApp {
         Task::batch(tasks)
     }
 
+    /// Coalesces rapid slider changes into one renderer restart. Without this,
+    /// dragging a slider spawns a fresh `aura-effects` + `cava` per pixel step.
+    fn schedule_effects_sync(&mut self) -> Task<cosmic::Action<Message>> {
+        self.effects_sync_token = self.effects_sync_token.wrapping_add(1);
+        let token = self.effects_sync_token;
+        Task::perform(
+            async move {
+                tokio::time::sleep(Duration::from_millis(180)).await;
+                token
+            },
+            |token| cosmic::Action::App(Message::EffectsSyncDue(token)),
+        )
+    }
+
+    fn update_spectrum_color_picker(
+        &mut self,
+        slot: u8,
+        update: cosmic::widget::color_picker::ColorPickerUpdate,
+    ) -> Task<cosmic::Action<Message>> {
+        use cosmic::widget::color_picker::ColorPickerUpdate;
+        let apply = matches!(
+            update,
+            ColorPickerUpdate::AppliedColor
+                | ColorPickerUpdate::ActionFinished
+                | ColorPickerUpdate::Reset
+        );
+        let picker = if slot == 1 {
+            &mut self.spectrum_color1_picker
+        } else {
+            &mut self.spectrum_color2_picker
+        };
+        let _ = picker.update::<Message>(update);
+        if !apply {
+            return Task::none();
+        }
+        let Some(color) = picker.get_applied_color() else {
+            return Task::none();
+        };
+        let hex = iced_color_to_hex(color);
+        if slot == 1 {
+            self.config.spectrum_color1 = hex;
+        } else {
+            self.config.spectrum_color2 = hex;
+        }
+        self.config.spectrum_color_mode = crate::config::SpectrumColorMode::Manual;
+        let _ = self.config.save();
+        self.sync_effects()
+    }
+
     pub(crate) fn finish_wallpaper_applied_with(
         &mut self,
         video_path: &std::path::Path,
@@ -1088,12 +1236,27 @@ impl AuraApp {
         };
         let occlusion_task = self.apply_occlusion_state();
         let effects_task = self.sync_effects();
-        // mpvpaper recreates its surface on every apply; restart the effects
-        // renderer so its own surfaces are created afterwards (niri stacks
-        // layer-shell surfaces by creation order inside Bottom).
-        self.effects_manager.restart();
-        self.effects_renderer_status = self.effects_manager.status();
-        Task::batch([notify_task, retire_task, occlusion_task, theme_task, effects_task])
+        let mut tasks = vec![
+            notify_task,
+            retire_task,
+            occlusion_task,
+            theme_task,
+            effects_task,
+        ];
+        // Only compositors that stack layer-shell surfaces of the same layer
+        // by creation order need the effects surfaces recreated after the
+        // player. Doing it everywhere spawned a fresh wgpu + cava process at
+        // the exact moment mpvpaper was loading the new wallpaper, which
+        // slowed the first frame and made applies fail on slower GPUs.
+        if crate::effects::restart_after_wallpaper_apply() {
+            tasks.push(Task::perform(
+                async {
+                    tokio::time::sleep(Duration::from_millis(600)).await;
+                },
+                |_| cosmic::Action::App(Message::RestartEffects),
+            ));
+        }
+        Task::batch(tasks)
     }
 
     fn auto_pause_reason_active(&self) -> bool {
@@ -1416,13 +1579,13 @@ impl AuraApp {
             .cloned()
             .collect();
 
-        let (active, wildcard_path) = {
-            let mut engine = self.engine_guard();
+        let Some((active, wildcard_path)) = self.engine_try_guard().map(|mut engine| {
             engine.reap_dead_processes();
             engine.ensure_sockets_discovered();
-            let active = engine.active_keys();
-            let wildcard_path = engine.current_path("*");
-            (active, wildcard_path)
+            (engine.active_keys(), engine.current_path("*"))
+        }) else {
+            // An apply is running; the next hotplug tick reconciles again.
+            return Task::none();
         };
 
         // Disconnected per-output overrides must be retired.
@@ -1987,6 +2150,10 @@ impl cosmic::Application for AuraApp {
             core.nav_bar_set_toggled(false);
         }
         let integration = crate::engine::integration::detect();
+        let spectrum_color1_picker =
+            spectrum_color_picker(&config.spectrum_color1, [120, 190, 255]);
+        let spectrum_color2_picker =
+            spectrum_color_picker(&config.spectrum_color2, [196, 120, 255]);
         let mut app = Self {
             core,
             nav,
@@ -2007,6 +2174,9 @@ impl cosmic::Application for AuraApp {
                 EffectsModelStatus::Absent
             },
             effects_renderer_status: crate::effects::EffectsStatus::Disabled,
+            spectrum_color1_picker,
+            spectrum_color2_picker,
+            effects_sync_token: 0,
             depth_model_cancel: None,
             depth_generation_pending: std::collections::HashSet::new(),
             depth_generation_failed: std::collections::HashSet::new(),
@@ -2797,8 +2967,7 @@ impl cosmic::Application for AuraApp {
 
             Message::SetParallaxStrength(strength) => {
                 self.config.parallax_strength = strength.clamp(0.1, 1.0);
-                let _ = self.config.save();
-                return self.sync_effects();
+                return self.schedule_effects_sync();
             }
 
             Message::ToggleSpectrum(enabled) => {
@@ -2809,20 +2978,61 @@ impl cosmic::Application for AuraApp {
 
             Message::SetSpectrumBars(bars) => {
                 self.config.spectrum_bars = bars.clamp(8, 64);
-                let _ = self.config.save();
-                return self.sync_effects();
+                return self.schedule_effects_sync();
             }
 
             Message::SetSpectrumHeight(height) => {
-                self.config.spectrum_height_pct = height.clamp(5, 40);
-                let _ = self.config.save();
-                return self.sync_effects();
+                self.config.spectrum_height_pct = height.clamp(4, 60);
+                return self.schedule_effects_sync();
             }
 
             Message::SetSpectrumAlpha(alpha) => {
                 self.config.spectrum_alpha = alpha.clamp(0.1, 1.0);
+                return self.schedule_effects_sync();
+            }
+
+            Message::EffectsSyncDue(token) => {
+                if token == self.effects_sync_token {
+                    let _ = self.config.save();
+                    return self.sync_effects();
+                }
+            }
+
+            Message::SetSpectrumColorMode(mode) => {
+                self.config.spectrum_color_mode = mode;
                 let _ = self.config.save();
                 return self.sync_effects();
+            }
+
+            Message::SetSpectrumPosition(position) => {
+                self.config.spectrum_position = position;
+                let _ = self.config.save();
+                return self.sync_effects();
+            }
+
+            Message::SetSpectrumStyle(style) => {
+                self.config.spectrum_style = style;
+                let _ = self.config.save();
+                return self.sync_effects();
+            }
+
+            Message::SetSpectrumBarWidth(width) => {
+                self.config.spectrum_bar_width_pct = width.clamp(10, 100);
+                return self.schedule_effects_sync();
+            }
+
+            Message::ToggleSpectrumGlow(enabled) => {
+                self.config.spectrum_glow = enabled;
+                let _ = self.config.save();
+                return self.sync_effects();
+            }
+
+            Message::SpectrumColor1Update(update) => {
+                return self.update_spectrum_color_picker(1, update);
+            }
+
+            Message::SpectrumColor2Update(update) => {
+                return self.update_spectrum_color_picker(2, update);
             }
 
             Message::DownloadDepthModel => {
@@ -3055,19 +3265,16 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::CustomIntervalChanged(text) => {
-                let digits: String = text.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
-                self.custom_interval_input = digits;
+                self.custom_interval_input = sanitize_interval_input(&text);
                 return Task::none();
             }
 
             Message::ApplyCustomInterval => {
-                if let Ok(val) = self.custom_interval_input.trim().parse::<u64>() {
-                    if (1..=1440).contains(&val) {
-                        self.config.interval = val;
-                        self.custom_interval_input = val.to_string();
-                        let _ = self.config.save();
-                        return self.set_status(self.language.status_interval_selected(val));
-                    }
+                if let Some(val) = parse_custom_interval(&self.custom_interval_input) {
+                    self.config.interval = val;
+                    self.custom_interval_input = val.to_string();
+                    let _ = self.config.save();
+                    return self.set_status(self.language.status_interval_selected(val));
                 }
                 self.custom_interval_input = self.config.interval.to_string();
                 let warn_msg = self.language.status_interval_invalid().to_string();
@@ -3589,7 +3796,6 @@ impl cosmic::Application for AuraApp {
 
             Message::SwitcherWheelScrolled { window, delta } => {
                 if self.switcher_window_id == Some(window) {
-                    const TOUCHPAD_THRESHOLD: f32 = 60.0;
                     const SCROLL_COOLDOWN: std::time::Duration = std::time::Duration::from_millis(130);
                     const GESTURE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(220);
 
@@ -3610,7 +3816,7 @@ impl cosmic::Application for AuraApp {
                             } else {
                                 if x.abs() >= y.abs() { x } else { -y }
                             };
-                            dir * TOUCHPAD_THRESHOLD
+                            dir * SWITCHER_SCROLL_THRESHOLD
                         }
                         cosmic::iced::mouse::ScrollDelta::Pixels { x, y } => {
                             if is_vertical {
@@ -3621,14 +3827,8 @@ impl cosmic::Application for AuraApp {
                         }
                     };
 
-                    // If direction reversed, reset accumulator to avoid fighting previous inertia
-                    if (increment > 0.0 && self.switcher_scroll_accum < 0.0)
-                        || (increment < 0.0 && self.switcher_scroll_accum > 0.0)
-                    {
-                        self.switcher_scroll_accum = 0.0;
-                    }
-
-                    self.switcher_scroll_accum += increment;
+                    self.switcher_scroll_accum =
+                        accumulate_switcher_scroll(self.switcher_scroll_accum, increment);
 
                     let can_step = match self.switcher_last_scroll {
                         Some(last) => now.duration_since(last) >= SCROLL_COOLDOWN,
@@ -3636,21 +3836,22 @@ impl cosmic::Application for AuraApp {
                     };
 
                     if can_step {
-                        if self.switcher_scroll_accum >= TOUCHPAD_THRESHOLD {
+                        let step = switcher_scroll_step(self.switcher_scroll_accum);
+                        if step != 0 {
                             self.switcher_scroll_accum = 0.0;
                             self.switcher_last_scroll = Some(now);
                             if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
-                                return Task::done(cosmic::Action::App(Message::SwitcherNextCol));
+                                return Task::done(cosmic::Action::App(if step > 0 {
+                                    Message::SwitcherNextCol
+                                } else {
+                                    Message::SwitcherPrevCol
+                                }));
                             } else {
-                                return Task::done(cosmic::Action::App(Message::SwitcherNext));
-                            }
-                        } else if self.switcher_scroll_accum <= -TOUCHPAD_THRESHOLD {
-                            self.switcher_scroll_accum = 0.0;
-                            self.switcher_last_scroll = Some(now);
-                            if self.config.switcher_style == crate::config::SwitcherStyle::Honeycomb {
-                                return Task::done(cosmic::Action::App(Message::SwitcherPrevCol));
-                            } else {
-                                return Task::done(cosmic::Action::App(Message::SwitcherPrev));
+                                return Task::done(cosmic::Action::App(if step > 0 {
+                                    Message::SwitcherNext
+                                } else {
+                                    Message::SwitcherPrev
+                                }));
                             }
                         }
                     }
@@ -3724,15 +3925,8 @@ impl cosmic::Application for AuraApp {
                             self.switcher_honeycomb_hover = new_hover;
                         }
 
-                        let edge_margin = (width * 0.08).clamp(70.0, 130.0);
                         let prev_dir = self.switcher_edge_scroll_dir;
-                        let new_dir = if position.x < edge_margin {
-                            -1
-                        } else if position.x > width - edge_margin {
-                            1
-                        } else {
-                            0
-                        };
+                        let new_dir = switcher_edge_direction(width, position.x);
                         self.switcher_edge_scroll_dir = new_dir;
 
                         if new_dir != 0 && prev_dir == 0 {
@@ -4260,15 +4454,22 @@ impl cosmic::Application for AuraApp {
 
             Message::ApplyWallpaper { video_path, output } => {
                 let path_str = video_path.to_string_lossy().to_string();
+                eprintln!(
+                    "[Aura] apply request output={output} paused={} path={path_str}",
+                    self.is_paused
+                );
 
                 // If this wallpaper is already running on this output and not paused, do nothing to avoid redundant respawns and toast spam.
                 // Desktop-native backends have no mpvpaper process to inspect, so always let them confirm the current wallpaper.
+                // Never block the UI thread waiting for the engine: an apply
+                // in flight holds that mutex while mpvpaper is starting.
                 if self.uses_mpvpaper()
                     && self.backend() != Backend::Static
                     && self.config.wallpapers.get(&output).map(|s| s.as_str()) == Some(&path_str)
                     && !self.is_paused
-                    && self.engine_guard().is_output_running(&output)
+                    && self.output_is_running_now(&output) != Some(false)
                 {
+                    eprintln!("[Aura] apply skipped: {output} already shows {path_str}");
                     return Task::none();
                 }
 
@@ -4547,6 +4748,7 @@ impl cosmic::Application for AuraApp {
                 match result {
                     Ok(_) => {
                         let path_str = video_path.to_string_lossy().to_string();
+                        eprintln!("[Aura] apply finished output={output} path={path_str}");
                         let is_latest = token == self.apply_token;
                         return self.finish_wallpaper_applied_with(
                             &video_path,
@@ -5317,8 +5519,17 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::HotplugTick => {
-                let dead = self.engine_guard().reap_dead_processes();
-                if !dead.is_empty() && self.engine_guard().processes_keys().is_empty() {
+                // Never wait on the engine from the UI thread: a wallpaper
+                // apply holds it for the whole transactional spawn. Skip this
+                // tick and try again on the next one instead of freezing.
+                let engine_state = self.engine_try_guard().map(|mut engine| {
+                    let dead = engine.reap_dead_processes();
+                    (dead, engine.processes_keys().is_empty())
+                });
+                let Some((dead, no_players)) = engine_state else {
+                    return Task::none();
+                };
+                if !dead.is_empty() && no_players {
                     self.is_paused = false;
                     self.tray_controller.update_state(String::new(), false, false);
                 }
@@ -5450,8 +5661,7 @@ impl cosmic::Application for AuraApp {
 
                 let mut occluded = std::collections::HashSet::new();
                 for output in &self.outputs {
-                    let coverage = snapshot.coverage_for(&output.name);
-                    if self.config.auto_pause_mode.should_pause(coverage) {
+                    if snapshot.should_pause(self.config.auto_pause_mode, &output.name) {
                         occluded.insert(output.name.clone());
                     }
                 }
@@ -6748,6 +6958,7 @@ impl cosmic::Application for AuraApp {
             self.view_page_layer(Page::Library),
             self.view_page_layer(Page::Explore),
             self.view_page_layer(Page::Monitors),
+            self.view_page_layer(Page::Effects),
             self.view_page_layer(Page::Settings),
             self.view_page_layer(Page::About),
         ])
@@ -6848,6 +7059,7 @@ impl AuraApp {
                 Page::Library => self.view_library(),
                 Page::Explore => self.view_explore(),
                 Page::Monitors => self.view_monitors(),
+                Page::Effects => self.view_effects_page(),
                 Page::Settings => self.view_settings(),
                 Page::About => self.view_about(),
             }
@@ -6866,8 +7078,9 @@ impl AuraApp {
             Page::Library => 0,
             Page::Explore => 1,
             Page::Monitors => 2,
-            Page::Settings => 3,
-            Page::About => 4,
+            Page::Effects => 3,
+            Page::Settings => 4,
+            Page::About => 5,
         }
     }
 
@@ -7103,6 +7316,11 @@ impl AuraApp {
             .icon(widget::icon::from_name("video-display-symbolic"));
 
         nav.insert()
+            .text(lang.nav_effects())
+            .data(Page::Effects)
+            .icon(widget::icon::from_name("fire-symbolic"));
+
+        nav.insert()
             .text(lang.nav_settings())
             .data(Page::Settings)
             .icon(widget::icon::from_name("preferences-system-symbolic"));
@@ -7116,8 +7334,9 @@ impl AuraApp {
             Page::Library => { nav.activate_position(0); }
             Page::Explore => { nav.activate_position(1); }
             Page::Monitors => { nav.activate_position(2); }
-            Page::Settings => { nav.activate_position(3); }
-            Page::About => { nav.activate_position(4); }
+            Page::Effects => { nav.activate_position(3); }
+            Page::Settings => { nav.activate_position(4); }
+            Page::About => { nav.activate_position(5); }
         }
 
         nav
@@ -7126,38 +7345,9 @@ impl AuraApp {
 
 #[cfg(test)]
 mod tests {
-    use super::all_outputs_have_own_wallpaper;
+    use super::*;
     use crate::engine::MonitorOutput;
     use std::collections::HashMap;
-
-    #[test]
-    fn test_all_outputs_have_own_wallpaper_covers_single_output() {
-        let dir = tempfile::tempdir().unwrap();
-        let wallpaper = dir.path().join("specific.mp4");
-        std::fs::write(&wallpaper, b"video").unwrap();
-        let outputs = vec![MonitorOutput {
-            name: "eDP-1".into(),
-            ..MonitorOutput::default()
-        }];
-        let wallpapers = HashMap::from([(
-            "eDP-1".into(),
-            wallpaper.to_string_lossy().into_owned(),
-        )]);
-
-        assert!(all_outputs_have_own_wallpaper(&outputs, &wallpapers));
-
-        let wildcard_only = HashMap::from([(
-            "*".into(),
-            wallpaper.to_string_lossy().into_owned(),
-        )]);
-        assert!(!all_outputs_have_own_wallpaper(&outputs, &wildcard_only));
-
-        let missing_file = vec![MonitorOutput {
-            name: "HDMI-A-1".into(),
-            ..MonitorOutput::default()
-        }];
-        assert!(!all_outputs_have_own_wallpaper(&missing_file, &wallpapers));
-    }
 
     #[test]
     fn test_all_outputs_have_own_wallpaper() {
@@ -7211,125 +7401,52 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_interval_input_sanitization_and_validation() {
-        let input = "abc 45 min!";
-        let sanitized: String = input.chars().filter(|c| c.is_ascii_digit()).take(5).collect();
-        assert_eq!(sanitized, "45");
+    fn test_custom_interval_input_is_sanitized_and_bounded() {
+        assert_eq!(sanitize_interval_input("abc 45 min!"), "45");
+        assert_eq!(sanitize_interval_input("12 34 56"), "12345");
+        assert_eq!(sanitize_interval_input("no digits"), "");
 
-        let val = sanitized.parse::<u64>().unwrap();
-        assert!((1..=1440).contains(&val));
-
-        // Invalid zero
-        let zero_input = "0".chars().filter(|c| c.is_ascii_digit()).take(5).collect::<String>();
-        let val_zero = zero_input.parse::<u64>().unwrap();
-        assert!(!(1..=1440).contains(&val_zero));
-
-        // Invalid excessive (> 1440)
-        let big_input = "1441".chars().filter(|c| c.is_ascii_digit()).take(5).collect::<String>();
-        let val_big = big_input.parse::<u64>().unwrap();
-        assert!(!(1..=1440).contains(&val_big));
+        assert_eq!(parse_custom_interval("45"), Some(45));
+        assert_eq!(parse_custom_interval(" 45 "), Some(45));
+        assert_eq!(parse_custom_interval("1440"), Some(1440));
+        assert_eq!(parse_custom_interval("0"), None);
+        assert_eq!(parse_custom_interval("1441"), None);
+        assert_eq!(parse_custom_interval("abc"), None);
     }
 
     #[test]
     fn test_switcher_scroll_accumulator_threshold() {
-        const TOUCHPAD_THRESHOLD: f32 = 60.0;
         let mut accum = 0.0f32;
 
-        // Small events from gentle touch (e.g. 10 events of 3.0 px)
+        // Gentle touchpad events accumulate without stepping.
         for _ in 0..10 {
-            accum += 3.0;
+            accum = accumulate_switcher_scroll(accum, 3.0);
         }
         assert_eq!(accum, 30.0);
-        // Not yet at threshold
-        assert!(accum < TOUCHPAD_THRESHOLD);
+        assert_eq!(switcher_scroll_step(accum), 0);
 
-        // More events push it over threshold
-        accum += 35.0; // 65.0
-        assert!(accum >= TOUCHPAD_THRESHOLD);
+        // Crossing the threshold yields a single forward step.
+        accum = accumulate_switcher_scroll(accum, 35.0);
+        assert_eq!(switcher_scroll_step(accum), 1);
 
-        // Upon trigger, reset
-        accum = 0.0;
-        assert_eq!(accum, 0.0);
-
-        // Direction reversal reset: if moving down (+20), then user swipes up (-15)
-        accum += 20.0;
-        let increment = -15.0;
-        if (increment > 0.0 && accum < 0.0) || (increment < 0.0 && accum > 0.0) {
-            accum = 0.0;
-        }
-        accum += increment;
+        // Reversing direction discards the previous inertia.
+        accum = accumulate_switcher_scroll(accum, -15.0);
         assert_eq!(accum, -15.0);
+        assert_eq!(switcher_scroll_step(accum), 0);
+
+        accum = accumulate_switcher_scroll(accum, -45.0);
+        assert_eq!(switcher_scroll_step(accum), -1);
     }
 
     #[test]
     fn test_switcher_edge_scroll_margin_and_clamping() {
-        // Test 1366x768 (User's display)
-        let width_1366 = 1366.0f32;
-        let margin_1366 = (width_1366 * 0.08).clamp(70.0, 130.0);
-        assert!((margin_1366 - 109.28).abs() < 0.01);
+        assert!((switcher_edge_margin(1366.0) - 109.28).abs() < 0.01);
+        assert_eq!(switcher_edge_margin(1920.0), 130.0);
+        assert_eq!(switcher_edge_margin(500.0), 70.0);
 
-        // On 1366: cursor near right edge (1320px) should trigger right scroll (+1)
-        let pos_right_1366 = 1320.0f32;
-        let dir_right_1366 = if pos_right_1366 < margin_1366 {
-            -1
-        } else if pos_right_1366 > width_1366 - margin_1366 {
-            1
-        } else {
-            0
-        };
-        assert_eq!(dir_right_1366, 1, "Right edge scroll must trigger on 1366px screen");
-
-        // Test 1920x1080
-        let width = 1920.0f32;
-        let edge_margin = (width * 0.08).clamp(70.0, 130.0);
-        assert_eq!(edge_margin, 130.0);
-
-        // Cursor at far left (50px)
-        let pos_left = 50.0f32;
-        let dir_left = if pos_left < edge_margin {
-            -1
-        } else if pos_left > width - edge_margin {
-            1
-        } else {
-            0
-        };
-        assert_eq!(dir_left, -1);
-
-        // Cursor at center (960px)
-        let pos_center = 960.0f32;
-        let dir_center = if pos_center < edge_margin {
-            -1
-        } else if pos_center > width - edge_margin {
-            1
-        } else {
-            0
-        };
-        assert_eq!(dir_center, 0);
-
-        // Cursor at far right (1850px)
-        let pos_right = 1850.0f32;
-        let dir_right = if pos_right < edge_margin {
-            -1
-        } else if pos_right > width - edge_margin {
-            1
-        } else {
-            0
-        };
-        assert_eq!(dir_right, 1);
-
-        // Boundary checks for a 10-item library (4 columns: 0, 1, 2, 3)
-        let n = 10usize;
-        let total_cols = (n + 2) / 3;
-        assert_eq!(total_cols, 4);
-
-        // At column 0: can step right, but not left
-        let sel_col_0 = 0usize;
-        assert!(!(sel_col_0 > 0), "Should not scroll left past column 0");
-        assert!(sel_col_0 + 1 < total_cols, "Should scroll right from column 0");
-
-        // At column 3 (last column): can step left, but not right
-        let sel_col_last = 3usize;
-        assert!(sel_col_last > 0, "Should scroll left from last column");
-        assert!(!(sel_col_last + 1 < total_cols), "Should not scroll right past last column");
+        assert_eq!(switcher_edge_direction(1366.0, 1320.0), 1);
+        assert_eq!(switcher_edge_direction(1920.0, 50.0), -1);
+        assert_eq!(switcher_edge_direction(1920.0, 960.0), 0);
+        assert_eq!(switcher_edge_direction(1920.0, 1850.0), 1);
     }
 }

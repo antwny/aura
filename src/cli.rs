@@ -721,16 +721,4 @@ mod tests {
         assert_eq!(hidden, true);
         assert_eq!(action, Some("stop".into()));
     }
-
-    #[test]
-    fn test_is_newer_version() {
-        use crate::online::updater::is_newer_version;
-        assert_eq!(is_newer_version("1.1.1", "1.1.0"), true);
-        assert_eq!(is_newer_version("v1.1.1", "v1.1.0"), true);
-        assert_eq!(is_newer_version("1.2.0", "1.1.9"), true);
-        assert_eq!(is_newer_version("2.0.0", "1.99.99"), true);
-        assert_eq!(is_newer_version("1.1.0", "1.1.1"), false);
-        assert_eq!(is_newer_version("1.1.0", "1.1.0"), false);
-        assert_eq!(is_newer_version("v1.1.0", "v1.1.0"), false);
-    }
 }

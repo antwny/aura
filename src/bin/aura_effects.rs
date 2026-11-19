@@ -3,8 +3,7 @@
 //! A separate process (like `mpvpaper`) so it can own its own Wayland
 //! connection and create one layer-shell surface per monitor:
 //!
-//! * `parallax`: a click-through bottom-layer image displaced by a depth map
-//!   with a slow automatic drift (2.5D wallpaper).
+//! * `parallax`: a click-through bottom-layer image with mouse-driven depth.
 //! * `spectrum`: a transparent bottom-layer strip with cava-style audio bars.
 //!
 //! Aura writes a JSON config and spawns this binary; it exits automatically
@@ -16,9 +15,14 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
+#[path = "../effects_cursor.rs"]
+mod effects_cursor;
+
+use effects_cursor::CursorTracker;
 use bytemuck::{Pod, Zeroable};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
@@ -45,6 +49,12 @@ use wayland_client::{
     protocol::{wl_compositor, wl_output, wl_region, wl_seat, wl_surface},
     Connection, Dispatch, Proxy, QueueHandle,
 };
+
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn request_shutdown(_: libc::c_int) {
+    SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -78,6 +88,24 @@ fn default_strength() -> f32 {
     0.55
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum SpectrumPosition {
+    #[default]
+    Bottom,
+    Top,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum SpectrumStyle {
+    #[default]
+    Bars,
+    Wave,
+    Dots,
+    Mirror,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct SpectrumConfig {
     #[serde(default = "default_bars")]
@@ -88,8 +116,18 @@ struct SpectrumConfig {
     color1: [u8; 3],
     #[serde(default = "default_color2")]
     color2: [u8; 3],
+    #[serde(default = "default_halo")]
+    halo: [u8; 3],
     #[serde(default = "default_alpha")]
     alpha: f32,
+    #[serde(default)]
+    position: SpectrumPosition,
+    #[serde(default)]
+    style: SpectrumStyle,
+    #[serde(default = "default_bar_width")]
+    bar_width_pct: u32,
+    #[serde(default = "default_glow")]
+    glow: bool,
 }
 
 fn default_bars() -> u32 {
@@ -104,8 +142,17 @@ fn default_color1() -> [u8; 3] {
 fn default_color2() -> [u8; 3] {
     [196, 120, 255]
 }
+fn default_halo() -> [u8; 3] {
+    [255, 255, 255]
+}
 fn default_alpha() -> f32 {
     0.88
+}
+fn default_bar_width() -> u32 {
+    76
+}
+fn default_glow() -> bool {
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +168,8 @@ struct ParallaxUniform {
     zoom: f32,
     has_depth: f32,
     image_size: [f32; 2],
-    _pad: [f32; 4],
+    screen_size: [f32; 2],
+    _pad: [f32; 2],
 }
 
 #[repr(C)]
@@ -130,8 +178,13 @@ struct SpectrumUniform {
     bars: [[f32; 4]; 16],
     color1: [f32; 4],
     color2: [f32; 4],
-    // bar count, alpha, time, unused
+    halo: [f32; 4],
+    // bar count, alpha, time, premultiplied flag
     params: [f32; 4],
+    // half width fraction, glow flag, top-anchored flag, style code
+    shape: [f32; 4],
+    // strip aspect ratio, unused
+    extra: [f32; 4],
 }
 
 const PARALLAX_WGSL: &str = r#"
@@ -142,7 +195,8 @@ struct Uniforms {
     zoom: f32,
     has_depth: f32,
     image_size: vec2<f32>,
-    _pad: vec4<f32>,
+    screen_size: vec2<f32>,
+    _pad: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -180,23 +234,39 @@ fn cover_uv(uv: vec2<f32>, screen_aspect: f32, image_size: vec2<f32>) -> vec2<f3
     return p + vec2<f32>(0.5);
 }
 
+fn depth_at(uv: vec2<f32>) -> f32 {
+    return mix(0.5, textureSampleLevel(depth_tex, samp, uv, 0.0).r, u.has_depth);
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-    var uv = cover_uv(in.uv, u.aspect, u.image_size);
+    let center = vec2<f32>(0.5);
+    let base = (cover_uv(in.uv, u.aspect, u.image_size) - center) / u.zoom + center;
+    let coverage = (cover_uv(vec2<f32>(1.0), u.aspect, u.image_size) - center) * 2.0;
+    let offset = u.mouse * coverage * u.strength * 0.075 / u.zoom;
+    let pixels = length(u.mouse * u.screen_size * u.strength * 0.075);
+    let steps = clamp(ceil(pixels / 2.5), 4.0, 40.0);
+    let step_uv = offset / steps;
+    let step_depth = 1.0 / steps;
+    var uv = base + offset * 0.5;
+    var ray_depth = 1.0;
+    var depth = depth_at(uv);
+    var previous_uv = uv;
+    var previous_gap = ray_depth - depth;
 
-    // Depth Anything returns inverse depth: bright = close to the camera.
-    let sampled_depth = textureSample(depth_tex, samp, uv).r;
-    let depth = mix(0.5, sampled_depth, u.has_depth);
-    let amount = mix(0.35, 1.0, depth) * u.strength;
-    let shift = vec2<f32>(u.mouse.x, -u.mouse.y) * amount * 0.055;
-    uv = (uv - vec2<f32>(0.5)) / u.zoom + vec2<f32>(0.5) + shift / u.zoom;
-
-    let color = textureSample(image_tex, samp, uv).rgb;
-
-    // Subtle vignette keeps the displaced edges from looking flat.
-    let centered = (in.uv - vec2<f32>(0.5)) * vec2<f32>(1.0, 0.85);
-    let vignette = 1.0 - smoothstep(0.45, 0.92, length(centered)) * 0.28;
-    return vec4<f32>(color * vignette, 1.0);
+    // Inverse depth puts the closest surface first along the camera ray.
+    for (var i = 0u; i < 40u; i += 1u) {
+        if (f32(i) >= steps || ray_depth <= depth) { break; }
+        previous_uv = uv;
+        previous_gap = ray_depth - depth;
+        uv -= step_uv;
+        ray_depth -= step_depth;
+        depth = depth_at(uv);
+    }
+    let gap = depth - ray_depth;
+    let weight = clamp(gap / max(gap + previous_gap, 0.00001), 0.0, 1.0);
+    uv = mix(uv, previous_uv, weight);
+    return vec4<f32>(textureSampleLevel(image_tex, samp, clamp(uv, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).rgb, 1.0);
 }
 "#;
 
@@ -205,7 +275,10 @@ struct Uniforms {
     bars: array<vec4<f32>, 16>,
     color1: vec4<f32>,
     color2: vec4<f32>,
+    halo: vec4<f32>,
     params: vec4<f32>,
+    shape: vec4<f32>,
+    extra: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -238,33 +311,157 @@ fn bar_height(index: u32) -> f32 {
     return v.w;
 }
 
+fn bar_height_at(x: f32, count: f32) -> f32 {
+    let last = u32(count) - 1u;
+    let clamped = clamp(x, 0.0, count - 0.0001);
+    let index = min(u32(clamped), last);
+    let next = min(index + 1u, last);
+    let t = smoothstep(0.0, 1.0, fract(clamped));
+    return mix(bar_height(index), bar_height(next), t);
+}
+
+fn halo_color(alpha: f32) -> vec4<f32> {
+    let rgb = select(u.halo.rgb, u.halo.rgb * alpha, u.params.w > 0.5);
+    return vec4<f32>(rgb, alpha);
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let count = max(u.params.x, 1.0);
     let x = in.uv.x * count;
+    let y = select(1.0 - in.uv.y, in.uv.y, u.shape.z > 0.5);
+    let bottom = 0.035;
+    let halo_width = 0.020;
+
+    // 0: bars.
+    if (u.shape.w < 0.5) {
+        let index = min(u32(x), u32(count) - 1u);
+        let height = bar_height(index);
+        if (height <= 0.001) { discard; }
+
+        let local = fract(x);
+        let half_width = clamp(u.shape.x, 0.04, 0.5);
+        let dx = abs(local - 0.5);
+        let top = bottom + height * 0.90;
+
+        if (dx <= half_width && y >= bottom && y <= top) {
+            let edge_x = 1.0 - smoothstep(half_width - 0.035, half_width, dx);
+            let edge_y = 1.0 - smoothstep(top - 0.012, top, y);
+            let alpha = u.params.y * edge_x * edge_y;
+            let t = clamp((y - bottom) / max(top - bottom, 0.001), 0.0, 1.0);
+            let color = mix(u.color1.rgb, u.color2.rgb, t);
+            let output_color = select(color, color * alpha, u.params.w > 0.5);
+            return vec4<f32>(output_color, alpha);
+        }
+
+        if (u.shape.y > 0.5) {
+            let outside_x = max(dx - half_width, 0.0);
+            let outside_y = max(max(bottom - y, y - top), 0.0);
+            let distance = max(outside_x, outside_y);
+            if (distance < halo_width) {
+                let alpha = u.halo.a * u.params.y * (1.0 - smoothstep(0.0, halo_width, distance));
+                return halo_color(alpha);
+            }
+        }
+        discard;
+        return vec4<f32>(0.0);
+    }
+
+    // 1: wave.
+    if (u.shape.w < 1.5) {
+        let height = bar_height_at(x, count);
+        if (height <= 0.001) { discard; }
+        let top = bottom + height * 0.90;
+
+        if (y >= bottom && y <= top) {
+            let edge_y = 1.0 - smoothstep(top - 0.010, top, y);
+            let alpha = u.params.y * edge_y;
+            let t = clamp((y - bottom) / max(top - bottom, 0.001), 0.0, 1.0);
+            var color = mix(u.color1.rgb, u.color2.rgb, t);
+            let crest = 1.0 - smoothstep(0.0, 0.016, abs(y - top));
+            color = mix(color, vec3<f32>(1.0), crest * 0.35);
+            let output_color = select(color, color * alpha, u.params.w > 0.5);
+            return vec4<f32>(output_color, alpha);
+        }
+
+        if (u.shape.y > 0.5) {
+            let distance = max(max(bottom - y, y - top), 0.0);
+            if (distance < halo_width) {
+                let alpha = u.halo.a * u.params.y * (1.0 - smoothstep(0.0, halo_width, distance));
+                return halo_color(alpha);
+            }
+        }
+        discard;
+        return vec4<f32>(0.0);
+    }
+
+    // 2: dots. Aspect correction keeps them round on wide strips.
+    if (u.shape.w < 2.5) {
+        let index = min(u32(x), u32(count) - 1u);
+        let height = bar_height(index);
+        if (height <= 0.001) { discard; }
+        let dx = abs(fract(x) - 0.5);
+        let top = bottom + height * 0.90;
+        let radius_x = clamp(u.shape.x * 0.95, 0.05, 0.5);
+        let radius_y = max(radius_x * (u.extra.x / count), 0.012);
+        let center_y = max(top - radius_y, bottom + radius_y);
+        let nx = dx / radius_x;
+        let ny = (y - center_y) / radius_y;
+        let distance = sqrt(nx * nx + ny * ny);
+
+        if (distance <= 1.0) {
+            let alpha = u.params.y * (1.0 - smoothstep(0.86, 1.0, distance));
+            let t = clamp((center_y - bottom) / max(height * 0.90, 0.001), 0.0, 1.0);
+            let color = mix(u.color1.rgb, u.color2.rgb, t);
+            let output_color = select(color, color * alpha, u.params.w > 0.5);
+            return vec4<f32>(output_color, alpha);
+        }
+
+        if (u.shape.y > 0.5) {
+            let halo_limit = 1.28;
+            if (distance <= halo_limit) {
+                let alpha = u.halo.a * u.params.y * (1.0 - smoothstep(1.0, halo_limit, distance));
+                return halo_color(alpha);
+            }
+        }
+        discard;
+        return vec4<f32>(0.0);
+    }
+
+    // 3: mirrored bars growing from the strip center.
     let index = min(u32(x), u32(count) - 1u);
     let height = bar_height(index);
     if (height <= 0.001) { discard; }
+    let half_width = clamp(u.shape.x, 0.04, 0.5);
+    let dx = abs(fract(x) - 0.5);
+    let half = height * 0.45;
+    let center = 0.5;
+    let top = center + half;
+    let bot = center - half;
 
-    let local = fract(x);
-    let gap = 0.24;
-    let half_width = 0.5 - gap * 0.5;
-    let dx = abs(local - 0.5);
-    if (dx > half_width) { discard; }
+    if (dx <= half_width && y >= bot && y <= top) {
+        let edge_x = 1.0 - smoothstep(half_width - 0.035, half_width, dx);
+        let edge_top = 1.0 - smoothstep(top - 0.012, top, y);
+        let edge_bot = smoothstep(bot, bot + 0.012, y);
+        let alpha = u.params.y * edge_x * min(edge_top, edge_bot);
+        let t = clamp(abs(y - center) / max(half, 0.001), 0.0, 1.0);
+        let color = mix(u.color1.rgb, u.color2.rgb, t);
+        let output_color = select(color, color * alpha, u.params.w > 0.5);
+        return vec4<f32>(output_color, alpha);
+    }
 
-    let y = 1.0 - in.uv.y;              // 0 at the bottom edge
-    let bottom = 0.035;
-    let top = bottom + height * 0.90;
-    if (y < bottom || y > top) { discard; }
+    if (u.shape.y > 0.5) {
+        let outside_x = max(dx - half_width, 0.0);
+        let outside_y = max(max(bot - y, y - top), 0.0);
+        let distance = max(outside_x, outside_y);
+        if (distance < halo_width) {
+            let alpha = u.halo.a * u.params.y * (1.0 - smoothstep(0.0, halo_width, distance));
+            return halo_color(alpha);
+        }
+    }
 
-    let edge_x = 1.0 - smoothstep(half_width - 0.035, half_width, dx);
-    let edge_y = 1.0 - smoothstep(top - 0.012, top, y);
-    let alpha = u.params.y * edge_x * edge_y;
-
-    let t = clamp((y - bottom) / max(top - bottom, 0.001), 0.0, 1.0);
-    let color = mix(u.color1.rgb, u.color2.rgb, t);
-    let output_color = select(color, color * alpha, u.params.w > 0.5);
-    return vec4<f32>(output_color, alpha);
+    discard;
+    return vec4<f32>(0.0);
 }
 "#;
 
@@ -287,6 +484,10 @@ enum Kind {
 
 struct EffectSurface {
     kind: Kind,
+    output_name: String,
+    cursor: [f32; 2],
+    last_cursor_update: Instant,
+    needs_redraw: bool,
     layer: LayerSurface,
     wsurf: wgpu::Surface<'static>,
     pipeline: wgpu::RenderPipeline,
@@ -303,6 +504,11 @@ struct EffectSurface {
     has_depth: bool,
     color1: [f32; 4],
     color2: [f32; 4],
+    halo: [f32; 4],
+    bar_half_width: f32,
+    glow: f32,
+    flip: f32,
+    style: f32,
     alpha: f32,
 }
 
@@ -318,6 +524,8 @@ struct App {
     bars_rx: Option<Receiver<Vec<f32>>>,
     cava: Option<Child>,
     cava_config: Option<PathBuf>,
+    bars_count: u32,
+    last_cava_retry: Instant,
     levels: Vec<f32>,
     last_active_at: Instant,
     parent_pid: Option<u32>,
@@ -362,6 +570,12 @@ fn main() {
 }
 
 fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+    // Leave through the render loop so cursor sessions close before the process exits.
+    for signal in [libc::SIGTERM, libc::SIGINT] {
+        unsafe {
+            libc::signal(signal, request_shutdown as *const () as libc::sighandler_t);
+        }
+    }
     let conn = Connection::connect_to_env()?;
     let (globals, mut event_queue) = registry_queue_init(&conn)?;
     let qh: QueueHandle<App> = event_queue.handle();
@@ -385,6 +599,8 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
         bars_rx: None,
         cava: None,
         cava_config: None,
+        bars_count: 56,
+        last_cava_retry: Instant::now(),
         levels: vec![0.0; 56],
         last_active_at: Instant::now(),
         parent_pid,
@@ -457,6 +673,7 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
                 .and_then(|path| load_depth(path).ok());
             pending.push(PendingSurface {
                 kind: Kind::Parallax,
+                output_name: output_cfg.name.clone(),
                 layer,
                 scale,
                 image: Some(image),
@@ -465,6 +682,11 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
                 strength: parallax.strength,
                 color1: [0.0; 4],
                 color2: [0.0; 4],
+                halo: [0.0; 4],
+                bar_half_width: 0.38,
+                glow: 0.0,
+                flip: 0.0,
+                style: 0.0,
                 alpha: 0.0,
             });
         }
@@ -480,7 +702,11 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
                 Some("aura-spectrum"),
                 Some(&output),
             );
-            layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            let anchor = match spectrum.position {
+                SpectrumPosition::Bottom => Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+                SpectrumPosition::Top => Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
+            };
+            layer.set_anchor(anchor);
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             layer.set_exclusive_zone(-1);
             layer.set_size(0, height);
@@ -494,6 +720,7 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
 
             pending.push(PendingSurface {
                 kind: Kind::Spectrum,
+                output_name: output_cfg.name.clone(),
                 layer,
                 scale,
                 image: None,
@@ -502,6 +729,20 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
                 strength: 0.0,
                 color1: srgb(spectrum.color1),
                 color2: srgb(spectrum.color2),
+                halo: srgb(spectrum.halo),
+                bar_half_width: (spectrum.bar_width_pct.clamp(10, 100) as f32 / 100.0) * 0.5,
+                glow: if spectrum.glow { 1.0 } else { 0.0 },
+                flip: if spectrum.position == SpectrumPosition::Top {
+                    1.0
+                } else {
+                    0.0
+                },
+                style: match spectrum.style {
+                    SpectrumStyle::Bars => 0.0,
+                    SpectrumStyle::Wave => 1.0,
+                    SpectrumStyle::Dots => 2.0,
+                    SpectrumStyle::Mirror => 3.0,
+                },
                 alpha: spectrum.alpha.clamp(0.0, 1.0),
             });
         }
@@ -600,6 +841,7 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
     app.bars_rx = bars_rx;
     app.cava = cava;
     app.cava_config = cava_config;
+    app.bars_count = bars_count;
     app.levels = vec![0.0; bars_count as usize];
 
     // Let the compositor send the initial configure events.
@@ -607,16 +849,37 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
     app.reconfigure_all();
 
     let has_spectrum = app.surfaces.iter().any(|s| s.kind == Kind::Spectrum);
+    let has_parallax = app.surfaces.iter().any(|s| s.kind == Kind::Parallax);
+    let cursor = has_parallax.then(|| {
+        CursorTracker::start(
+            app.surfaces
+                .iter()
+                .filter(|surface| surface.kind == Kind::Parallax)
+                .map(|surface| surface.output_name.clone())
+                .collect(),
+        )
+    });
     let started = Instant::now();
     let mut last_draw = Instant::now();
 
     loop {
+        if SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+            app.shutdown();
+            return Ok(());
+        }
         // Dispatch Wayland events with a short timeout so rendering can be
         // paced without a separate thread.
         event_queue.flush()?;
         if let Some(guard) = event_queue.prepare_read() {
             let fd = guard.connection_fd();
-            let timeout = if has_spectrum { 16 } else { 120 };
+            let audio_active = app.last_active_at.elapsed() < Duration::from_millis(1500);
+            let timeout = if has_parallax || (has_spectrum && audio_active) {
+                16
+            } else if has_spectrum {
+                50
+            } else {
+                120
+            };
             let mut pollfd = libc::pollfd {
                 fd: fd.as_raw_fd(),
                 events: libc::POLLIN,
@@ -641,14 +904,29 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
         }
 
         app.poll_levels();
+        // cava can die when the audio server restarts (GNOME/KDE session
+        // changes, PipeWire restarts, device hotplug). Without this the
+        // spectrum stayed on the idle wave until the renderer was restarted.
+        if has_spectrum
+            && app.bars_rx.is_none()
+            && app.last_cava_retry.elapsed() >= Duration::from_secs(10)
+        {
+            app.restart_cava();
+        }
         if has_spectrum {
             app.apply_idle_levels(started.elapsed().as_secs_f32());
         }
 
+        let active = app.last_active_at.elapsed() < Duration::from_millis(1500);
         let now = Instant::now();
-        if now.duration_since(last_draw) >= Duration::from_millis(16) {
+        let frame_budget = if has_parallax || (has_spectrum && active) {
+            16
+        } else {
+            50
+        };
+        if now.duration_since(last_draw) >= Duration::from_millis(frame_budget) {
             last_draw = now;
-            app.draw_all(started.elapsed().as_secs_f32());
+            app.draw_all(started.elapsed().as_secs_f32(), active, cursor.as_ref());
         }
     }
 }
@@ -659,6 +937,7 @@ fn run(config: EffectsConfig, parent_pid: Option<u32>) -> Result<(), Box<dyn std
 
 struct PendingSurface {
     kind: Kind,
+    output_name: String,
     layer: LayerSurface,
     scale: u32,
     image: Option<(u32, u32, Vec<u8>)>,
@@ -667,6 +946,11 @@ struct PendingSurface {
     strength: f32,
     color1: [f32; 4],
     color2: [f32; 4],
+    halo: [f32; 4],
+    bar_half_width: f32,
+    glow: f32,
+    flip: f32,
+    style: f32,
     alpha: f32,
 }
 
@@ -855,6 +1139,10 @@ fn create_effect_surface(
 
     let surface = EffectSurface {
         kind: pending.kind,
+        output_name: pending.output_name,
+        cursor: [0.0; 2],
+        last_cursor_update: Instant::now(),
+        needs_redraw: true,
         layer: pending.layer,
         wsurf,
         pipeline,
@@ -871,6 +1159,11 @@ fn create_effect_surface(
         has_depth: pending.depth.is_some(),
         color1: pending.color1,
         color2: pending.color2,
+        halo: pending.halo,
+        bar_half_width: pending.bar_half_width,
+        glow: pending.glow,
+        flip: pending.flip,
+        style: pending.style,
         alpha: pending.alpha,
     };
     Ok(surface)
@@ -944,6 +1237,7 @@ impl EffectSurface {
         };
         self.wsurf.configure(&gpu.device, &config);
         self.configured = true;
+        self.needs_redraw = true;
     }
 }
 
@@ -964,6 +1258,35 @@ impl App {
         }
         if let Some(path) = self.cava_config.as_ref() {
             let _ = std::fs::remove_file(path);
+        }
+    }
+
+    fn restart_cava(&mut self) {
+        self.last_cava_retry = Instant::now();
+        if find_cava_binary().is_none() {
+            return;
+        }
+        if let Some(mut child) = self.cava.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(path) = self.cava_config.take() {
+            let _ = std::fs::remove_file(path);
+        }
+        match spawn_cava(self.bars_count) {
+            Ok((rx, child, config)) => {
+                self.bars_rx = rx;
+                self.cava = child;
+                self.cava_config = config;
+                if let Some(mut log) = open_log("cava.log") {
+                    let _ = writeln!(log, "cava restarted");
+                }
+            }
+            Err(error) => {
+                if let Some(mut log) = open_log("cava.log") {
+                    let _ = writeln!(log, "cava restart failed: {error}");
+                }
+            }
         }
     }
 
@@ -1009,7 +1332,7 @@ impl App {
         }
     }
 
-    fn draw_all(&mut self, elapsed: f32) {
+    fn draw_all(&mut self, elapsed: f32, audio_active: bool, cursor: Option<&CursorTracker>) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
@@ -1021,31 +1344,60 @@ impl App {
             if !surface.configured {
                 continue;
             }
-            let interval = if surface.kind == Kind::Parallax {
-                Duration::from_millis(33)
-            } else {
+            let interval = if surface.kind == Kind::Parallax || audio_active {
                 Duration::from_millis(16)
+            } else {
+                Duration::from_millis(50)
             };
-            if surface.last_drawn.elapsed() < interval {
+            let dt = surface.last_drawn.elapsed();
+            if dt < interval {
                 continue;
             }
-            draw_surface(gpu, surface, levels, elapsed);
-            surface.last_drawn = Instant::now();
+            if surface.kind == Kind::Parallax {
+                let target = cursor
+                    .map(|tracker| tracker.position(&surface.output_name))
+                    .unwrap_or([0.0; 2]);
+                let moved = smooth_cursor(
+                    &mut surface.cursor,
+                    target,
+                    surface.last_cursor_update.elapsed().as_secs_f32(),
+                );
+                surface.last_cursor_update = Instant::now();
+                if !moved && !surface.needs_redraw {
+                    continue;
+                }
+            }
+            if draw_surface(gpu, surface, levels, elapsed) {
+                surface.needs_redraw = false;
+                surface.last_drawn = Instant::now();
+            }
         }
     }
 }
 
-fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed: f32) {
+fn smooth_cursor(current: &mut [f32; 2], target: [f32; 2], dt: f32) -> bool {
+    let previous = *current;
+    let blend = 1.0 - (-8.0 * dt.min(0.1)).exp();
+    for (value, target) in current.iter_mut().zip(target) {
+        *value += (target - *value) * blend;
+        if (target - *value).abs() < 0.0001 {
+            *value = target;
+        }
+    }
+    *current != previous
+}
+
+fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed: f32) -> bool {
     let frame = match surface.wsurf.get_current_texture() {
         Ok(frame) => frame,
-        Err(wgpu::SurfaceError::Timeout) => return,
+        Err(wgpu::SurfaceError::Timeout) => return false,
         Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
             surface.configure(gpu);
-            return;
+            return false;
         }
         Err(error) => {
             eprintln!("aura-effects: surface error: {error:?}");
-            return;
+            return false;
         }
     };
     let view = frame
@@ -1076,20 +1428,18 @@ fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed:
     match surface.kind {
         Kind::Parallax => {
             let aspect = surface.size.0 as f32 / surface.size.1.max(1) as f32;
-            // Slow Lissajous drift: a 2.5D wallpaper that keeps moving without
-            // requiring pointer events (and therefore without stealing clicks).
-            let drift = [
-                (elapsed * 0.13).sin() * 0.60 + (elapsed * 0.047).sin() * 0.20,
-                (elapsed * 0.09).cos() * 0.45 + (elapsed * 0.031).cos() * 0.15,
-            ];
             let uniform = ParallaxUniform {
-                mouse: drift,
+                mouse: surface.cursor,
                 aspect,
                 strength: surface.strength,
-                zoom: 1.07,
+                zoom: 1.0 + surface.strength * 0.1,
                 has_depth: if surface.has_depth { 1.0 } else { 0.0 },
                 image_size: [surface.image_size.0, surface.image_size.1],
-                _pad: [0.0; 4],
+                screen_size: [
+                    surface.size.0.saturating_mul(surface.scale) as f32,
+                    surface.size.1.saturating_mul(surface.scale) as f32,
+                ],
+                _pad: [0.0; 2],
             };
             gpu.queue
                 .write_buffer(&surface.uniform, 0, bytemuck::bytes_of(&uniform));
@@ -1103,6 +1453,7 @@ fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed:
                 bars,
                 color1: surface.color1,
                 color2: surface.color2,
+                halo: [surface.halo[0], surface.halo[1], surface.halo[2], 0.55],
                 params: [
                     levels.len().clamp(1, 64) as f32,
                     surface.alpha,
@@ -1112,6 +1463,13 @@ fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed:
                     } else {
                         0.0
                     },
+                ],
+                shape: [surface.bar_half_width, surface.glow, surface.flip, surface.style],
+                extra: [
+                    surface.size.0 as f32 / surface.size.1.max(1) as f32,
+                    0.0,
+                    0.0,
+                    0.0,
                 ],
             };
             gpu.queue
@@ -1143,6 +1501,7 @@ fn draw_surface(gpu: &Gpu, surface: &mut EffectSurface, levels: &[f32], elapsed:
 
     gpu.queue.submit([encoder.finish()]);
     frame.present();
+    true
 }
 
 fn srgb(rgb: [u8; 3]) -> [f32; 4] {
@@ -1164,9 +1523,24 @@ fn load_rgba(path: &str) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Erro
 }
 
 fn load_depth(path: &str) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
-    let image = image::open(path)?.to_luma8();
+    let image = prepare_depth_map(&image::open(path)?.to_luma8());
     let (w, h) = image.dimensions();
     Ok((w, h, image.into_raw()))
+}
+
+fn prepare_depth_map(depth: &image::GrayImage) -> image::GrayImage {
+    let (width, height) = depth.dimensions();
+    // Widen foreground silhouettes before filtering to reduce disocclusion tears.
+    let dilated = image::GrayImage::from_fn(width, height, |x, y| {
+        let mut nearest = 0;
+        for ny in y.saturating_sub(3)..=y.saturating_add(3).min(height - 1) {
+            for nx in x.saturating_sub(3)..=x.saturating_add(3).min(width - 1) {
+                nearest = nearest.max(depth.get_pixel(nx, ny)[0]);
+            }
+        }
+        image::Luma([nearest])
+    });
+    image::imageops::blur(&dilated, 1.2)
 }
 
 fn find_output(state: &OutputState, name: &str) -> Option<wl_output::WlOutput> {
@@ -1203,9 +1577,40 @@ fn open_log(name: &str) -> Option<std::fs::File> {
         .ok()
 }
 
+/// Locates `cava` beyond PATH so minimal sessions on GNOME/KDE that do not
+/// export ~/.local/bin still find a user install.
+fn find_cava_binary() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join("cava");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    let mut candidates = vec![
+        PathBuf::from("/usr/bin/cava"),
+        PathBuf::from("/usr/local/bin/cava"),
+        PathBuf::from("/app/bin/cava"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(home).join(".local/bin/cava"));
+    }
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
 /// Cava must listen to the monitor of the default sink, otherwise it samples
-/// the microphone while the desktop plays music.
+/// the microphone while the desktop plays music. `pactl` is the most portable
+/// probe; when it is missing or PulseAudio is absent, the first monitor source
+/// reported by PipeWire is a better guess than the microphone.
 fn default_sink_monitor() -> Option<String> {
+    if let Some(sink) = pactl_default_sink() {
+        return Some(format!("{sink}.monitor"));
+    }
+    pactl_first_monitor_source()
+}
+
+fn pactl_default_sink() -> Option<String> {
     let output = Command::new("pactl")
         .args(["get-default-sink"])
         .output()
@@ -1214,11 +1619,32 @@ fn default_sink_monitor() -> Option<String> {
         return None;
     }
     let sink = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if sink.is_empty() {
-        None
-    } else {
-        Some(format!("{sink}.monitor"))
+    (!sink.is_empty()).then_some(sink)
+}
+
+fn pactl_first_monitor_source() -> Option<String> {
+    let output = Command::new("pactl")
+        .args(["list", "short", "sources"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
     }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut fallback = None;
+    for line in text.lines() {
+        let mut fields = line.split('\t');
+        let _index = fields.next();
+        let Some(name) = fields.next() else { continue };
+        let name = name.trim();
+        if name.ends_with(".monitor") {
+            if name.contains("alsa_output") {
+                return Some(name.to_string());
+            }
+            fallback.get_or_insert_with(|| name.to_string());
+        }
+    }
+    fallback
 }
 
 fn spawn_cava(
@@ -1238,12 +1664,18 @@ fn spawn_cava(
     );
     std::fs::write(&path, conf)?;
 
+    let binary = find_cava_binary().ok_or("cava executable not found")?;
+
     let mut log = open_log("cava.log");
     if let Some(log) = log.as_mut() {
-        let _ = writeln!(log, "starting cava with source={source}");
+        let _ = writeln!(
+            log,
+            "starting {} with source={source}",
+            binary.display()
+        );
     }
 
-    let mut child = Command::new("cava")
+    let mut child = Command::new(&binary)
         .arg("-p")
         .arg(&path)
         .stdout(Stdio::piped())
@@ -1330,8 +1762,7 @@ impl SeatHandler for App {
 
 impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
-        self.shutdown();
-        std::process::exit(0);
+        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
     }
 
     fn configure(
@@ -1430,3 +1861,77 @@ delegate_output!(App);
 delegate_seat!(App);
 delegate_layer!(App);
 delegate_registry!(App);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stationary_cursor_does_not_drift() {
+        let mut cursor = [0.0; 2];
+        for dt in [0.016, 0.1, 1.0, 60.0] {
+            assert!(!smooth_cursor(&mut cursor, [0.0; 2], dt));
+            assert_eq!(cursor, [0.0; 2]);
+        }
+    }
+
+    #[test]
+    fn cursor_smoothing_follows_both_axes_without_overshooting() {
+        let mut cursor = [0.0; 2];
+        let target = [1.0, -1.0];
+        assert!(smooth_cursor(&mut cursor, target, 1.0 / 60.0));
+        assert!(cursor[0] > 0.0 && cursor[0] < target[0]);
+        assert!(cursor[1] < 0.0 && cursor[1] > target[1]);
+        for _ in 0..120 {
+            smooth_cursor(&mut cursor, target, 1.0 / 60.0);
+        }
+        assert_eq!(cursor, target);
+        assert!(!smooth_cursor(&mut cursor, target, 1.0 / 60.0));
+    }
+
+    #[test]
+    fn cursor_smoothing_is_frame_rate_independent() {
+        let mut fast = [0.0; 2];
+        let mut slow = [0.0; 2];
+        for _ in 0..30 {
+            smooth_cursor(&mut fast, [0.8, -0.4], 1.0 / 60.0);
+        }
+        for _ in 0..15 {
+            smooth_cursor(&mut slow, [0.8, -0.4], 1.0 / 30.0);
+        }
+        for (fast, slow) in fast.into_iter().zip(slow) {
+            assert!((fast - slow).abs() < 0.00001);
+        }
+    }
+
+    #[test]
+    fn cursor_returns_to_center() {
+        let mut cursor = [1.0, -1.0];
+        for _ in 0..120 {
+            smooth_cursor(&mut cursor, [0.0; 2], 1.0 / 60.0);
+        }
+        assert_eq!(cursor, [0.0; 2]);
+    }
+
+    #[test]
+    fn flat_depth_map_stays_flat() {
+        let depth = image::GrayImage::from_pixel(16, 16, image::Luma([128]));
+        assert_eq!(prepare_depth_map(&depth), depth);
+    }
+
+    #[test]
+    fn foreground_depth_is_extended_before_blurring() {
+        let mut depth = image::GrayImage::new(21, 21);
+        depth.put_pixel(10, 10, image::Luma([255]));
+        let prepared = prepare_depth_map(&depth);
+        assert_eq!(prepared.dimensions(), depth.dimensions());
+        assert!(prepared.get_pixel(10, 10)[0] > 240);
+        assert!(prepared.get_pixel(13, 10)[0] > 100);
+        assert_eq!(prepared.get_pixel(0, 0)[0], 0);
+    }
+
+    #[test]
+    fn parallax_uniform_matches_shader_layout() {
+        assert_eq!(std::mem::size_of::<ParallaxUniform>(), 48);
+    }
+}

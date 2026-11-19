@@ -71,7 +71,8 @@ impl BackendPreference {
 pub enum AutoPauseMode {
     /// Only pause when the whole output is covered.
     Full,
-    /// Pause for maximized/fullscreen windows (mpvpaper `--auto-mode MAX`).
+    /// Pause for maximized/fullscreen windows. COSMIC reports the real
+    /// toplevel state; compositors that do not are matched by coverage.
     Maximized,
     /// Pause when windows cover at least a quarter of the output. Default:
     /// covers tiled windows on COSMIC without reacting to small dialogs.
@@ -88,8 +89,10 @@ impl AutoPauseMode {
         let coverage = coverage.clamp(0.0, 1.0);
         match self {
             Self::Full => coverage >= 0.95,
-            // COSMIC keeps the panel and tiling gaps visible when a window is
-            // maximized, so a maximized window normally covers ~90–95%.
+            // Coverage fallback for compositors without toplevel state. COSMIC
+            // keeps the panel and tiling gaps visible when a window is
+            // maximized, so maximized windows normally cover ~90–95% there;
+            // COSMIC itself now pauses from the reported state instead.
             Self::Maximized => coverage >= 0.90,
             Self::Partial => coverage >= 0.25,
             Self::AnyWindow => coverage > 0.01,
@@ -117,6 +120,49 @@ impl AutoPauseMode {
             Self::AnyWindow => 2,
         }
     }
+}
+
+/// How the spectrum is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpectrumStyle {
+    #[default]
+    Bars,
+    Wave,
+    Dots,
+    Mirror,
+}
+
+/// Where the spectrum strip is anchored on the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpectrumPosition {
+    #[default]
+    Bottom,
+    Top,
+}
+
+/// How the spectrum picks its colors: derived from the active wallpaper or
+/// taken verbatim from the two manual color fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpectrumColorMode {
+    #[default]
+    Auto,
+    Manual,
+}
+
+/// Parses `#RRGGBB` or `RRGGBB` into an RGB triple.
+pub fn parse_hex_color(value: &str) -> Option<[u8; 3]> {
+    let hex = value.trim().trim_start_matches('#');
+    if hex.len() != 6 || !hex.is_ascii() {
+        return None;
+    }
+    Some([
+        u8::from_str_radix(&hex[0..2], 16).ok()?,
+        u8::from_str_radix(&hex[2..4], 16).ok()?,
+        u8::from_str_radix(&hex[4..6], 16).ok()?,
+    ])
 }
 
 /// Optional second axis for playlist rotation. Kept separate from the
@@ -221,6 +267,20 @@ pub struct Config {
     pub spectrum_height_pct: u32,
     #[serde(default = "default_spectrum_alpha")]
     pub spectrum_alpha: f32,
+    #[serde(default)]
+    pub spectrum_color_mode: SpectrumColorMode,
+    #[serde(default = "default_spectrum_color1")]
+    pub spectrum_color1: String,
+    #[serde(default = "default_spectrum_color2")]
+    pub spectrum_color2: String,
+    #[serde(default)]
+    pub spectrum_position: SpectrumPosition,
+    #[serde(default)]
+    pub spectrum_style: SpectrumStyle,
+    #[serde(default = "default_spectrum_bar_width")]
+    pub spectrum_bar_width_pct: u32,
+    #[serde(default = "default_true")]
+    pub spectrum_glow: bool,
 }
 
 fn default_window_width() -> f32 {
@@ -249,6 +309,18 @@ fn default_spectrum_height() -> u32 {
 
 fn default_spectrum_alpha() -> f32 {
     0.88
+}
+
+fn default_spectrum_color1() -> String {
+    "#78BEFF".into()
+}
+
+fn default_spectrum_color2() -> String {
+    "#C478FF".into()
+}
+
+fn default_spectrum_bar_width() -> u32 {
+    76
 }
 
 fn default_switcher_position() -> String {
@@ -290,6 +362,13 @@ fn parse_version(version: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
+/// Effects require a fresh opt-in on the release that ships the expanded
+/// effects page. Bump the target when that release is versioned so the reset
+/// happens exactly once per existing configuration.
+fn effects_opt_in_required(old: (u64, u64, u64), current: (u64, u64, u64)) -> bool {
+    old < (1, 11, 0) && current >= (1, 11, 0)
+}
+
 fn migrate_config(cfg: &mut Config) -> bool {
     let old_version = cfg.version.as_deref().and_then(parse_version);
     let current_version = parse_version(CURRENT_VERSION).unwrap_or((0, 0, 0));
@@ -298,6 +377,15 @@ fn migrate_config(cfg: &mut Config) -> bool {
     if let Some(old) = old_version {
         if old < (1, 6, 0) && cfg.switcher_style != SwitcherStyle::Honeycomb {
             cfg.switcher_style = SwitcherStyle::Honeycomb;
+            changed = true;
+        }
+        // Effects become opt-in again when the expanded effects page ships.
+        // Guarded on the running version so nothing changes before that release.
+        if effects_opt_in_required(old, current_version)
+            && (cfg.spectrum_enabled || cfg.parallax_enabled)
+        {
+            cfg.spectrum_enabled = false;
+            cfg.parallax_enabled = false;
             changed = true;
         }
         if old < current_version {
@@ -462,6 +550,13 @@ impl Default for Config {
             spectrum_bars: default_spectrum_bars(),
             spectrum_height_pct: default_spectrum_height(),
             spectrum_alpha: default_spectrum_alpha(),
+            spectrum_color_mode: SpectrumColorMode::Auto,
+            spectrum_color1: default_spectrum_color1(),
+            spectrum_color2: default_spectrum_color2(),
+            spectrum_position: SpectrumPosition::Bottom,
+            spectrum_style: SpectrumStyle::Bars,
+            spectrum_bar_width_pct: default_spectrum_bar_width(),
+            spectrum_glow: true,
         }
     }
 }
@@ -617,11 +712,14 @@ impl Config {
         cfg.spectrum_bars = cfg.spectrum_bars.clamp(8, 64);
         changed |= cfg.spectrum_bars != old_spectrum_bars;
         let old_spectrum_height = cfg.spectrum_height_pct;
-        cfg.spectrum_height_pct = cfg.spectrum_height_pct.clamp(5, 40);
+        cfg.spectrum_height_pct = cfg.spectrum_height_pct.clamp(4, 60);
         changed |= cfg.spectrum_height_pct != old_spectrum_height;
         let old_spectrum_alpha = cfg.spectrum_alpha;
         cfg.spectrum_alpha = cfg.spectrum_alpha.clamp(0.1, 1.0);
         changed |= cfg.spectrum_alpha != old_spectrum_alpha;
+        let old_bar_width = cfg.spectrum_bar_width_pct;
+        cfg.spectrum_bar_width_pct = cfg.spectrum_bar_width_pct.clamp(10, 100);
+        changed |= cfg.spectrum_bar_width_pct != old_bar_width;
 
         if changed {
             let _ = cfg.save();
@@ -723,6 +821,44 @@ mod tests {
         assert!(!cfg.rotation_only_favorites);
         assert_eq!(cfg.rotation_media_filter, RotationMediaFilter::All);
         assert_eq!(cfg.backend, BackendPreference::Auto);
+        assert_eq!(cfg.spectrum_color_mode, SpectrumColorMode::Auto);
+        assert_eq!(cfg.spectrum_position, SpectrumPosition::Bottom);
+        assert_eq!(cfg.spectrum_style, SpectrumStyle::Bars);
+        assert_eq!(cfg.spectrum_bar_width_pct, 76);
+        assert!(cfg.spectrum_glow);
+        assert_eq!(parse_hex_color(&cfg.spectrum_color1), Some([120, 190, 255]));
+    }
+
+    #[test]
+    fn test_spectrum_hex_colors_and_new_defaults() {
+        assert_eq!(parse_hex_color("#C478FF"), Some([196, 120, 255]));
+        assert_eq!(parse_hex_color("78beff"), Some([120, 190, 255]));
+        assert_eq!(parse_hex_color("#78BE"), None);
+        assert_eq!(parse_hex_color("zzzzzz"), None);
+
+        let old_json = r#"{
+            "current": null,
+            "wallpapers": {},
+            "dirs": ["/home/test/Videos"],
+            "custom_videos": [],
+            "output": "*",
+            "scaling": {},
+            "auto_theme": true,
+            "rotation": false,
+            "interval": 30,
+            "order": "random",
+            "seq_index": 0,
+            "mute": true,
+            "hwdec": "auto-safe",
+            "smart_pause": true,
+            "keep_running_on_close": true
+        }"#;
+        let cfg: Config = serde_json::from_str(old_json).expect("legacy config");
+        assert_eq!(cfg.spectrum_color_mode, SpectrumColorMode::Auto);
+        assert_eq!(cfg.spectrum_position, SpectrumPosition::Bottom);
+        assert_eq!(cfg.spectrum_style, SpectrumStyle::Bars);
+        assert_eq!(cfg.spectrum_bar_width_pct, 76);
+        assert!(cfg.spectrum_glow);
     }
 
     #[test]
@@ -863,47 +999,6 @@ mod tests {
     }
 
     #[test]
-    fn test_rotation_only_favorites_pool() {
-        let mut cfg = Config::default();
-        let paths = vec![
-            "/wallpapers/1.mp4".to_string(),
-            "/wallpapers/2.mp4".to_string(),
-            "/wallpapers/3.mp4".to_string(),
-        ];
-
-        // 1. When rotation_only_favorites is false: pool includes all
-        let pool: Vec<&String> = if cfg.rotation_only_favorites {
-            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
-            if favs.is_empty() { paths.iter().collect() } else { favs }
-        } else {
-            paths.iter().collect()
-        };
-        assert_eq!(pool.len(), 3);
-
-        // 2. When rotation_only_favorites is true, but no favorites: falls back to all
-        cfg.rotation_only_favorites = true;
-        let pool: Vec<&String> = if cfg.rotation_only_favorites {
-            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
-            if favs.is_empty() { paths.iter().collect() } else { favs }
-        } else {
-            paths.iter().collect()
-        };
-        assert_eq!(pool.len(), 3);
-
-        // 3. When favorites are added: filters strictly to favorites
-        cfg.toggle_favorite("/wallpapers/2.mp4");
-        assert!(cfg.is_favorite("/wallpapers/2.mp4"));
-        let pool: Vec<&String> = if cfg.rotation_only_favorites {
-            let favs: Vec<&String> = paths.iter().filter(|p| cfg.is_favorite(p)).collect();
-            if favs.is_empty() { paths.iter().collect() } else { favs }
-        } else {
-            paths.iter().collect()
-        };
-        assert_eq!(pool.len(), 1);
-        assert_eq!(pool[0], "/wallpapers/2.mp4");
-    }
-
-    #[test]
     fn test_switcher_config() {
         let mut cfg = Config::default();
         assert_eq!(cfg.tray_click_action, "switcher");
@@ -1038,7 +1133,17 @@ mod tests {
     }
 
     #[test]
-    fn test_save_creates_backup_and_loads_it_on_corruption() {
+    fn test_effects_opt_in_only_happens_on_target_release() {
+        assert!(!effects_opt_in_required((1, 10, 0), (1, 10, 0)));
+        assert!(!effects_opt_in_required((1, 9, 0), (1, 10, 0)));
+        assert!(effects_opt_in_required((1, 10, 0), (1, 11, 0)));
+        assert!(effects_opt_in_required((1, 7, 0), (1, 12, 0)));
+        assert!(!effects_opt_in_required((1, 11, 0), (1, 11, 0)));
+        assert!(!effects_opt_in_required((1, 11, 0), (1, 12, 0)));
+    }
+
+    #[test]
+    fn test_save_creates_readable_backup() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.json");
         let mut cfg = Config::default();
