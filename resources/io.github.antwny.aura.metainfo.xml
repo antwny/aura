@@ -60,6 +60,11 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.11.1" date="2026-11-19">
+      <description>
+        <p>Fixes startup crashes on CPUs without AVX by moving depth inference into the optional aura-depth helper. Parallax reports when the CPU does not support AVX.</p>
+      </description>
+    </release>
     <release version="1.11.0" date="2026-11-19">
       <description>
         <p>Aura 1.11.0 introduces 3D depth parallax, expanded online wallpaper catalogs, and Wallhaven resilience:</p>

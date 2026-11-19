@@ -50,6 +50,7 @@ install: build
     install -d "${HOME}/.local/bin"
     install -m 755 target/release/aura "${HOME}/.local/bin/aura"
     install -m 755 target/release/aura-effects "${HOME}/.local/bin/aura-effects"
+    install -m 755 target/release/aura-depth "${HOME}/.local/bin/aura-depth"
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "${HOME}/.local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "${HOME}/.local/bin/mpvpaper"; fi
     install -d "${HOME}/.local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
@@ -76,6 +77,7 @@ install-system: build
     install -d "/usr/local/bin"
     install -m 755 target/release/aura "/usr/local/bin/aura"
     install -m 755 target/release/aura-effects "/usr/local/bin/aura-effects"
+    install -m 755 target/release/aura-depth "/usr/local/bin/aura-depth"
     @if [ -f "packaging/mpvpaper" ]; then install -m 755 packaging/mpvpaper "/usr/local/bin/mpvpaper"; elif [ -f "/usr/bin/mpvpaper" ]; then install -m 755 /usr/bin/mpvpaper "/usr/local/bin/mpvpaper"; fi
     install -d "/usr/local/share/applications"
     install -m 644 resources/io.github.antwny.aura.desktop "/usr/local/share/applications/io.github.antwny.aura.desktop"
@@ -97,6 +99,7 @@ install-system: build
 uninstall:
     rm -f "${HOME}/.local/bin/aura"
     rm -f "${HOME}/.local/bin/aura-effects"
+    rm -f "${HOME}/.local/bin/aura-depth"
     rm -f "${HOME}/.local/bin/mpvpaper"
     rm -f "${HOME}/.local/share/applications/io.github.antwny.aura.desktop"
     rm -f "${HOME}/.config/environment.d/50-aura.conf"
@@ -108,11 +111,12 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.11.0": build
+package version="1.11.1": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"
     cp target/release/aura-effects "target/package/aura-v{{version}}-x86_64-linux/"
+    cp target/release/aura-depth "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/io.github.antwny.aura.desktop "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/icons/hicolor/scalable/apps/io.github.antwny.aura.svg "target/package/aura-v{{version}}-x86_64-linux/"
     cp resources/icons/navbar-open-symbolic.svg resources/icons/navbar-closed-symbolic.svg resources/icons/fire-symbolic.svg "target/package/aura-v{{version}}-x86_64-linux/"

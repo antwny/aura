@@ -1119,7 +1119,7 @@ impl AuraApp {
         if !self.config.parallax_enabled {
             return EffectsParallaxStatus::Disabled;
         }
-        if !crate::effects::renderer_supported() {
+        if !crate::depth::cpu_supports_avx() || !crate::effects::renderer_supported() {
             return EffectsParallaxStatus::Unsupported;
         }
         let Some(path) = self.config.wallpaper_for(output).map(Path::new) else {

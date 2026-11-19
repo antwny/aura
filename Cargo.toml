@@ -1,6 +1,6 @@
 [package]
 name = "aura"
-version = "1.11.0"
+version = "1.11.1"
 edition = "2021"
 description = "Next-generation animated live wallpaper manager built natively in Rust for COSMIC Desktop"
 authors = ["Antwny"]
@@ -44,6 +44,10 @@ path = "src/main.rs"
 [[bin]]
 name = "aura-effects"
 path = "src/bin/aura_effects.rs"
+
+[[bin]]
+name = "aura-depth"
+path = "src/bin/aura_depth.rs"
 
 # Thumbnail tests spend most of their time inside the image/png encoder.
 # Optimizing only these two packages keeps dependency build cost low while

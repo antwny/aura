@@ -75,6 +75,12 @@ if [ -f "aura-effects" ]; then
     install -m 755 aura-effects "${BIN_DIR}/aura-effects"
 fi
 
+# Keep the ONNX Runtime depth worker separate from Aura so CPUs without AVX
+# can still start the main application.
+if [ -f "aura-depth" ]; then
+    install -m 755 aura-depth "${BIN_DIR}/aura-depth"
+fi
+
 # Install bundled mpvpaper if provided
 if [ -f "mpvpaper" ]; then
     install -m 755 mpvpaper "${BIN_DIR}/mpvpaper"

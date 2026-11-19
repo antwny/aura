@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-11-19
+
+### Fixed
+- Se evita el cierre al iniciar en procesadores sin AVX al aislar ONNX Runtime en el proceso opcional `aura-depth`.
+- El paralaje informa cuando la CPU no admite AVX y se mantiene Aura funcional si falta el proceso auxiliar.
+
+### Packaging
+- Los instaladores y el actualizador incluyen el nuevo proceso auxiliar `aura-depth`.
+
 ## [1.11.0] - 2026-11-19
 
 ### Added

@@ -170,6 +170,14 @@ pub async fn perform_update(
         }
     }
 
+    if let Some(new_depth) = find_archive_member(&extract_dir, "aura-depth") {
+        validate_linux_binary(&new_depth)?;
+        let target_depth = target_dir.join("aura-depth");
+        if let Err(e) = install_binary(&new_depth, &target_depth) {
+            eprintln!("[Aura Updater] Aura was updated, but aura-depth could not be installed: {}", e);
+        }
+    }
+
     Ok(target_bin.to_string_lossy().to_string())
 }
 

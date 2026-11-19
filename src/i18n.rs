@@ -675,9 +675,9 @@ impl Language {
                 Language::Fr => "Désactivé",
             },
             EffectsParallaxStatus::Unsupported => match self {
-                Language::Es => "Compositor no compatible",
-                Language::En => "Unsupported compositor",
-                Language::Fr => "Compositeur incompatible",
+                Language::Es => "Requiere un compositor compatible y una CPU con AVX",
+                Language::En => "Requires a supported compositor and an AVX-capable CPU",
+                Language::Fr => "Nécessite un compositeur compatible et un processeur AVX",
             },
             EffectsParallaxStatus::NoImage => match self {
                 Language::Es => "Requiere un fondo estático",

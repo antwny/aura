@@ -36,6 +36,10 @@ remove_from_prefix() {
         rm -f "${P}/bin/aura-effects"
         REMOVED=1
     fi
+    if [ -f "${P}/bin/aura-depth" ]; then
+        rm -f "${P}/bin/aura-depth"
+        REMOVED=1
+    fi
     if [ -f "${P}/bin/mpvpaper" ]; then
         rm -f "${P}/bin/mpvpaper"
         REMOVED=1
