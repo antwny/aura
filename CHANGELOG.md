@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-11-19
+
+### Added
+- Efecto de paralaje 3D interactivo accionado por cursor de raton con mapas de profundidad y renderizador aura-effects dedicado.
+- Rastreo de cursor compatible con Wayland (ext-pointer-constraints / layer-shell) y KDE Plasma mediante D-Bus.
+- Nuevos catalogos en linea integrados en Explore: Lively, DesktopHut, MoeWalls y WallpaperWaifu.
+- Filtros unificados por categoria, resolucion y tipo de medio.
+
+### Fixed
+- Resiliencia y fallback en Wallhaven: conexion forzada por HTTP/1.1 para evitar errores 502 de Cloudflare, reintentos con backoff y eliminacion de parametros que sobrecargaban la base de datos remota.
+
+### Packaging
+- El archivo de lanzamiento incluye el ejecutable precompilado mpvpaper 1.9 y su suma de verificacion SHA-256.
+
 ## [1.10.0] - 2026-11-06
 
 ### Added

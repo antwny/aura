@@ -60,6 +60,18 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.11.0" date="2026-11-19">
+      <description>
+        <p>Aura 1.11.0 introduces 3D depth parallax, expanded online wallpaper catalogs, and Wallhaven resilience:</p>
+        <ul>
+          <li>Interactive 3D depth parallax with mouse-driven perspective using depth maps.</li>
+          <li>Dedicated aura-effects renderer with Wayland and KDE Plasma cursor tracking.</li>
+          <li>Expanded Explore catalogs: Lively, DesktopHut, MoeWalls, and WallpaperWaifu.</li>
+          <li>Robust Wallhaven client with HTTP/1.1 enforcement and retry mechanisms against 502 gateway errors.</li>
+          <li>Precompiled mpvpaper 1.9 binary bundled in the release package.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.10.0" date="2026-11-06">
       <description>
         <p>Aura 1.10.0 adds the LiveWallpapers4Free catalog to Explore:</p>
