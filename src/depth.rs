@@ -102,11 +102,28 @@ pub fn depth_map_path(image: &Path) -> PathBuf {
         .join(format!("{}.png", source_key(image)))
 }
 
+/// Returns whether a cached map can be decoded and has usable dimensions.
+/// File existence alone is insufficient: interrupted or older failed
+/// generations must not permanently disable parallax for this wallpaper.
+pub fn depth_map_is_valid(path: &Path) -> bool {
+    image::open(path)
+        .map(|image| {
+            let (width, height) = image.into_luma8().dimensions();
+            width > 0 && height > 0
+        })
+        .unwrap_or(false)
+}
+
 /// Creates a normalized grayscale depth map and returns its cache path.
 pub async fn generate_depth_map(image: PathBuf) -> Result<PathBuf, String> {
     let output = depth_map_path(&image);
-    if output.is_file() {
+    if depth_map_is_valid(&output) {
         return Ok(output);
+    }
+    if output.exists() {
+        std::fs::remove_file(&output).map_err(|error| {
+            format!("Could not remove invalid cached depth map: {error}")
+        })?;
     }
 
     let model = model_path();
@@ -151,8 +168,9 @@ pub async fn generate_depth_map(image: PathBuf) -> Result<PathBuf, String> {
             stderr
         });
     }
-    if !output.is_file() {
-        return Err("aura-depth completed without creating a depth map".into());
+    if !depth_map_is_valid(&output) {
+        let _ = std::fs::remove_file(&output);
+        return Err("aura-depth completed without creating a valid depth map".into());
     }
     Ok(output)
 }

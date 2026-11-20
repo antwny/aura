@@ -1,5 +1,5 @@
 use crate::app::{AuraApp, Message};
-use crate::online::filters::{CategoryFilter, MediaFilter, ResolutionFilter};
+use crate::online::filters::{category_supported, CategoryFilter, MediaFilter, ResolutionFilter};
 use crate::online::{OnlineSource, OnlineWallpaperItem};
 use cosmic::iced::alignment::{Horizontal, Vertical};
 use cosmic::iced::{Alignment, Length};
@@ -19,18 +19,17 @@ fn chip_button<'a>(
     Element::from(button.on_press(message))
 }
 
-/// Curated category chips. Every catalogue is queried; sources that cannot
-/// honour the category are reported below the filters instead of showing
-/// unrelated results.
-const CATEGORY_CHIPS: [Option<CategoryFilter>; 8] = [
-    None,
-    Some(CategoryFilter::Anime),
-    Some(CategoryFilter::Games),
-    Some(CategoryFilter::Nature),
-    Some(CategoryFilter::Fantasy),
-    Some(CategoryFilter::SciFi),
-    Some(CategoryFilter::Movies),
-    Some(CategoryFilter::Abstract),
+/// Candidate categories. The header shows only those supported by at least
+/// one catalogue available under the selected media and source filters.
+const CATEGORY_CHIPS: [CategoryFilter; 8] = [
+    CategoryFilter::Anime,
+    CategoryFilter::Games,
+    CategoryFilter::Nature,
+    CategoryFilter::Fantasy,
+    CategoryFilter::SciFi,
+    CategoryFilter::Movies,
+    CategoryFilter::Abstract,
+    CategoryFilter::General,
 ];
 
 const RESOLUTION_CHIPS: [Option<ResolutionFilter>; 5] = [
@@ -137,18 +136,33 @@ impl AuraApp {
             .align_items(Alignment::Center)
             .width(Length::Fill);
 
-        let mut category_chips = vec![Element::from(widget::text::caption(
-            lang.explore_filter_category(),
-        ))];
+        let mut category_chips = vec![
+            Element::from(widget::text::caption(lang.explore_filter_category())),
+            chip_button(
+                lang.explore_filter_all(),
+                self.unified_category.is_none(),
+                Message::UnifiedCategoryChanged(None),
+            ),
+        ];
         for category in CATEGORY_CHIPS {
-            let label = match category {
-                None => lang.explore_filter_all().to_string(),
-                Some(category) => lang.explore_category_label(category).to_string(),
-            };
+            // "General" is a Wallhaven-only static category. Keep it out of
+            // the initial all-media view, where it looks like a duplicate of
+            // the separate Nature category.
+            if category == CategoryFilter::General && self.unified_media != MediaFilter::Static {
+                continue;
+            }
+            if !category_supported(
+                self.unified_media,
+                self.unified_source_filter,
+                category,
+            ) {
+                continue;
+            }
+            let label = lang.explore_category_label(category).to_string();
             category_chips.push(chip_button(
                 label,
-                self.unified_category == category,
-                Message::UnifiedCategoryChanged(category),
+                self.unified_category == Some(category),
+                Message::UnifiedCategoryChanged(Some(category)),
             ));
         }
         let category_row = widget::flex_row(category_chips)
@@ -181,6 +195,32 @@ impl AuraApp {
             .push(media_row)
             .push(category_row)
             .push(resolution_row);
+
+        if self.unified_media == MediaFilter::Static
+            && self.unified_search.trim().is_empty()
+            && self
+                .unified_source_filter
+                .map_or(true, |source| source == OnlineSource::Wallhaven)
+        {
+            let mut sorting_chips = vec![Element::from(widget::text::caption("Wallhaven:"))];
+            for (sorting, label) in [
+                ("toplist", lang.explore_sort_top()),
+                ("hot", lang.explore_sort_hot()),
+                ("random", lang.explore_sort_random()),
+            ] {
+                sorting_chips.push(chip_button(
+                    label,
+                    self.wallhaven_sorting == sorting,
+                    Message::SelectWallhavenSorting(sorting.to_string()),
+                ));
+            }
+            header = header.push(
+                widget::flex_row(sorting_chips)
+                    .spacing(6)
+                    .align_items(Alignment::Center)
+                    .width(Length::Fill),
+            );
+        }
 
         if self.unified_skipped.is_empty() {
             header = header.push(widget::text::caption(lang.explore_unified_subtitle()));

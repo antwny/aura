@@ -33,6 +33,22 @@ impl MediaFilter {
     }
 }
 
+/// Whether at least one requested catalogue can apply a category for the
+/// selected media type. This keeps the unified filter chips actionable.
+pub fn category_supported(
+    media: MediaFilter,
+    source_filter: Option<OnlineSource>,
+    category: CategoryFilter,
+) -> bool {
+    if let Some(source) = source_filter {
+        media.allows_source(source) && category_slug(source, category).is_some()
+    } else {
+        OnlineSource::catalogs().iter().copied().any(|source| {
+            media.allows_source(source) && category_slug(source, category).is_some()
+        })
+    }
+}
+
 /// Categories that can be applied across every catalogue. Each site exposes
 /// a different slug (or no category at all); the mapping below is best-effort
 /// and sources that cannot honour a category are skipped by the unified view.
@@ -125,7 +141,7 @@ pub fn category_slug(source: OnlineSource, category: CategoryFilter) -> Option<&
         },
         OnlineSource::Wallhaven => match category {
             CategoryFilter::Anime => Some("010"),
-            CategoryFilter::General => Some("110"),
+            CategoryFilter::General => Some("100"),
             _ => None,
         },
         OnlineSource::DesktopHut => match category {

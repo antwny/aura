@@ -41,6 +41,9 @@ pub struct UnifiedSearchPage {
     pub errors: Vec<String>,
     /// Whether at least one catalogue may have another page.
     pub has_more: bool,
+    /// Last upstream page fetched for this result. A single UI action can
+    /// consume several upstream pages to compensate for post-fetch filters.
+    pub page: u32,
     /// Catalogues left out because they cannot honour the active category.
     pub skipped: Vec<OnlineSource>,
 }
@@ -57,6 +60,7 @@ pub async fn fetch_unified_wallpapers(
     category: Option<CategoryFilter>,
     resolution: Option<ResolutionFilter>,
     media: MediaFilter,
+    wallhaven_sorting: &str,
 ) -> Result<UnifiedSearchPage, String> {
     let page = page.max(1);
     let query = query.map(str::trim).filter(|q| !q.is_empty());
@@ -86,7 +90,15 @@ pub async fn fetch_unified_wallpapers(
         // One slow catalogue must not hold the whole unified grid hostage.
         let result = match tokio::time::timeout(
             std::time::Duration::from_secs(20),
-            fetch_from_source(client, source, page, query, category, resolution),
+            fetch_from_source(
+                client,
+                source,
+                page,
+                query,
+                category,
+                resolution,
+                wallhaven_sorting,
+            ),
         )
         .await
         {
@@ -97,7 +109,70 @@ pub async fn fetch_unified_wallpapers(
     });
 
     let results = futures::future::join_all(futures).await;
-    aggregate_unified_results(results, skipped, resolution, media)
+    let mut result = aggregate_unified_results(results, skipped, resolution, media)?;
+    result.page = page;
+    Ok(result)
+}
+
+/// Fetches enough filtered results for one "Load more" action, bounded to
+/// six sequential source pages so sparse resolutions do not require repeated
+/// clicks and a single action cannot fan out into an unbounded request loop.
+pub async fn fetch_unified_wallpapers_filled(
+    client: &reqwest::Client,
+    first_page: u32,
+    query: Option<&str>,
+    filter: Option<OnlineSource>,
+    category: Option<CategoryFilter>,
+    resolution: Option<ResolutionFilter>,
+    media: MediaFilter,
+    wallhaven_sorting: &str,
+) -> Result<UnifiedSearchPage, String> {
+    const TARGET_RESULTS: usize = 24;
+    const MAX_PAGES_PER_ACTION: u32 = 6;
+
+    let mut combined = UnifiedSearchPage::default();
+    let mut seen = HashSet::new();
+    let first_page = first_page.max(1);
+
+    for offset in 0..MAX_PAGES_PER_ACTION {
+        let page_number = first_page.saturating_add(offset);
+        let mut page = match fetch_unified_wallpapers(
+            client,
+            page_number,
+            query,
+            filter,
+            category,
+            resolution,
+            media,
+            wallhaven_sorting,
+        )
+        .await
+        {
+            Ok(page) => page,
+            Err(error) if combined.items.is_empty() => return Err(error),
+            Err(error) => {
+                combined.errors.push(error);
+                combined.has_more = true;
+                break;
+            }
+        };
+
+        combined.page = page.page;
+        combined.has_more = page.has_more;
+        combined.skipped = page.skipped;
+        combined.errors = page.errors;
+        for item in page.items.drain(..) {
+            if seen.insert(item.id.clone()) {
+                combined.items.push(item);
+            }
+        }
+
+        if combined.items.len() >= TARGET_RESULTS || !combined.has_more {
+            break;
+        }
+    }
+
+    Ok(combined)
 }
 
 fn aggregate_unified_results(
@@ -167,6 +242,7 @@ fn aggregate_unified_results(
         items,
         errors,
         has_more,
+        page: 0,
         skipped,
     })
 }
@@ -178,6 +254,7 @@ async fn fetch_from_source(
     query: Option<&str>,
     category: Option<CategoryFilter>,
     resolution: Option<ResolutionFilter>,
+    wallhaven_sorting: &str,
 ) -> Result<(Vec<OnlineWallpaperItem>, bool), String> {
     let category_value = category.and_then(|category| category_slug(source, category));
     let resolution_value = resolution.and_then(|resolution| resolution_slug(source, resolution));
@@ -236,7 +313,7 @@ async fn fetch_from_source(
                 page,
                 query,
                 category_value.unwrap_or("110"),
-                "toplist",
+                wallhaven_sorting,
                 resolution_value.unwrap_or("all"),
             )
             .await?;
@@ -502,6 +579,7 @@ mod tests {
                 Some(category),
                 Some(ResolutionFilter::Uhd4K),
                 media,
+                "toplist",
             )
             .await
             .expect("media-incompatible sources are excluded without a request");
@@ -523,6 +601,7 @@ mod tests {
             Some(CategoryFilter::Nature),
             Some(ResolutionFilter::Uhd4K),
             MediaFilter::Static,
+            "toplist",
         )
         .await
         .expect("an unsupported category is skipped without a request");
@@ -852,6 +931,7 @@ mod tests {
             Some(CategoryFilter::Anime),
             Some(ResolutionFilter::Uhd4K),
             MediaFilter::All,
+            "toplist",
         )
         .await
         .expect("unified");
@@ -872,7 +952,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
 
         for source in OnlineSource::catalogs() {
-            match fetch_from_source(&client, *source, 1, None, None, None).await {
+            match fetch_from_source(&client, *source, 1, None, None, None, "toplist").await {
                 Ok((items, _)) => {
                     for item in items.iter().take(2) {
                         let dest = dir.join(format!(

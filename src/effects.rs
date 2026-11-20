@@ -9,6 +9,7 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectsStatus {
@@ -20,6 +21,7 @@ pub enum EffectsStatus {
 #[derive(Default)]
 pub struct EffectsManager {
     child: Option<Child>,
+    started_at: Option<Instant>,
     config_path: Option<PathBuf>,
     last_config: Option<String>,
     last_error: Option<String>,
@@ -148,7 +150,7 @@ impl EffectsManager {
             let image_path = Path::new(path);
             let parallax = if config.parallax_enabled && is_static_image(image_path) {
                 let depth = crate::depth::depth_map_path(image_path);
-                depth.is_file().then(|| Parallax {
+                crate::depth::depth_map_is_valid(&depth).then(|| Parallax {
                     image: path.to_string(),
                     depth: depth.to_string_lossy().into_owned(),
                     strength: config.parallax_strength.clamp(0.1, 1.0),
@@ -242,6 +244,17 @@ impl EffectsManager {
         }
     }
 
+    /// The config sync may already have recreated the renderer after a
+    /// wallpaper apply. Avoid the second Niri restack restart in that case.
+    pub fn restart_after_apply_if_stale(&mut self, minimum_age: std::time::Duration) {
+        if self.started_at.is_some_and(|started| started.elapsed() < minimum_age)
+            && self.child_is_running()
+        {
+            return;
+        }
+        self.restart();
+    }
+
     pub fn status(&mut self) -> EffectsStatus {
         if self.child_is_running() {
             return match &self.control_error {
@@ -273,6 +286,7 @@ impl EffectsManager {
     }
 
     fn stop_renderer(&mut self) {
+        self.started_at = None;
         self.reset_control();
         if let Some(mut child) = self.child.take() {
             if matches!(child.try_wait(), Ok(None)) {
@@ -380,6 +394,7 @@ impl EffectsManager {
                 self.reset_control();
                 let stdin = child.stdin.take();
                 self.child = Some(child);
+                self.started_at = Some(Instant::now());
                 self.last_error = None;
                 let setup = (|| {
                     let stdin = stdin.ok_or_else(|| io::Error::other("Missing control stdin"))?;

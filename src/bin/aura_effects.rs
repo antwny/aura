@@ -766,8 +766,8 @@ fn run(
             layer.commit();
             region.destroy();
 
+            let (image_width, image_height) = image::image_dimensions(&parallax.image)?;
             let image = load_rgba(&parallax.image)?;
-            let (iw, ih) = (image.0, image.1);
             let depth = parallax
                 .depth
                 .as_ref()
@@ -779,7 +779,7 @@ fn run(
                 scale,
                 image: Some(image),
                 depth,
-                image_size: (iw as f32, ih as f32),
+                image_size: (image_width as f32, image_height as f32),
                 strength: parallax.strength,
                 color1: [0.0; 4],
                 color2: [0.0; 4],
@@ -1713,7 +1713,24 @@ fn srgb(rgb: [u8; 3]) -> [f32; 4] {
 }
 
 fn load_rgba(path: &str) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
-    let image = image::open(path)?.to_rgba8();
+    let mut image = image::open(path)?.to_rgba8();
+    let (width, height) = image.dimensions();
+    let maximum = wgpu::Limits::default().max_texture_dimension_2d;
+    if width > maximum || height > maximum {
+        let scale = (maximum as f64 / width as f64).min(maximum as f64 / height as f64);
+        let resized_width = ((width as f64 * scale).round() as u32).max(1);
+        let resized_height = ((height as f64 * scale).round() as u32).max(1);
+        eprintln!(
+            "aura-effects: downscaling wallpaper texture {}x{} to {}x{} (GPU texture limit {})",
+            width, height, resized_width, resized_height, maximum
+        );
+        image = image::imageops::resize(
+            &image,
+            resized_width,
+            resized_height,
+            image::imageops::FilterType::Lanczos3,
+        );
+    }
     let (w, h) = image.dimensions();
     Ok((w, h, image.into_raw()))
 }

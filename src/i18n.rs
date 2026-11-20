@@ -2571,9 +2571,9 @@ impl Language {
 
     pub fn explore_cat_general(&self) -> &'static str {
         match self {
-            Language::Es => "Naturaleza / General",
-            Language::En => "Nature / General",
-            Language::Fr => "Nature / Général",
+            Language::Es => "General",
+            Language::En => "General",
+            Language::Fr => "Général",
         }
     }
 

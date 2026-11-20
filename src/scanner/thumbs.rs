@@ -179,7 +179,8 @@ pub fn trim_memory() {
     if let Ok(mut cache) = THUMB_HANDLE_CACHE.lock() {
         cache.clear();
     }
-    #[cfg(target_os = "linux")]
+    // `malloc_trim` is a glibc extension and is not provided by musl (e.g. Alpine).
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
     unsafe {
         libc::malloc_trim(0);
     }

@@ -9,7 +9,8 @@ use crate::online::{
     download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
     fetch_desktophut_wallpapers, fetch_livewallpapers4free_page, fetch_lively_wallpapers,
     fetch_minimalistic_wallpapers, fetch_moewalls_wallpapers, fetch_motionbgs_wallpapers,
-    fetch_unified_wallpapers, fetch_wallpaperwaifu_wallpapers, fetch_wallhaven_wallpapers,
+    fetch_unified_wallpapers, fetch_unified_wallpapers_filled, fetch_wallpaperwaifu_wallpapers,
+    fetch_wallhaven_wallpapers,
     resolve_download_url, LiveWallpapers4FreePage, OnlineSource, OnlineWallpaperItem,
 };
 
@@ -278,6 +279,7 @@ pub enum Message {
     DepthModelDownloaded(Result<PathBuf, String>),
     DeleteDepthModel,
     RestartEffects,
+    RestartEffectsAfterApply,
     OpenEffectsLog,
     ToggleSpectrum(bool),
     SetSpectrumBars(u32),
@@ -621,6 +623,9 @@ pub struct AuraApp {
     pub(crate) language: crate::i18n::Language,
     pub(crate) engine: Arc<Mutex<WallpaperEngine>>,
     pub(crate) engine_op_lock: Arc<tokio::sync::Mutex<()>>,
+    player_reconcile_failures: u32,
+    player_reconcile_after: Option<Instant>,
+    player_reconcile_in_flight: bool,
     pub(crate) effects_manager: crate::effects::EffectsManager,
     pub(crate) effects_depth_status: EffectsDepthStatus,
     pub(crate) effects_model_status: EffectsModelStatus,
@@ -1088,6 +1093,7 @@ impl AuraApp {
         let category = self.unified_category;
         let resolution = self.unified_resolution;
         let media = self.unified_media;
+        let wallhaven_sorting = self.wallhaven_sorting.clone();
         Task::batch([
             self.scroll_to_top(self.explore_scroll_id.clone()),
             Task::perform(
@@ -1100,6 +1106,7 @@ impl AuraApp {
                         category,
                         resolution,
                         media,
+                        &wallhaven_sorting,
                     )
                     .await
                 },
@@ -1133,7 +1140,7 @@ impl AuraApp {
         {
             return EffectsParallaxStatus::Failed;
         }
-        if !crate::depth::depth_map_path(path).is_file() {
+        if !crate::depth::depth_map_is_valid(&crate::depth::depth_map_path(path)) {
             return if self.depth_generation_pending.contains(path) {
                 EffectsParallaxStatus::Generating
             } else if !crate::depth::model_present() {
@@ -1199,7 +1206,7 @@ impl AuraApp {
             .collect();
         let mut tasks = Vec::new();
         for source in active_sources.iter().cloned() {
-            if crate::depth::depth_map_path(&source).is_file()
+            if crate::depth::depth_map_is_valid(&crate::depth::depth_map_path(&source))
                 || self.depth_generation_failed.contains(&source)
                 || !self.depth_generation_pending.insert(source.clone())
             {
@@ -1226,7 +1233,9 @@ impl AuraApp {
         } else if !active_sources.is_empty()
             && active_sources
                 .iter()
-                .all(|source| crate::depth::depth_map_path(source).is_file())
+                .all(|source| {
+                    crate::depth::depth_map_is_valid(&crate::depth::depth_map_path(source))
+                })
         {
             self.effects_depth_status = EffectsDepthStatus::Ready;
         } else if active_sources
@@ -1370,7 +1379,7 @@ impl AuraApp {
                 async {
                     tokio::time::sleep(Duration::from_millis(600)).await;
                 },
-                |_| cosmic::Action::App(Message::RestartEffects),
+                |_| cosmic::Action::App(Message::RestartEffectsAfterApply),
             ));
         }
         Task::batch(tasks)
@@ -1656,6 +1665,10 @@ impl AuraApp {
         });
         let old_outputs = self.outputs.clone();
         let topology_changed = current_outputs != old_outputs;
+        if topology_changed {
+            self.player_reconcile_failures = 0;
+            self.player_reconcile_after = None;
+        }
         let new_count = current_outputs.len();
         self.outputs = current_outputs.clone();
         self.sync_effects_renderer();
@@ -2284,6 +2297,9 @@ impl cosmic::Application for AuraApp {
             language,
             engine: Arc::new(Mutex::new(engine)),
             engine_op_lock: Arc::new(tokio::sync::Mutex::new(())),
+            player_reconcile_failures: 0,
+            player_reconcile_after: None,
+            player_reconcile_in_flight: false,
             effects_manager: crate::effects::EffectsManager::default(),
             effects_depth_status: EffectsDepthStatus::Idle,
             effects_model_status: if crate::depth::model_present() {
@@ -3290,6 +3306,12 @@ impl cosmic::Application for AuraApp {
 
             Message::RestartEffects => {
                 self.effects_manager.restart();
+                self.effects_renderer_status = self.effects_manager.status();
+            }
+
+            Message::RestartEffectsAfterApply => {
+                self.effects_manager
+                    .restart_after_apply_if_stale(Duration::from_millis(900));
                 self.effects_renderer_status = self.effects_manager.status();
             }
 
@@ -4821,6 +4843,7 @@ impl cosmic::Application for AuraApp {
                 }
                 match result {
                     Ok(()) => {
+                        self.player_reconcile_in_flight = false;
                         let path_str = video_path.to_string_lossy().to_string();
                         return self.finish_wallpaper_applied(&video_path, &output, &path_str);
                     }
@@ -5685,6 +5708,7 @@ impl cosmic::Application for AuraApp {
                         return self.set_status(self.language.status_topology_updated(outputs));
                     }
                     Err(error) => {
+                        self.player_reconcile_in_flight = false;
                         let message = match self.language {
                             crate::i18n::Language::Es => {
                                 format!("No se pudo actualizar la disposición de monitores: {error}")
@@ -5722,8 +5746,22 @@ impl cosmic::Application for AuraApp {
                 // Startup reconciliation runs repeatedly until the compositor
                 // and mpvpaper are ready. Failures are expected during that
                 // window, so log them instead of spamming notifications.
-                if let Err(error) = result {
-                    eprintln!("[Aura] Reintento de fondo: {error}");
+                match result {
+                    Ok(()) => {
+                        self.player_reconcile_failures = 0;
+                        self.player_reconcile_after = None;
+                    }
+                    Err(error) => {
+                        self.player_reconcile_failures = self.player_reconcile_failures.saturating_add(1);
+                        let delay = if self.player_reconcile_failures <= 3 {
+                            Duration::from_secs(3)
+                        } else {
+                            let exponent = self.player_reconcile_failures.saturating_sub(4).min(4);
+                            Duration::from_secs((60_u64 << exponent).min(600))
+                        };
+                        self.player_reconcile_after = Some(Instant::now() + delay);
+                        eprintln!("[Aura] Reintento de fondo en {}s: {error}", delay.as_secs());
+                    }
                 }
             }
 
@@ -6193,9 +6231,10 @@ impl cosmic::Application for AuraApp {
                     let category = self.unified_category;
                     let resolution = self.unified_resolution;
                     let media = self.unified_media;
+                    let wallhaven_sorting = self.wallhaven_sorting.clone();
                     return Task::perform(
                         async move {
-                            fetch_unified_wallpapers(
+                            fetch_unified_wallpapers_filled(
                                 &client,
                                 page,
                                 query.as_deref(),
@@ -6203,10 +6242,13 @@ impl cosmic::Application for AuraApp {
                                 category,
                                 resolution,
                                 media,
+                                &wallhaven_sorting,
                             )
                             .await
                         },
-                        move |result| cosmic::Action::App(Message::UnifiedMoreFetched { token, page, result }),
+                        move |result| {
+                            cosmic::Action::App(Message::UnifiedMoreFetched { token, page, result })
+                        },
                     );
                 }
 
@@ -6494,6 +6536,15 @@ impl cosmic::Application for AuraApp {
 
             Message::SelectUnifiedSourceFilter(filter) => {
                 self.unified_source_filter = filter;
+                if self.unified_category.is_some_and(|category| {
+                    !crate::online::filters::category_supported(
+                        self.unified_media,
+                        filter,
+                        category,
+                    )
+                }) {
+                    self.unified_category = None;
+                }
                 if self.explore_source == OnlineSource::Unified {
                     return self.refresh_unified_explore();
                 }
@@ -6502,6 +6553,15 @@ impl cosmic::Application for AuraApp {
             Message::UnifiedMediaChanged(media) => {
                 if self.unified_media != media {
                     self.unified_media = media;
+                    if self.unified_category.is_some_and(|category| {
+                        !crate::online::filters::category_supported(
+                            media,
+                            self.unified_source_filter,
+                            category,
+                        )
+                    }) {
+                        self.unified_category = None;
+                    }
                     return self.refresh_unified_explore();
                 }
             }
@@ -6563,7 +6623,7 @@ impl cosmic::Application for AuraApp {
                 self.explore_loading_more = false;
                 match result {
                     Ok(result_page) => {
-                        self.unified_page = page;
+                        self.unified_page = result_page.page.max(page);
                         self.unified_has_more = result_page.has_more;
                         self.unified_skipped = result_page.skipped.clone();
                         self.unified_errors = result_page.errors.clone();
@@ -6694,6 +6754,9 @@ impl cosmic::Application for AuraApp {
             Message::SelectWallhavenSorting(sort) => {
                 if self.wallhaven_sorting != sort {
                     self.wallhaven_sorting = sort;
+                    if self.explore_source == OnlineSource::Unified {
+                        return self.refresh_unified_explore();
+                    }
                     self.wallhaven_page = 1;
                     self.wallhaven_wallpapers.clear();
                     return Task::done(cosmic::Action::App(Message::FetchOnlineWallpapers(OnlineSource::Wallhaven)));
@@ -7200,8 +7263,13 @@ impl AuraApp {
     /// synchronous spawn performed by `init` may fail (or detect no outputs).
     /// Without this retry the wallpaper stayed static until the user toggled
     /// autostart or changed the wallpaper manually.
-    fn reconcile_missing_wallpapers(&self) -> Task<cosmic::Action<Message>> {
+    fn reconcile_missing_wallpapers(&mut self) -> Task<cosmic::Action<Message>> {
         if !self.uses_mpvpaper() || self.config.wallpapers.is_empty() {
+            return Task::none();
+        }
+        if self.player_reconcile_in_flight
+            || self.player_reconcile_after.is_some_and(|retry_at| Instant::now() < retry_at)
+        {
             return Task::none();
         }
 
@@ -7220,6 +7288,12 @@ impl AuraApp {
             })
             .map(|(output, path)| (output.clone(), path.clone()))
             .collect();
+        if candidates.is_empty() {
+            self.player_reconcile_failures = 0;
+            self.player_reconcile_after = None;
+            return Task::none();
+        }
+        self.player_reconcile_in_flight = true;
         self.apply_wallpaper_entries(candidates, true)
     }
 

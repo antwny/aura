@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2] - 2026-11-20
+
+### Added
+- Explore ofrece ordenamientos de Wallhaven para fondos estáticos: más votados, tendencias y aleatorio.
+
+### Changed
+- Las categorías de Explore se adaptan al tipo de medio; «General» se reserva para fondos estáticos y ya no se confunde con «Naturaleza».
+- «Cargar más» recorre páginas adicionales cuando la resolución deja pocos resultados, con un límite para evitar solicitudes indefinidas.
+
+### Fixed
+- Se mejora la recuperación de fondos tras reconectar salidas y la continuidad de los efectos de paralaje al cambiar fondos.
+- La auto-pausa por juegos toma en cuenta ventanas visibles.
+
+### Packaging
+- El paquete Linux incluye el binario `mpvpaper` 1.9 precompilado.
+
 ## [1.11.1] - 2026-11-19
 
 ### Fixed
