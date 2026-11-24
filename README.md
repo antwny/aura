@@ -1,194 +1,138 @@
 <div align="center">
 
-<img src="docs/assets/img/logo.svg" alt="Aura Logo" width="100" height="100" />
+<img src="docs/assets/img/logo.svg" alt="Aura logo" width="96" height="96">
 
 # Aura
 
 ### The definitive live wallpaper engine for COSMIC Desktop.
-*(With experimental GNOME and KDE Plasma support, plus generic Wayland layer-shell compositors)*
 
 **Transform your COSMIC and Wayland workspace (including Niri, Hyprland and Sway) with fluid animated backgrounds, dynamic desktop color matching, and zero lag when gaming. GNOME and KDE Plasma backends are experimental.**
 
-[![Release](https://img.shields.io/github/v/release/antwny/aura?style=for-the-badge&logo=github&color=blue)](https://github.com/antwny/aura/releases)
-[![COSMIC Desktop](https://img.shields.io/badge/COSMIC-Desktop-4B2E83.svg?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/pop-os/libcosmic)
-[![Wayland Layer-Shell](https://img.shields.io/badge/Wayland-Layer--Shell-1E3A8A.svg?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org/)
-[![GNOME Experimental](https://img.shields.io/badge/GNOME-Experimental-4A86CF.svg?style=for-the-badge&logo=gnome&logoColor=white)](https://www.gnome.org/)
-[![KDE Experimental](https://img.shields.io/badge/KDE-Experimental-1D99F3.svg?style=for-the-badge&logo=kde&logoColor=white)](https://kde.org/plasma-desktop/)
-[![Smart Pause](https://img.shields.io/badge/Smart_Pause-0%25_GPU_in_Games-success.svg?style=for-the-badge)](#-smart-auto-pause-0-gpu--cpu-in-games)
-[![Open Source](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge)](LICENSE)
-[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C.svg?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD)
+[![Latest release](https://img.shields.io/github/v/release/antwny/aura?label=release)](https://github.com/antwny/aura/releases/latest)
+[![CI](https://github.com/antwny/aura/actions/workflows/ci.yml/badge.svg)](https://github.com/antwny/aura/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-<br/>
-
-### ⚡ Quick Install (One Command)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
-```
-
-*The release archive includes the precompiled `mpvpaper` video engine. Aura is designed for COSMIC Desktop and Wayland layer-shell compositors (such as Niri, Hyprland, and Sway); GNOME and KDE Plasma backends are experimental.*
-
-> **Prerequisites for video playback & thumbnails:**
-> - **Arch / CachyOS**: `sudo pacman -S --needed mpv ffmpeg`
-> - **Pop!_OS / Ubuntu / Debian**: `sudo apt install -y libmpv2 ffmpeg`
-> - **Fedora**: `sudo dnf install -y mpv-libs ffmpeg-free`
-> - **openSUSE**: `sudo zypper install -y mpv ffmpeg`
-
-<br/>
-
-<p align="center">
-  <a href="https://antwny.github.io/aura/assets/video/aura-showcase.mp4">
-    <img src="docs/assets/video/aura-showcase-preview.webp" alt="Aura showcase preview" width="96%" />
-  </a>
-</p>
-<p align="center"><sub><i>Live recording: COSMIC Desktop • Wayland Layer-Shell • Seamless MPV IPC Engine — click to play</i></sub></p>
+[Download](https://github.com/antwny/aura/releases/latest) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/antwny/aura/issues)
 
 </div>
 
----
+## Quick Install (One Command)
 
-## ✨ Features at a Glance
-
-- **Native Rust & Wayland Layer-Shell**: Smooth 60 FPS rendering with zero compositor tearing.
-- **Smart Auto-Pause (0% CPU / 0% GPU)**: Instantly halts video playback when windows cover the desktop or when launching fullscreen games.
-- **Online Catalogs**: Browse and download live and static wallpapers from MotionBGS, LiveWallpapers4Free (HD through 8K and ultrawide), Wallhaven, Bing Daily, and DenverCoder1.
-- **Dynamic Desktop Auto-Theming**: Automatically extracts color palettes from your wallpaper to theme COSMIC window borders, accents, and controls.
-- **Multi-Monitor Studio**: Set independent wallpapers, scaling modes (Fit, Fill, Stretch), and arrangements per screen with live hotplug support.
-- **Filtered Playlist Rotation**: Combine source (all/favorites) with type (live/static) and keep the exact pool visible before enabling rotation.
-- **Quick Switcher HUD**: Floating heads-up display overlay summonable from anywhere with a global shortcut.
-
----
-
-### ⚡ Quick Switcher HUD
-
-Summon a floating overlay anywhere on your desktop with `aura switcher`:
-
-<p align="center">
-  <a href="https://antwny.github.io/aura/assets/video/hud-showcase.mp4">
-    <img src="docs/assets/video/hud-poster.webp" alt="Aura Quick Switcher HUD Demo" width="94%" />
-  </a>
-</p>
-
-- **3 Visual Styles**:
-  - **Honeycomb HUD**: Geometric pointy-topped hexagon matrix with smooth camera lerp, hover expansion, and edge panning.
-  - **Cinematic HUD**: Tilted parallelogram cards with 3D perspective and ambient halo glow.
-  - **Classic Dock**: Minimalist dock bar with interactive hover pop-out and slide momentum.
-- **Cursor Awareness**: Spawns directly on the monitor where your mouse pointer is located.
-- **Fluid Navigation**: Arrow keys, `WASD`, mouse scroll, edge hover, and 1-click wallpaper apply.
-- **In-HUD Shortcuts**: <kbd>Space</kbd> to Pause/Resume, <kbd>F</kbd> for Favorites, <kbd>Esc</kbd> to dismiss.
-
----
-
-### 🎨 Dynamic Auto-Theming
-
-<p align="center">
-  <img src="docs/assets/img/library-amber.png" alt="Aura Dynamic Auto-Theming" width="94%" />
-</p>
-
-- **Harmonized Accents**: Shifts desktop accent colors to match wallpaper hues.
-- **WCAG Contrast**: Automatically verifies legible text contrast.
-- **Auto Dark / Light**: Adapts palette luminance according to the active background.
-
----
-
-### 🎮 Smart Auto-Pause: 0% GPU & CPU in Games
-
-<p align="center">
-  <img src="docs/assets/img/settings-performance.png" alt="Aura Performance Settings" width="94%" />
-</p>
-
-- **Window Occlusion**: Pauses playback when any application window covers the desktop.
-- **Fullscreen Games**: Frees 100% of GPU and CPU resources for maximum gaming FPS.
-- **Battery Saver**: Automatically halts video playback when unplugged to preserve laptop battery.
-- **Audio Control**: Built-in volume slider and instant mute toggle.
-
----
-
-### 🖥️ GNOME Desktop Support (Wayland) — Experimental
-
-Aura includes experimental support for GNOME on Wayland:
-
-- **Automatic Detection**: Aura detects `XDG_CURRENT_DESKTOP=GNOME` and selects the appropriate backend automatically (override with `AURA_BACKEND=gnome|mpvpaper`).
-- **Static Wallpapers**: Applied natively via GSettings (`org.gnome.desktop.background`).
-- **Live Video Wallpapers**: Powered by the [Hanabi GNOME Shell extension](https://github.com/jeffshee/gnome-ext-hanabi) (`gnome-ext-hanabi`). Aura communicates with Hanabi over D-Bus for synchronized playback, volume, and scaling controls.
-- **Interactive HUD**: Runs via borderless toplevel windows (note: background may appear opaque/dark due to Mutter's lack of the Wayland layer-shell protocol).
-- **Icon Fallback**: Navigation and window-control icons are bundled into a temporary hicolor overlay, with automatic Adwaita fallback when the Cosmic icon theme is not installed.
-
----
-
-### 🖥️ KDE Plasma Support (Wayland & X11) — Experimental
-
-KDE Plasma support is experimental. KWin keeps Plasma's desktop containment above wlr-layer-shell surfaces, so mpvpaper cannot draw a visible video on Plasma. Aura talks to Plasma's own wallpaper API over D-Bus instead:
-
-- **Native Detection**: `XDG_CURRENT_DESKTOP=KDE` selects the Plasma backend automatically. The Settings screen shows the real desktop environment and a manual backend selector (`Auto`, `mpvpaper`, `GNOME`, `KDE`, `Static`).
-- **Live Video Wallpapers**: Requires [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn). Aura configures `VideoUrls`, fill mode, mute state and volume per screen; it never installs extensions or asks for root.
-- **Graceful Fallback**: If the plugin is missing, videos are shown as a high-resolution still poster with a one-click link to the plugin page.
-- **Static Wallpapers**: Applied through Plasma's stock image plugin and always available, including per-output configurations.
-- **No mpvpaper Conflicts**: Aura never launches an mpvpaper layer on Plasma, which fixes the "audio plays but the wallpaper is hidden" issue.
-
-> The `Static` backend forces still images on every desktop. On arbitrary compositors without a native image API, it uses a poster through mpvpaper as the portable fallback.
-
----
-
-## ⌨️ Shortcuts & CLI
-
-| Action | Command | Recommended Shortcut |
-|:---|:---|:---|
-| **Quick Switcher HUD** | `aura switcher` | <kbd>Super</kbd> + <kbd>Alt</kbd> + <kbd>W</kbd> |
-| **Next Wallpaper** | `aura next` | <kbd>Super</kbd> + <kbd>W</kbd> |
-| **Previous Wallpaper** | `aura prev` | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd> |
-| **Pause / Resume** (0% GPU) | `aura toggle-pause` | <kbd>Super</kbd> + <kbd>P</kbd> |
-| **Apply Video Directly** | `aura apply <file>` | File manager integration |
-| **Stop Wallpaper** | `aura stop` | Terminal / script |
-| **System Status** | `aura status` | Terminal health check |
-
----
-
-## 🚀 Installation
-
-### One-Line Installer (Recommended)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash
 ```
 
-### Precompiled Release Package
-Download `aura-v1.12.0-x86_64-linux.tar.gz` from [GitHub Releases](https://github.com/antwny/aura/releases):
+Linux x86_64. Installs to `~/.local` by default. See [requirements and other install options](#install).
+
+<div align="center">
+
+<a href="https://antwny.github.io/aura/assets/video/aura-showcase.mp4">
+  <img src="docs/assets/video/aura-showcase-preview.webp" alt="Preview of Aura running on the desktop" width="90%">
+</a>
+
+<sub>Click the preview to watch the demo.</sub>
+
+</div>
+
+## What Aura does
+
+- **Organizes wallpapers:** Add local videos and images, mark favorites, assign a wallpaper to each display, and rotate a filtered selection on a schedule.
+- **Finds new backgrounds:** Browse and download from the online catalogs in Explore. Results appear as each source responds.
+- **Controls playback:** Pause manually or automatically when windows cover the desktop, a fullscreen app is active, or the device is on battery. Available controls depend on the desktop backend.
+- **Manages wallpaper audio:** Adjust volume or mute from Aura and the tray. An optional setting mutes the wallpaper while an MPRIS media player is playing, then restores the chosen audio preference.
+- **Matches the desktop:** Extract colors from the current wallpaper for Aura and, on COSMIC, the system accent.
+- **Offers a quick switcher:** Open the wallpaper picker with `aura switcher`; choose between Classic, Cinematic, and Honeycomb layouts.
+- **Adds optional effects:** Cursor-driven depth and audio-reactive effects use the included helper binaries when supported.
+- **Updates in the app:** Aura checks for releases and shows download progress when an update is installed.
+
+## Desktop compatibility
+
+| Desktop | Wallpapers | Notes |
+| --- | --- | --- |
+| COSMIC and compatible Wayland layer-shell compositors | Static images and videos | Uses `mpvpaper` for the wallpaper layer. Includes support for Niri, Hyprland, and Sway. |
+| GNOME on Wayland | Static images and videos | Experimental. Images use GSettings; videos require the [Hanabi extension](https://github.com/jeffshee/gnome-ext-hanabi). |
+| KDE Plasma | Static images and videos | Experimental. Images use Plasma's native wallpaper API; videos require [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn). Without the plugin, Aura displays a still poster. |
+
+Aura detects the desktop automatically. The backend can also be selected in Settings. The Static backend is available when video playback is not wanted.
+
+## Install
+
+The prebuilt release is for **Linux x86_64**. It includes Aura, `aura-effects`, `aura-depth`, and a precompiled `mpvpaper` 1.9 binary. Video playback still needs the relevant system libraries, and thumbnails need FFmpeg.
+
+| Distribution | Video and thumbnail dependencies |
+| --- | --- |
+| Arch Linux / CachyOS | `sudo pacman -S --needed mpv ffmpeg` |
+| Pop!_OS / Ubuntu / Debian | `sudo apt install libmpv2 ffmpeg` |
+| Fedora | `sudo dnf install mpv-libs ffmpeg-free` |
+| openSUSE | `sudo zypper install mpv ffmpeg` |
+
+### Installer options
+
+The [quick installer](#quick-install-one-command) downloads the latest release and installs Aura under `~/.local` by default. For a system-wide installation, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antwny/aura/main/install.sh | bash -s -- --system
+```
+
+Review [install.sh](install.sh) before running a remote script if you prefer.
+
+### Install from the archive
+
+Download the Linux archive and its `.sha256` file from [Releases](https://github.com/antwny/aura/releases/latest), then extract the archive and run its installer:
+
+The `.sha256` file contains the expected hash. Compare it with the output of `sha256sum aura-v1.12.0-x86_64-linux.tar.gz` before extracting.
+
 ```bash
 tar -xzf aura-v1.12.0-x86_64-linux.tar.gz
 cd aura-v1.12.0-x86_64-linux
-./install.sh
+./install.sh --user
 ```
 
-### Build from Source
+Use `./install.sh --system` for a system-wide install. Replace `1.12.0` in the example with the version you downloaded.
+
+### Build from source
+
+Install a current Rust toolchain and the development packages listed in [CONTRIBUTING.md](CONTRIBUTING.md). Then run:
+
 ```bash
 git clone https://github.com/antwny/aura.git
 cd aura
-cargo build --release
-install -m 755 target/release/aura ~/.local/bin/aura
-install -m 755 target/release/aura-effects ~/.local/bin/aura-effects
-install -m 755 target/release/aura-depth ~/.local/bin/aura-depth
+cargo build --release --locked
+just install
 ```
 
----
+`just install` installs the app, helper binaries, desktop entry, and icons for the current user. For live wallpapers, it also installs `packaging/mpvpaper` when present or uses the system copy at `/usr/bin/mpvpaper`.
 
-## 📊 Performance Benchmarks
+## Use Aura
 
-*Tested on Linux / COSMIC Desktop (AMD Ryzen 5 4500U, Radeon Graphics, Wayland Layer-Shell):*
+Launch **Aura** from the application menu or run `aura`. Add a folder or select a file in the Library, then apply it to all displays or choose a specific display. Explore provides downloadable wallpapers; Settings contains playback, audio, appearance, and rotation options.
 
-| Benchmark | Aura (Rust) | Legacy Python/GTK Tools | Advantage |
-|:---|:---:|:---:|:---:|
-| **Cold Startup Time** | **< 20 ms** | ~1,120 ms | **56x faster** |
-| **Idle CPU (Paused / Occluded)** | **0.00%** | 3.5% - 8.0% | **Zero battery drain** |
-| **GPU Usage When Paused** | **0.0%** | 4.0% - 10.0% | **100% GPU for games** |
-| **Desktop UI Framerate** | **60+ FPS** | 24 - 45 FPS | **Silky smooth** |
+Aura does not assign global keyboard shortcuts on your behalf. You can bind these commands in your desktop's shortcut settings:
 
----
+| Command | Action |
+| --- | --- |
+| `aura switcher` | Open the quick wallpaper switcher |
+| `aura next` / `aura prev` | Move through the current rotation pool |
+| `aura toggle-pause` | Pause or resume the wallpaper |
+| `aura apply /path/to/wallpaper.mp4` | Apply a local file |
+| `aura stop` | Stop the wallpaper |
+| `aura status` | Show the current status |
+| `aura check-update` / `aura update` | Check for or install a release update |
+| `aura --help` | Show all available commands |
+
+For automatic media muting, enable the option in **Settings → Engine → Performance**. It responds to media players that expose playback state through MPRIS on the session bus.
+
+## Development and support
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build dependencies, tests, and contribution guidance. The main commands are `just check`, `just test`, `just lint`, and `just build`.
+
+If something is not working, [open an issue](https://github.com/antwny/aura/issues) with your distribution, desktop environment, Aura version, and steps to reproduce it. The release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Acknowledgments & License
 
-Aura is Free & Open Source software licensed under the **GNU General Public License v3.0** (GPL-3.0). See [LICENSE](LICENSE) for details.
+Aura is free and open source software licensed under the [GNU General Public License v3.0 or later](LICENSE).
 
-Inspirations & references: [Papyrus](https://github.com/PSGtatitos/papyrus) and [skwd-wall](https://github.com/liixini/skwd-wall).
+Inspirations and references: [Papyrus](https://github.com/PSGtatitos/papyrus) and [skwd-wall](https://github.com/liixini/skwd-wall).
 
-- **Community**: [@antwny on YouTube](https://www.youtube.com/@antwny) • [@antw-ny on Reddit](https://www.reddit.com/user/antw-ny/)
-- Support the project with a star on [GitHub](https://github.com/antwny/aura) ⭐ or donate via [PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD).
+- **Community:** [@antwny on YouTube](https://www.youtube.com/@antwny) and [@antw-ny on Reddit](https://www.reddit.com/user/antw-ny/).
+- **Support:** Star [Aura on GitHub](https://github.com/antwny/aura) or [donate via PayPal](https://www.paypal.com/donate/?business=antwnyab@gmail.com&no_recurring=0&currency_code=USD).
