@@ -39,7 +39,7 @@ fmt:
 
 # Run Clippy linter (if installed)
 lint:
-    @cargo clippy --help >/dev/null 2>&1 && cargo clippy -- -D warnings || echo "clippy not installed; skipping clippy"
+    cargo clippy --locked --all-targets
 
 # Clean build artifacts
 clean:
@@ -111,7 +111,7 @@ uninstall:
     @echo "Aura uninstalled from ~/.local"
 
 # Package binary and assets for release
-package version="1.11.2": build
+package version="1.12.0": build
     @rm -rf "target/package/aura-v{{version}}-x86_64-linux"
     @mkdir -p "target/package/aura-v{{version}}-x86_64-linux"
     cp target/release/aura "target/package/aura-v{{version}}-x86_64-linux/"

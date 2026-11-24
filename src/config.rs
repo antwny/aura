@@ -206,6 +206,8 @@ pub struct Config {
     pub order: String,  // "random" | "sequential"
     pub seq_index: usize,
     pub mute: bool,
+    #[serde(default)]
+    pub mute_when_media_playing: bool,
     #[serde(default = "default_volume")]
     pub volume: u8,
     pub hwdec: String, // "auto-safe" | "vaapi" | "nvdec" | "no"
@@ -521,6 +523,7 @@ impl Default for Config {
             order: "random".into(),
             seq_index: 0,
             mute: true,
+            mute_when_media_playing: false,
             volume: 100,
             hwdec: "auto-safe".into(),
             gpu_preference: default_gpu_preference(),

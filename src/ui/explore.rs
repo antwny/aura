@@ -241,6 +241,12 @@ impl AuraApp {
             )));
         }
 
+        if let Some((completed, total)) = self.unified_progress {
+            if total > 0 && completed < total {
+                header = header.push(widget::text::caption(lang.explore_catalogues_progress(completed, total)));
+            }
+        }
+
         if !self.unified_errors.is_empty() {
             let labels: Vec<&str> = self
                 .unified_errors
@@ -348,6 +354,16 @@ impl AuraApp {
             .collect();
 
         if items.is_empty() {
+            if self.unified_progress.is_some_and(|(done, total)| done < total) {
+                return Element::from(widget::column::with_capacity(2)
+                    .spacing(14)
+                    .push(self.explore_header())
+                    .push(widget::container(widget::text::body(lang.explore_loading()))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)));
+            }
             let query = self.unified_search.trim();
             let description = if query.is_empty() {
                 lang.explore_no_results_desc().to_string()

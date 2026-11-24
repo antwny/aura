@@ -223,7 +223,7 @@ impl AuraApp {
                     .spacing(8)
                     .align_y(Alignment::Center)
                     .push(
-                        widget::button::icon(widget::icon::from_name(if self.config.mute {
+                        widget::button::icon(widget::icon::from_name(if self.effective_mute() {
                             "audio-volume-muted-symbolic"
                         } else {
                             "audio-volume-high-symbolic"
@@ -286,7 +286,7 @@ impl AuraApp {
             )
         };
 
-        let is_muted = self.config.mute;
+        let is_muted = self.effective_mute();
         let volume = self.config.volume;
         let lang = self.language;
         let title_chars = if self.window_width < 420.0 { 24 } else if compact { 32 } else { 56 };
@@ -302,12 +302,16 @@ impl AuraApp {
 
         let mute_btn = if is_muted {
             widget::button::icon(widget::icon::from_name("audio-volume-muted-symbolic"))
-                .tooltip(lang.bar_muted())
+                .tooltip(if self.external_media_playing && !self.config.mute {
+                    lang.bar_muted_by_media()
+                } else {
+                    lang.bar_muted()
+                })
         } else {
             widget::button::icon(widget::icon::from_name("audio-volume-high-symbolic"))
                 .tooltip(format!("{}: {}%", lang.bar_audio_active(), volume))
         }
-        .on_press(Message::ToggleMute(!is_muted));
+        .on_press(Message::ToggleMute(!self.config.mute));
 
         let monitor_count = self.outputs.len().max(1);
         let target_label = if self.selected_output == "*" {

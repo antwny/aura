@@ -668,6 +668,18 @@ impl AuraApp {
                 widget::row::with_capacity(2)
                     .spacing(16)
                     .align_y(Alignment::Start)
+                    .push(widget::toggler(self.config.mute_when_media_playing)
+                        .on_toggle(Message::ToggleMuteOnMedia))
+                    .push(widget::column::with_capacity(2)
+                        .spacing(2)
+                        .push(widget::text::body(self.language.settings_mute_on_media()))
+                        .push(widget::text::caption(self.language.settings_mute_on_media_desc())
+                            .width(Length::Fill))),
+            )
+            .push(
+                widget::row::with_capacity(2)
+                    .spacing(16)
+                    .align_y(Alignment::Start)
                     .push(
                         widget::toggler(self.config.smart_pause)
                             .on_toggle(Message::ToggleSmartPause),

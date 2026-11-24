@@ -412,6 +412,24 @@ pub fn set_video_on_output(
     evaluate_script(&desktop_loop(output, &body))
 }
 
+/// Change only the plugin's audio setting, leaving the selected video intact.
+pub fn set_mute(mute: bool) -> bool {
+    let mode = if mute { 5 } else { 4 };
+    let body = format!(
+        "  if (d.wallpaperPlugin !== \"{}\") continue;\n  {}\n  d.writeConfig(\"MuteMode\", {});\n  d.reloadConfig();",
+        PLUGIN_ID, plugin_config_group(), mode
+    );
+    evaluate_script(&desktop_loop("*", &body)).is_ok()
+}
+
+pub fn set_volume(volume: u8) -> bool {
+    let body = format!(
+        "  if (d.wallpaperPlugin !== \"{}\") continue;\n  {}\n  d.writeConfig(\"Volume\", {});\n  d.reloadConfig();",
+        PLUGIN_ID, plugin_config_group(), (volume as f32 / 100.0).clamp(0.0, 1.0)
+    );
+    evaluate_script(&desktop_loop("*", &body)).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

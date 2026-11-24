@@ -8,6 +8,7 @@ mod effects;
 mod engine;
 mod i18n;
 mod icon_fallback;
+mod media;
 mod scanner;
 mod theme;
 mod tray;

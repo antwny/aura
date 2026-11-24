@@ -33,6 +33,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -44,6 +46,9 @@ jobs:
 
       - name: Cargo Check
         run: cargo check --locked --verbose
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets
 
       - name: Run unit & offline integration tests
         run: cargo test --locked --verbose

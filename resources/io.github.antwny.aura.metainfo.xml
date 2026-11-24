@@ -60,6 +60,11 @@
   <url type="bugtracker">https://github.com/antwny/aura/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="1.12.0" date="2026-11-23">
+      <description>
+        <p>Adds automatic wallpaper audio muting during external media playback, a tray audio toggle, download progress for in-app updates, and progressive Explore results. Improves audio behavior across desktop backends and includes precompiled mpvpaper 1.9 in the Linux archive.</p>
+      </description>
+    </release>
     <release version="1.11.2" date="2026-11-20">
       <description>
         <p>Improves Explore category filters and sparse resolution pagination, adds Wallhaven sorting for static wallpapers, and improves wallpaper and parallax recovery behavior. The Linux release archive includes precompiled mpvpaper 1.9.</p>

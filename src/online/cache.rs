@@ -121,10 +121,7 @@ pub fn wallpapers_online_dir() -> PathBuf {
                     let src = entry.path();
                     if src.is_file() {
                         let dst = dir.join(entry.file_name());
-                        if !dst.exists() {
-                            let _ = std::fs::copy(&src, &dst);
-                        }
-                        let _ = std::fs::remove_file(&src);
+                        migrate_legacy_download(&src, &dst);
                     }
                 }
             }
@@ -134,6 +131,14 @@ pub fn wallpapers_online_dir() -> PathBuf {
 
         dir
     }).clone()
+}
+
+fn migrate_legacy_download(src: &Path, dst: &Path) {
+    // A name collision is not proof that the destination has identical data.
+    // A failed copy must never remove the only intact copy either.
+    if !dst.exists() && std::fs::copy(src, dst).is_ok() {
+        let _ = std::fs::remove_file(src);
+    }
 }
 
 pub fn thumbs_online_cache_dir() -> PathBuf {
@@ -752,6 +757,26 @@ pub async fn download_online_thumbnail(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migration_preserves_original_on_collision_or_copy_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("old.mp4");
+        let dst = dir.path().join("new.mp4");
+        std::fs::write(&src, b"original").unwrap();
+        std::fs::write(&dst, b"different").unwrap();
+        migrate_legacy_download(&src, &dst);
+        assert_eq!(std::fs::read(&src).unwrap(), b"original");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"different");
+
+        std::fs::remove_file(&dst).unwrap();
+        migrate_legacy_download(&src, &dir.path().join("missing").join("new.mp4"));
+        assert_eq!(std::fs::read(&src).unwrap(), b"original");
+
+        migrate_legacy_download(&src, &dst);
+        assert!(!src.exists());
+        assert_eq!(std::fs::read(&dst).unwrap(), b"original");
+    }
 
     #[test]
     fn test_clean_filename() {

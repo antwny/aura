@@ -14,6 +14,7 @@ pub enum TrayAction {
     ShowApp,
     OpenSwitcher,
     TogglePause,
+    ToggleMute,
     NextWallpaper,
     StopWallpaper,
     QuitApp,
@@ -24,6 +25,7 @@ pub struct AuraTray {
     pub tx: UnboundedSender<TrayAction>,
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
+    pub is_muted: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
     pub language: Arc<Mutex<crate::i18n::Language>>,
 }
@@ -64,6 +66,7 @@ impl Tray for AuraTray {
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let lang = *lock(&self.language);
         let is_paused = *lock(&self.is_paused);
+        let is_muted = *lock(&self.is_muted);
         let has_wall = *lock(&self.has_wallpaper);
 
         let mut items: Vec<MenuItem<Self>> = Vec::with_capacity(8);
@@ -113,6 +116,15 @@ impl Tray for AuraTray {
             }
             .into(),
             StandardItem {
+                label: if is_muted { lang.tray_unmute() } else { lang.tray_mute() }.into(),
+                enabled: has_wall,
+                activate: Box::new(|tray: &mut AuraTray| {
+                    let _ = tray.tx.send(TrayAction::ToggleMute);
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: lang.tray_next().into(),
                 enabled: has_wall,
                 activate: Box::new(|tray: &mut AuraTray| {
@@ -150,6 +162,7 @@ pub struct TrayController {
     pub rx: Arc<TokioMutex<UnboundedReceiver<TrayAction>>>,
     pub current_name: Arc<Mutex<String>>,
     pub is_paused: Arc<Mutex<bool>>,
+    pub is_muted: Arc<Mutex<bool>>,
     pub has_wallpaper: Arc<Mutex<bool>>,
     pub language: Arc<Mutex<crate::i18n::Language>>,
     pub handle: Arc<Mutex<Option<Handle<AuraTray>>>>,
@@ -168,6 +181,7 @@ impl TrayController {
         let _ = TRAY_RX.set(rx.clone());
         let current_name = Arc::new(Mutex::new(String::new()));
         let is_paused = Arc::new(Mutex::new(false));
+        let is_muted = Arc::new(Mutex::new(false));
         let has_wallpaper = Arc::new(Mutex::new(false));
         let language = Arc::new(Mutex::new(lang));
         let handle = Arc::new(Mutex::new(None));
@@ -176,6 +190,7 @@ impl TrayController {
             tx,
             current_name: current_name.clone(),
             is_paused: is_paused.clone(),
+            is_muted: is_muted.clone(),
             has_wallpaper: has_wallpaper.clone(),
             language: language.clone(),
         };
@@ -184,6 +199,7 @@ impl TrayController {
             rx,
             current_name,
             is_paused,
+            is_muted,
             has_wallpaper,
             language,
             handle,
@@ -212,6 +228,13 @@ impl TrayController {
             tokio::spawn(async move {
                 let _ = handle.update(|_| {}).await;
             });
+        }
+    }
+
+    pub fn update_mute(&self, muted: bool) {
+        *lock(&self.is_muted) = muted;
+        if let Some(handle) = lock(&self.handle).clone() {
+            tokio::spawn(async move { let _ = handle.update(|_| {}).await; });
         }
     }
 

@@ -9,7 +9,7 @@ use crate::online::{
     download_online_thumbnail, download_to_file_with_progress, fetch_bing_archive_page, fetch_bing_wallpapers,
     fetch_desktophut_wallpapers, fetch_livewallpapers4free_page, fetch_lively_wallpapers,
     fetch_minimalistic_wallpapers, fetch_moewalls_wallpapers, fetch_motionbgs_wallpapers,
-    fetch_unified_wallpapers, fetch_unified_wallpapers_filled, fetch_wallpaperwaifu_wallpapers,
+    fetch_unified_wallpapers_filled, fetch_wallpaperwaifu_wallpapers,
     fetch_wallhaven_wallpapers,
     resolve_download_url, LiveWallpapers4FreePage, OnlineSource, OnlineWallpaperItem,
 };
@@ -25,6 +25,8 @@ use cosmic::Element;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+mod audio;
 
 /// Number of unified results rendered on the first Explore paint. The rest of
 /// the fetched page is revealed locally before another network request.
@@ -373,6 +375,9 @@ pub enum Message {
     ToggleAutoDark(bool),
     SelectThemeMode(crate::config::ThemeMode),
     ToggleMute(bool),
+    ToggleMuteOnMedia(bool),
+    CheckExternalMedia,
+    ExternalMediaState(Option<bool>),
     ToggleSmartPause(bool),
     ToggleAutoPause(bool),
     SelectAutoPauseMode(crate::config::AutoPauseMode),
@@ -447,6 +452,7 @@ pub enum Message {
         token: u64,
         result: Result<crate::online::UnifiedSearchPage, String>,
     },
+    UnifiedSearchPartial { token: u64, page: crate::online::UnifiedSearchPage, completed: usize, total: usize },
     UnifiedMoreFetched {
         token: u64,
         page: u32,
@@ -475,6 +481,7 @@ pub enum Message {
     CheckForUpdates { user_initiated: bool },
     UpdateCheckResult { result: Result<crate::online::updater::ReleaseInfo, String>, user_initiated: bool },
     PerformGuiUpdate { download_url: String, checksum_url: String, version: String },
+    GuiUpdateProgress { downloaded: u64, total: Option<u64> },
     GuiUpdateResult(Result<String, String>),
     RestartApp,
     OpenQuickSwitcher,
@@ -527,7 +534,7 @@ pub enum UpdateStatus {
         download_url: Option<String>,
         checksum_url: Option<String>,
     },
-    Downloading,
+    Downloading { downloaded: u64, total: Option<u64> },
     UpdatedSuccess { new_version: String },
     Error(String),
 }
@@ -645,6 +652,8 @@ pub struct AuraApp {
     pub(crate) search_query: String,
     pub(crate) autostart_active: bool,
     pub(crate) pending_volume: Option<u8>,
+    pending_volume_updated_at: Option<Instant>,
+    pub(crate) external_media_playing: bool,
     pub(crate) gnome_apply_token: u64,
     pub(crate) kde_apply_token: u64,
     notice: Option<Notice>,
@@ -697,6 +706,7 @@ pub struct AuraApp {
     unified_request_token: u64,
     pub(crate) unified_skipped: Vec<OnlineSource>,
     pub(crate) unified_errors: Vec<String>,
+    pub(crate) unified_progress: Option<(usize, usize)>,
     pub(crate) livewallpapers4free_wallpapers: Vec<OnlineWallpaperItem>,
     pub(crate) livewallpapers4free_page: u32,
     pub(crate) livewallpapers4free_category: String,
@@ -1079,6 +1089,7 @@ impl AuraApp {
         self.unified_has_more = false;
         self.unified_skipped.clear();
         self.unified_errors.clear();
+        self.unified_progress = Some((0, 0));
         self.explore_source = OnlineSource::Unified;
         self.explore_loading = true;
         self.explore_loading_more = false;
@@ -1094,25 +1105,23 @@ impl AuraApp {
         let resolution = self.unified_resolution;
         let media = self.unified_media;
         let wallhaven_sorting = self.wallhaven_sorting.clone();
-        Task::batch([
-            self.scroll_to_top(self.explore_scroll_id.clone()),
-            Task::perform(
-                async move {
-                    fetch_unified_wallpapers(
-                        &client,
-                        1,
-                        query.as_deref(),
-                        filter,
-                        category,
-                        resolution,
-                        media,
-                        &wallhaven_sorting,
-                    )
-                    .await
-                },
-                move |result| cosmic::Action::App(Message::UnifiedSearchFetched { token, result }),
-            ),
-        ])
+        let stream = cosmic::iced::stream::channel(32, move |mut output: cosmic::iced::futures::channel::mpsc::Sender<cosmic::Action<Message>>| async move {
+            use cosmic::iced::futures::SinkExt;
+            let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+            let handle = tokio::spawn(async move {
+                crate::online::fetch_unified_wallpapers_progressive(
+                    &client, 1, query.as_deref(), filter, category, resolution, media,
+                    &wallhaven_sorting,
+                    move |page, completed, total| { let _ = tx.try_send((page, completed, total)); },
+                ).await
+            });
+            while let Some((page, completed, total)) = rx.recv().await {
+                let _ = output.send(cosmic::Action::App(Message::UnifiedSearchPartial { token, page, completed, total })).await;
+            }
+            let result = handle.await.unwrap_or_else(|error| Err(format!("Catalogue task failed: {error}")));
+            let _ = output.send(cosmic::Action::App(Message::UnifiedSearchFetched { token, result })).await;
+        });
+        Task::batch([self.scroll_to_top(self.explore_scroll_id.clone()), cosmic::task::stream(stream)])
     }
 
     fn needs_occlusion_watcher(&self) -> bool {
@@ -1817,7 +1826,7 @@ impl AuraApp {
 
         let engine = Arc::clone(&self.engine);
         let engine_op_lock = Arc::clone(&self.engine_op_lock);
-        let mute = self.config.mute;
+        let mute = self.effective_mute();
         let volume = self.config.volume;
         let hwdec = self.config.hwdec.clone();
         let auto_pause = self.config.auto_pause;
@@ -2178,6 +2187,7 @@ impl cosmic::Application for AuraApp {
             String::new()
         };
         tray_controller.update_state(current_title, false, !config.wallpapers.is_empty());
+        tray_controller.update_mute(config.mute);
         tray_controller.spawn_service(tray);
 
         let mut engine = WallpaperEngine::new();
@@ -2333,6 +2343,8 @@ impl cosmic::Application for AuraApp {
             search_query: String::new(),
             autostart_active,
             pending_volume: None,
+            pending_volume_updated_at: None,
+            external_media_playing: false,
             gnome_apply_token: 0,
             kde_apply_token: 0,
             notice: None,
@@ -2373,6 +2385,7 @@ impl cosmic::Application for AuraApp {
             unified_request_token: 0,
             unified_skipped: Vec::new(),
             unified_errors: Vec::new(),
+            unified_progress: None,
             livewallpapers4free_wallpapers: Vec::new(),
             livewallpapers4free_page: 1,
             livewallpapers4free_category: "all".into(),
@@ -2678,10 +2691,17 @@ impl cosmic::Application for AuraApp {
             );
         }
 
-        if !self.config.wallpapers.is_empty() {
+        if self.uses_mpvpaper() && self.config.wallpapers.values().any(|path| !is_static_image(Path::new(path))) {
             subs.push(
                 cosmic::iced::time::every(Duration::from_secs(1))
                     .map(|_| Message::PlaybackRefreshTick),
+            );
+        }
+
+        if self.config.mute_when_media_playing && !self.config.wallpapers.is_empty() {
+            subs.push(
+                cosmic::iced::time::every(Duration::from_secs(2))
+                    .map(|_| Message::CheckExternalMedia),
             );
         }
 
@@ -2771,8 +2791,13 @@ impl cosmic::Application for AuraApp {
             );
         }
 
+        let hotplug_interval = if self.config.wallpapers.is_empty() && !self.is_window_open {
+            15
+        } else {
+            3
+        };
         subs.push(
-            cosmic::iced::time::every(Duration::from_secs(3))
+            cosmic::iced::time::every(Duration::from_secs(hotplug_interval))
                 .map(|_| Message::HotplugTick)
         );
 
@@ -3460,14 +3485,17 @@ impl cosmic::Application for AuraApp {
             Message::ChangeVolume(vol) => {
                 self.config.volume = vol;
                 self.pending_volume = Some(vol);
+                self.pending_volume_updated_at = Some(Instant::now());
             }
 
             Message::VolumeDebounceTick => {
+                if self.pending_volume_updated_at.is_some_and(|last| last.elapsed() < Duration::from_millis(250)) {
+                    return Task::none();
+                }
                 if let Some(vol) = self.pending_volume.take() {
-                    if !self.config.mute && self.uses_mpvpaper() {
-                        self.engine_guard().set_volume(None, vol);
-                    }
+                    self.pending_volume_updated_at = None;
                     let _ = self.config.save();
+                    return self.apply_wallpaper_volume(vol);
                 }
             }
 
@@ -3523,6 +3551,9 @@ impl cosmic::Application for AuraApp {
                 }
                 crate::tray::TrayAction::TogglePause => {
                     return Task::done(cosmic::Action::App(Message::TogglePause));
+                }
+                crate::tray::TrayAction::ToggleMute => {
+                    return Task::done(cosmic::Action::App(Message::ToggleMute(!self.config.mute)));
                 }
                 crate::tray::TrayAction::NextWallpaper => {
                     return Task::done(cosmic::Action::App(Message::NextWallpaper));
@@ -3591,7 +3622,7 @@ impl cosmic::Application for AuraApp {
                             Some(last) => last.elapsed() > Duration::from_secs(45 * 60),
                             None => true,
                         };
-                        if should_check && !matches!(self.update_status, UpdateStatus::Checking | UpdateStatus::Downloading) {
+                        if should_check && !matches!(self.update_status, UpdateStatus::Checking | UpdateStatus::Downloading { .. }) {
                             tasks.push(Task::done(cosmic::Action::App(Message::CheckForUpdates { user_initiated: false })));
                         }
                     }
@@ -4494,6 +4525,9 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::CheckForUpdates { user_initiated } => {
+                if matches!(self.update_status, UpdateStatus::Downloading { .. }) {
+                    return Task::none();
+                }
                 self.last_update_check = Some(Instant::now());
                 self.update_status = UpdateStatus::Checking;
                 let client = self.http_client.clone();
@@ -4555,19 +4589,38 @@ impl cosmic::Application for AuraApp {
             }
 
             Message::PerformGuiUpdate { download_url, checksum_url, version } => {
-                self.update_status = UpdateStatus::Downloading;
+                if matches!(self.update_status, UpdateStatus::Downloading { .. }) { return Task::none(); }
+                self.update_status = UpdateStatus::Downloading { downloaded: 0, total: None };
+                self.notice_token = self.notice_token.wrapping_add(1);
+                self.notice = Some(Notice { text: self.language.about_updating().into(), action: None, critical: true });
                 let client = self.http_client.clone();
-                let notify_task = self.notify(self.language.about_updating());
-                let update_task = Task::perform(
-                    async move {
-                        match crate::online::updater::perform_update(&client, &download_url, &checksum_url).await {
-                            Ok(_) => Ok(version),
-                            Err(e) => Err(e),
-                        }
-                    },
-                    |res| cosmic::Action::App(Message::GuiUpdateResult(res)),
-                );
-                return Task::batch(vec![notify_task, update_task]);
+                let stream = cosmic::iced::stream::channel(32, move |mut output: cosmic::iced::futures::channel::mpsc::Sender<cosmic::Action<Message>>| async move {
+                    use cosmic::iced::futures::SinkExt;
+                    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+                    let handle = tokio::spawn(async move {
+                        crate::online::updater::perform_update_with_progress(&client, &download_url, &checksum_url,
+                            move |downloaded, total| { let _ = tx.try_send((downloaded, total)); }).await
+                            .map(|_| version)
+                    });
+                    while let Some((downloaded, total)) = rx.recv().await {
+                        let _ = output.send(cosmic::Action::App(Message::GuiUpdateProgress { downloaded, total })).await;
+                    }
+                    let result = handle.await.unwrap_or_else(|error| Err(format!("Update task failed: {error}")));
+                    let _ = output.send(cosmic::Action::App(Message::GuiUpdateResult(result))).await;
+                });
+                return cosmic::task::stream(stream);
+            }
+
+            Message::GuiUpdateProgress { downloaded, total } => {
+                if matches!(self.update_status, UpdateStatus::Downloading { .. }) {
+                    self.update_status = UpdateStatus::Downloading { downloaded, total };
+                    if let Some(notice) = self.notice.as_mut() {
+                        let progress = total.filter(|size| *size > 0)
+                            .map(|size| format!("{}%", (downloaded.saturating_mul(100) / size).min(100)))
+                            .unwrap_or_else(|| format!("{} MiB", downloaded / (1024 * 1024)));
+                        notice.text = format!("{} — {}", self.language.about_updating(), progress);
+                    }
+                }
             }
 
             Message::GuiUpdateResult(res) => {
@@ -4634,7 +4687,7 @@ impl cosmic::Application for AuraApp {
                 }
 
                 let scaling = self.config.scaling.get(&output).cloned().unwrap_or_else(|| "fit".into());
-                let mute = self.config.mute;
+                let mute = self.effective_mute();
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
 
@@ -5072,7 +5125,7 @@ impl cosmic::Application for AuraApp {
                 }
                 let wallpapers = self.config.wallpapers.clone();
                 let scaling = self.config.scaling.clone();
-                let mute = self.config.mute;
+                let mute = self.effective_mute();
                 let volume = self.config.volume;
                 let hwdec = self.config.hwdec.clone();
                 let auto_pause = self.config.auto_pause;
@@ -5334,7 +5387,7 @@ impl cosmic::Application for AuraApp {
                     if let Some(path) = self.config.wallpapers.get(&output).cloned() {
                         let engine = Arc::clone(&self.engine);
                         let engine_op_lock = Arc::clone(&self.engine_op_lock);
-                        let mute = self.config.mute;
+                        let mute = self.effective_mute();
                         let volume = self.config.volume;
                         let hwdec = self.config.hwdec.clone();
                         let auto_pause = self.config.auto_pause;
@@ -5481,18 +5534,46 @@ impl cosmic::Application for AuraApp {
             Message::ToggleMute(mute) => {
                 self.config.mute = mute;
                 let _ = self.config.save();
-                if self.uses_mpvpaper() {
-                    self.engine_guard().set_mute(None, mute);
-                    if !mute {
-                        self.engine_guard().set_volume(None, self.config.volume);
-                    }
-                }
+                self.tray_controller.update_mute(mute);
+                let audio_task = self.apply_effective_mute();
                 let status = if mute {
                     self.language.status_muted()
                 } else {
                     self.language.status_unmuted()
                 };
-                return self.set_status(status);
+                return Task::batch([self.set_status(status), audio_task]);
+            }
+
+            Message::ToggleMuteOnMedia(enabled) => {
+                self.config.mute_when_media_playing = enabled;
+                if !enabled { self.external_media_playing = false; }
+                let _ = self.config.save();
+                if enabled {
+                    return Task::done(cosmic::Action::App(Message::CheckExternalMedia));
+                }
+                return self.apply_effective_mute();
+            }
+
+            Message::CheckExternalMedia => {
+                if !self.config.mute_when_media_playing { return Task::none(); }
+                return Task::perform(
+                    crate::media::external_media_playing(),
+                    |state| cosmic::Action::App(Message::ExternalMediaState(state)),
+                );
+            }
+
+            Message::ExternalMediaState(Some(playing)) => {
+                if self.config.mute_when_media_playing && self.external_media_playing != playing {
+                    self.external_media_playing = playing;
+                    return self.apply_effective_mute();
+                }
+            }
+
+            Message::ExternalMediaState(None) => {
+                if self.external_media_playing {
+                    self.external_media_playing = false;
+                    return self.apply_effective_mute();
+                }
             }
 
             Message::RemoveFolder(folder) => {
@@ -6201,6 +6282,11 @@ impl cosmic::Application for AuraApp {
                 if self.explore_loading_more || self.explore_loading {
                     return Task::none();
                 }
+                if self.explore_source == OnlineSource::Unified
+                    && self.unified_progress.is_some_and(|(done, total)| done < total)
+                {
+                    return Task::none();
+                }
                 // Reveal results already fetched before hitting the network.
                 if self.explore_source == OnlineSource::Unified
                     && self.unified_visible < self.unified_wallpapers.len()
@@ -6576,6 +6662,22 @@ impl cosmic::Application for AuraApp {
                 return self.refresh_unified_explore();
             }
 
+            Message::UnifiedSearchPartial { token, page, completed, total } => {
+                if self.explore_source != OnlineSource::Unified || token != self.unified_request_token {
+                    return Task::none();
+                }
+                let existing: std::collections::HashSet<_> = self.unified_wallpapers.iter().map(|item| item.id.clone()).collect();
+                let newcomers: Vec<_> = page.items.iter().filter(|item| !existing.contains(&item.id)).cloned().collect();
+                self.explore_loading = false;
+                self.unified_progress = Some((completed, total));
+                self.unified_has_more = page.has_more;
+                self.unified_skipped = page.skipped;
+                self.unified_errors = page.errors;
+                self.unified_wallpapers = page.items;
+                self.unified_visible = UNIFIED_INITIAL_VISIBLE;
+                return self.queue_thumbnails(&newcomers);
+            }
+
             Message::UnifiedSearchFetched { token, result } => {
                 if self.explore_source != OnlineSource::Unified
                     || !unified_response_matches(self.unified_request_token, 1, token, 1)
@@ -6583,6 +6685,7 @@ impl cosmic::Application for AuraApp {
                     return Task::none();
                 }
                 self.explore_loading = false;
+                self.unified_progress = None;
                 match result {
                     Ok(page) => {
                         self.unified_page = 1;
@@ -6594,11 +6697,14 @@ impl cosmic::Application for AuraApp {
                         // failure; keep the combined results visible.
                         self.explore_error = None;
                         let items = page.items;
-                        self.unified_wallpapers = items.clone();
-                        let visible: Vec<_> = items
+                        let existing: std::collections::HashSet<_> = self.unified_wallpapers.iter().map(|item| item.id.clone()).collect();
+                        let visible: Vec<_> = items.iter()
+                            .filter(|item| !existing.contains(&item.id))
+                            .cloned()
                             .into_iter()
                             .take(UNIFIED_INITIAL_VISIBLE)
                             .collect();
+                        self.unified_wallpapers = items;
                         return self.queue_thumbnails(&visible);
                     }
                     Err(err) => {
@@ -7346,7 +7452,7 @@ impl AuraApp {
         let output_names: Vec<String> =
             self.outputs.iter().map(|output| output.name.clone()).collect();
         let scaling = self.config.scaling.clone();
-        let mute = self.config.mute;
+        let mute = self.effective_mute();
         let volume = self.config.volume;
         let hwdec = self.config.hwdec.clone();
         let auto_pause = self.config.auto_pause;

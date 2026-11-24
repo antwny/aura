@@ -38,6 +38,7 @@ finish-args:
   # Desktop Notifications & Tray indicator
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.mpris.MediaPlayer2.*
   # Desktop backends (KDE Plasma & GNOME Hanabi)
   - --talk-name=org.kde.plasmashell
   - --talk-name=io.github.jeffshee.HanabiRenderer

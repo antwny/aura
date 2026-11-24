@@ -146,12 +146,15 @@ impl AuraApp {
                             u_col = u_col.push(widget::text::caption(clean_notes));
                         }
                     }
-                    crate::app::UpdateStatus::Downloading => {
+                    crate::app::UpdateStatus::Downloading { downloaded, total } => {
+                        let progress = total.filter(|size| *size > 0)
+                            .map(|size| format!("{}%", (downloaded.saturating_mul(100) / size).min(100)))
+                            .unwrap_or_else(|| format!("{} MiB", downloaded / (1024 * 1024)));
                         let row = widget::row::with_capacity(2)
                             .spacing(12)
                             .align_y(Alignment::Center)
                             .push(widget::icon::from_name("process-working-symbolic"))
-                            .push(widget::text::body(self.language.about_updating()));
+                            .push(widget::text::body(format!("{} — {}", self.language.about_updating(), progress)));
                         u_col = u_col.push(row);
                     }
                     crate::app::UpdateStatus::UpdatedSuccess { new_version } => {

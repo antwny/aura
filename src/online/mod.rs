@@ -31,6 +31,7 @@ use filters::{
     category_slug, resolution_matches, resolution_slug, CategoryFilter, MediaFilter, ResolutionFilter,
 };
 use std::collections::HashSet;
+use futures::stream::{FuturesUnordered, StreamExt};
 
 /// Result of a unified search across every catalogue.
 #[derive(Debug, Default, Clone)]
@@ -62,6 +63,28 @@ pub async fn fetch_unified_wallpapers(
     media: MediaFilter,
     wallhaven_sorting: &str,
 ) -> Result<UnifiedSearchPage, String> {
+    fetch_unified_wallpapers_progressive(
+        client, page, query, filter, category, resolution, media, wallhaven_sorting,
+        |_, _, _| {},
+    ).await
+}
+
+/// Publishes an aggregate snapshot after each catalogue responds. The final
+/// result still uses the same round-robin ordering as the non-progressive API.
+pub async fn fetch_unified_wallpapers_progressive<F>(
+    client: &reqwest::Client,
+    page: u32,
+    query: Option<&str>,
+    filter: Option<OnlineSource>,
+    category: Option<CategoryFilter>,
+    resolution: Option<ResolutionFilter>,
+    media: MediaFilter,
+    wallhaven_sorting: &str,
+    mut on_progress: F,
+) -> Result<UnifiedSearchPage, String>
+where
+    F: FnMut(UnifiedSearchPage, usize, usize),
+{
     let page = page.max(1);
     let query = query.map(str::trim).filter(|q| !q.is_empty());
     let requested: Vec<OnlineSource> = match filter {
@@ -86,7 +109,8 @@ pub async fn fetch_unified_wallpapers(
         sources.push(source);
     }
 
-    let futures = sources.into_iter().map(|source| async move {
+    let total = sources.len();
+    let mut futures: FuturesUnordered<_> = sources.into_iter().map(|source| async move {
         // One slow catalogue must not hold the whole unified grid hostage.
         let result = match tokio::time::timeout(
             std::time::Duration::from_secs(20),
@@ -106,9 +130,17 @@ pub async fn fetch_unified_wallpapers(
             Err(_) => Err("timed out after 20s".to_string()),
         };
         (source, result)
-    });
+    }).collect();
 
-    let results = futures::future::join_all(futures).await;
+    let mut results = Vec::with_capacity(total);
+    while let Some(result) = futures.next().await {
+        results.push(result);
+        results.sort_by_key(|(source, _)| OnlineSource::catalogs().iter().position(|item| item == source).unwrap_or(usize::MAX));
+        if let Ok(mut partial) = aggregate_unified_results(results.clone(), skipped.clone(), resolution, media) {
+            partial.page = page;
+            on_progress(partial, results.len(), total);
+        }
+    }
     let mut result = aggregate_unified_results(results, skipped, resolution, media)?;
     result.page = page;
     Ok(result)

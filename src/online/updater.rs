@@ -108,6 +108,18 @@ pub async fn perform_update(
     download_url: &str,
     checksum_url: &str,
 ) -> Result<String, String> {
+    perform_update_with_progress(client, download_url, checksum_url, |_, _| {}).await
+}
+
+pub async fn perform_update_with_progress<F>(
+    client: &reqwest::Client,
+    download_url: &str,
+    checksum_url: &str,
+    mut progress: F,
+) -> Result<String, String>
+where
+    F: FnMut(u64, Option<u64>),
+{
     if is_flatpak() {
         return Err(
             "Updates under Flatpak must be installed through your software center (COSMIC Store or Flathub)."
@@ -129,7 +141,7 @@ pub async fn perform_update(
     let archive_path = temp_dir.path().join("aura-update.tar.gz");
 
     let (archive_len, actual_hash) =
-        download_file_with_sha256(client, download_url, &archive_path).await?;
+        download_file_with_sha256(client, download_url, &archive_path, &mut progress).await?;
     if archive_len == 0 {
         return Err("The downloaded update is empty.".into());
     }
@@ -246,11 +258,15 @@ async fn download_text(
         .map_err(|_| "The release checksum file is not valid UTF-8.".to_string())
 }
 
-async fn download_file_with_sha256(
+async fn download_file_with_sha256<F>(
     client: &reqwest::Client,
     url: &str,
     destination: &Path,
-) -> Result<(u64, String), String> {
+    progress: &mut F,
+) -> Result<(u64, String), String>
+where
+    F: FnMut(u64, Option<u64>),
+{
     let response = client
         .get(url)
         .header("User-Agent", "Aura-Updater")
@@ -281,6 +297,8 @@ async fn download_file_with_sha256(
         .map_err(|e| format!("Failed to create temporary package: {}", e))?;
     let mut hasher = Sha256::new();
     let mut total_bytes = 0u64;
+    progress(0, expected_len);
+    let mut last_report = std::time::Instant::now();
 
     loop {
         let chunk = tokio::time::timeout(std::time::Duration::from_secs(45), response.chunk())
@@ -306,6 +324,10 @@ async fn download_file_with_sha256(
         file.write_all(&chunk)
             .await
             .map_err(|e| format!("Failed to write update package: {}", e))?;
+        if last_report.elapsed() >= std::time::Duration::from_millis(120) {
+            progress(total_bytes, expected_len);
+            last_report = std::time::Instant::now();
+        }
     }
 
     file.flush()
@@ -314,6 +336,7 @@ async fn download_file_with_sha256(
     file.sync_all()
         .await
         .map_err(|e| format!("Failed to sync update package: {}", e))?;
+    progress(total_bytes, expected_len);
 
     if let Some(expected) = expected_len {
         if total_bytes != expected {

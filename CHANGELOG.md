@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-11-23
+
+### Added
+- Silenciado automático del audio del fondo cuando un reproductor MPRIS inicia la reproducción, conservando la preferencia manual.
+- Acción de silenciar o activar el audio del fondo desde el menú del panel.
+- Progreso de descarga en el aviso inferior y en Acerca de durante la instalación de actualizaciones.
+- Resultados parciales de los catálogos en Explore a medida que responde cada fuente.
+
+### Changed
+- Control de audio coherente en mpvpaper, GNOME y KDE; la política de audio se separa de la aplicación principal.
+- Menos consultas periódicas cuando solo hay imágenes o Aura está oculta sin fondos.
+- Guardado del volumen tras finalizar el ajuste y verificación de Clippy en CI.
+
+### Fixed
+- La migración de fondos antiguos conserva el archivo original si falla la copia o existe un archivo distinto con el mismo nombre.
+
+### Packaging
+- El archivo Linux incluye `mpvpaper` 1.9 precompilado y una suma SHA-256.
+
 ## [1.11.2] - 2026-11-20
 
 ### Added

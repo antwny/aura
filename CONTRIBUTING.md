@@ -20,7 +20,7 @@ sudo apt update
 sudo apt install mpvpaper ffmpeg pkg-config libwayland-dev libxkbcommon-dev libpipewire-0.3-dev libclang-dev just
 ```
 
-Ensure the Rust toolchain (1.80+) is installed:
+Install a current stable Rust toolchain compatible with the pinned libcosmic revision:
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
@@ -78,9 +78,9 @@ use `tempfile` directories and must not share fixed paths between tests.
 
 ## 🚀 Submitting Changes
 
-1. **Fork & Branch**: Create a feature branch off `master`:
+1. **Fork & Branch**: Create a feature branch off `main`:
    ```bash
-   git checkout -b feat/your-feature-name
+   git switch -c feat/your-feature-name
    ```
 2. **Commit Messages**: Write clear, descriptive commit messages following Conventional Commits (e.g. `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`).
 3. **Test**: Ensure the application launches smoothly, switches wallpapers across displays, and doesn't leak memory or background processes.

@@ -2764,6 +2764,54 @@ impl Language {
         }
     }
 
+    pub fn tray_mute(&self) -> &'static str {
+        match self {
+            Language::Es => "Silenciar fondo",
+            Language::En => "Mute wallpaper",
+            Language::Fr => "Couper le son du fond",
+        }
+    }
+
+    pub fn tray_unmute(&self) -> &'static str {
+        match self {
+            Language::Es => "Activar audio del fondo",
+            Language::En => "Unmute wallpaper",
+            Language::Fr => "Rétablir le son du fond",
+        }
+    }
+
+    pub fn settings_mute_on_media(&self) -> &'static str {
+        match self {
+            Language::Es => "Silenciar fondo al reproducir otros medios",
+            Language::En => "Mute wallpaper while other media plays",
+            Language::Fr => "Couper le fond pendant la lecture d'autres médias",
+        }
+    }
+
+    pub fn settings_mute_on_media_desc(&self) -> &'static str {
+        match self {
+            Language::Es => "Detecta reproductores compatibles con MPRIS. Tu silencio manual se conserva.",
+            Language::En => "Detects MPRIS compatible players. Your manual mute choice is preserved.",
+            Language::Fr => "Détecte les lecteurs MPRIS. Votre choix manuel est conservé.",
+        }
+    }
+
+    pub fn bar_muted_by_media(&self) -> &'static str {
+        match self {
+            Language::Es => "Silenciado mientras otra aplicación reproduce medios",
+            Language::En => "Muted while another application plays media",
+            Language::Fr => "Son coupé pendant la lecture d'une autre application",
+        }
+    }
+
+    pub fn explore_catalogues_progress(&self, completed: usize, total: usize) -> String {
+        match self {
+            Language::Es => format!("Catálogos: {completed}/{total}"),
+            Language::En => format!("Catalogues: {completed}/{total}"),
+            Language::Fr => format!("Catalogues : {completed}/{total}"),
+        }
+    }
+
     pub fn tray_status_paused(&self) -> &'static str {
         match self {
             Language::Es => "En pausa",
